@@ -19,6 +19,10 @@
 
 #include "pageviewmouseannotation.h"
 
+#include <cmath>
+
+#include <QFile>
+#include <QImageReader>
 #include <qevent.h>
 #include <qpainter.h>
 #include <qtooltip.h>
@@ -31,6 +35,114 @@
 
 static const int handleSize = 10;
 static const int handleSizeHalf = handleSize / 2;
+
+static bool isStampAnnotation(const Okular::Annotation *annotation)
+{
+    return annotation && annotation->subType() == Okular::Annotation::AStamp;
+}
+
+static bool isFiniteRect(const Okular::NormalizedRect &rect)
+{
+    return std::isfinite(rect.left) && std::isfinite(rect.top) && std::isfinite(rect.right) && std::isfinite(rect.bottom);
+}
+
+static bool isUsableRect(const Okular::NormalizedRect &rect)
+{
+    return isFiniteRect(rect) && rect.right > rect.left && rect.bottom > rect.top;
+}
+
+static bool isZeroDelta(const Okular::NormalizedPoint &delta)
+{
+    constexpr double minDelta = 1e-8;
+    return qAbs(delta.x) < minDelta && qAbs(delta.y) < minDelta;
+}
+
+static Okular::NormalizedRect toNormalizedRect(const QRectF &rect)
+{
+    return Okular::NormalizedRect(rect.left(), rect.top(), rect.right(), rect.bottom());
+}
+
+static QRectF toRectF(const Okular::NormalizedRect &rect)
+{
+    return QRectF(QPointF(rect.left, rect.top), QPointF(rect.right, rect.bottom)).normalized();
+}
+
+static void fitRectInsidePage(QRectF &rect)
+{
+    constexpr double minSize = 1e-6;
+    if (!std::isfinite(rect.left()) || !std::isfinite(rect.top()) || !std::isfinite(rect.right()) || !std::isfinite(rect.bottom()) || rect.width() <= minSize || rect.height() <= minSize) {
+        rect = QRectF();
+        return;
+    }
+
+    if (rect.width() > 1.0 || rect.height() > 1.0) {
+        const double scale = qMin(1.0 / rect.width(), 1.0 / rect.height());
+        const QSizeF scaledSize(rect.width() * scale, rect.height() * scale);
+        rect = QRectF(rect.center() - QPointF(scaledSize.width() / 2.0, scaledSize.height() / 2.0), scaledSize);
+    }
+
+    if (rect.left() < 0.0) {
+        rect.translate(-rect.left(), 0.0);
+    }
+    if (rect.top() < 0.0) {
+        rect.translate(0.0, -rect.top());
+    }
+    if (rect.right() > 1.0) {
+        rect.translate(1.0 - rect.right(), 0.0);
+    }
+    if (rect.bottom() > 1.0) {
+        rect.translate(0.0, 1.0 - rect.bottom());
+    }
+}
+
+static double stampImageAspectRatio(const Okular::Annotation *annotation)
+{
+    if (!isStampAnnotation(annotation)) {
+        return 0.0;
+    }
+
+    const auto *stamp = static_cast<const Okular::StampAnnotation *>(annotation);
+    const QString iconName = stamp->stampIconName();
+    if (QFile::exists(iconName)) {
+        QImageReader reader(iconName);
+        QSize imageSize = reader.size();
+        if (imageSize.isEmpty()) {
+            imageSize = reader.read().size();
+        }
+        if (imageSize.width() > 0 && imageSize.height() > 0) {
+            return double(imageSize.width()) / imageSize.height();
+        }
+    }
+
+    return 0.0;
+}
+
+static double stampNormalizedAspectRatio(const AnnotationDescription &ad)
+{
+    const double imageAspectRatio = stampImageAspectRatio(ad.annotation);
+    if (std::isfinite(imageAspectRatio) && imageAspectRatio > 0.0 && ad.pageViewItem && ad.pageViewItem->page()) {
+        const Okular::Page *page = ad.pageViewItem->page();
+        if (page->width() > 0.0 && page->height() > 0.0) {
+            return imageAspectRatio * page->height() / page->width();
+        }
+    }
+
+    if (std::isfinite(imageAspectRatio) && imageAspectRatio > 0.0 && ad.pageViewItem) {
+        const QRect &pageRect = ad.pageViewItem->uncroppedGeometry();
+        if (pageRect.width() > 0 && pageRect.height() > 0) {
+            return imageAspectRatio * double(pageRect.height()) / pageRect.width();
+        }
+    }
+
+    if (!ad.annotation) {
+        return 0.0;
+    }
+    const Okular::NormalizedRect rect = ad.annotation->boundingRectangle();
+    if (rect.height() > 0.0) {
+        return rect.width() / rect.height();
+    }
+    return 0.0;
+}
 
 bool AnnotationDescription::isValid() const
 {
@@ -84,6 +196,7 @@ MouseAnnotation::MouseAnnotation(PageView *parent, Okular::Document *document)
     , m_pageView(parent)
     , m_state(StateInactive)
     , m_handle(RH_None)
+    , m_hasOriginalBoundingRect(false)
 {
     m_resizeHandleList << RH_Left << RH_Right << RH_Top << RH_Bottom << RH_TopLeft << RH_TopRight << RH_BottomLeft << RH_BottomRight;
 }
@@ -389,7 +502,11 @@ void MouseAnnotation::updateAnnotationPointers()
 void MouseAnnotation::cancel()
 {
     if (isActive()) {
-        finishCommand();
+        if (isModified()) {
+            rollbackCommand();
+        } else {
+            finishCommand();
+        }
         setState(StateInactive, m_focusedAnnotation);
     }
 }
@@ -399,6 +516,19 @@ void MouseAnnotation::reset()
     cancel();
     m_focusedAnnotation.invalidate();
     m_mouseOverAnnotation.invalidate();
+}
+
+void MouseAnnotation::focusAnnotation(PageViewItem *pageViewItem, Okular::Annotation *annotation)
+{
+    if (!pageViewItem || !annotation) {
+        return;
+    }
+
+    AnnotationDescription ad;
+    ad.annotation = annotation;
+    ad.pageViewItem = pageViewItem;
+    ad.pageNumber = pageViewItem->pageNumber();
+    setState(StateFocused, ad);
 }
 
 /* Handle state changes for the focused annotation. */
@@ -421,16 +551,25 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
     switch (state) {
     case StateMoving:
         m_focusedAnnotation = ad;
+        if (isStampAnnotation(m_focusedAnnotation.annotation) && !m_hasOriginalBoundingRect) {
+            m_originalBoundingRect = m_focusedAnnotation.annotation->boundingRectangle();
+            m_hasOriginalBoundingRect = isUsableRect(m_originalBoundingRect);
+        }
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() | Okular::Annotation::BeingMoved);
         updateViewport(m_focusedAnnotation);
         break;
     case StateResizing:
         m_focusedAnnotation = ad;
+        if (isStampAnnotation(m_focusedAnnotation.annotation) && !m_hasOriginalBoundingRect) {
+            m_originalBoundingRect = m_focusedAnnotation.annotation->boundingRectangle();
+            m_hasOriginalBoundingRect = isUsableRect(m_originalBoundingRect);
+        }
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() | Okular::Annotation::BeingResized);
         updateViewport(m_focusedAnnotation);
         break;
     case StateFocused:
         m_focusedAnnotation = ad;
+        m_hasOriginalBoundingRect = false;
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~(Okular::Annotation::BeingMoved | Okular::Annotation::BeingResized));
         updateViewport(m_focusedAnnotation);
         break;
@@ -441,6 +580,7 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
         }
         m_focusedAnnotation.invalidate();
         m_handle = RH_None;
+        m_hasOriginalBoundingRect = false;
     }
 
     /* qDebug() << "setState: enter " << state; */
@@ -471,6 +611,16 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         Okular::NormalizedPoint delta(normalizedRotatedMouseDelta.x(), normalizedRotatedMouseDelta.y());
         const Okular::NormalizedRect annotRect = m_focusedAnnotation.annotation->boundingRectangle();
 
+        if (isStampAnnotation(m_focusedAnnotation.annotation) && m_hasOriginalBoundingRect) {
+            QRectF adjustedRect = toRectF(annotRect).translated(delta.x, delta.y);
+            fitRectInsidePage(adjustedRect);
+            const Okular::NormalizedRect normalizedRect = toNormalizedRect(adjustedRect);
+            if (isUsableRect(normalizedRect)) {
+                m_focusedAnnotation.annotation->setBoundingRectangle(normalizedRect);
+            }
+            return;
+        }
+
         // if moving annot to the left && delta.x is big enough to move annot outside the page
         if (delta.x < 0 && (annotRect.left + delta.x) < 0) {
             delta.x = -annotRect.left; // update delta.x to move annot only to the left edge of the page
@@ -490,6 +640,96 @@ void MouseAnnotation::performCommand(const QPoint newPos)
     } else if (isResized()) {
         QPointF delta1, delta2;
         handleToAdjust(normalizedRotatedMouseDelta, delta1, delta2, m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
+        if (isStampAnnotation(m_focusedAnnotation.annotation) && m_hasOriginalBoundingRect) {
+            const Okular::NormalizedRect annotRect = m_focusedAnnotation.annotation->boundingRectangle();
+            const double aspectRatio = stampNormalizedAspectRatio(m_focusedAnnotation);
+            if (std::isfinite(aspectRatio) && aspectRatio > 0.0) {
+                QRectF adjustedRect(annotRect.left + delta1.x(), annotRect.top + delta1.y(), annotRect.width() + delta2.x() - delta1.x(), annotRect.height() + delta2.y() - delta1.y());
+                if (adjustedRect.width() > 0.0 && adjustedRect.height() > 0.0) {
+                    const ResizeHandle rotatedHandle = rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
+                    const bool adjustsLeft = rotatedHandle & RH_Left;
+                    const bool adjustsRight = rotatedHandle & RH_Right;
+                    const bool adjustsTop = rotatedHandle & RH_Top;
+                    const bool adjustsBottom = rotatedHandle & RH_Bottom;
+
+                    if ((adjustsLeft || adjustsRight) && !(adjustsTop || adjustsBottom)) {
+                        const double height = adjustedRect.width() / aspectRatio;
+                        const double centerY = annotRect.top + annotRect.height() / 2.0;
+                        adjustedRect.setTop(centerY - height / 2.0);
+                        adjustedRect.setBottom(centerY + height / 2.0);
+                    } else if ((adjustsTop || adjustsBottom) && !(adjustsLeft || adjustsRight)) {
+                        const double width = adjustedRect.height() * aspectRatio;
+                        const double centerX = annotRect.left + annotRect.width() / 2.0;
+                        adjustedRect.setLeft(centerX - width / 2.0);
+                        adjustedRect.setRight(centerX + width / 2.0);
+                    } else if (adjustedRect.width() / adjustedRect.height() > aspectRatio) {
+                        const double width = adjustedRect.height() * aspectRatio;
+                        if (adjustsLeft) {
+                            adjustedRect.setLeft(adjustedRect.right() - width);
+                        } else {
+                            adjustedRect.setRight(adjustedRect.left() + width);
+                        }
+                    } else {
+                        const double height = adjustedRect.width() / aspectRatio;
+                        if (adjustsTop) {
+                            adjustedRect.setTop(adjustedRect.bottom() - height);
+                        } else {
+                            adjustedRect.setBottom(adjustedRect.top() + height);
+                        }
+                    }
+
+                    fitRectInsidePage(adjustedRect);
+                    const Okular::NormalizedRect normalizedRect = toNormalizedRect(adjustedRect);
+                    if (isUsableRect(normalizedRect)) {
+                        m_focusedAnnotation.annotation->setBoundingRectangle(normalizedRect);
+                    }
+                }
+            }
+            return;
+        }
+        if (isStampAnnotation(m_focusedAnnotation.annotation)) {
+            const Okular::NormalizedRect annotRect = m_focusedAnnotation.annotation->boundingRectangle();
+            const double aspectRatio = stampNormalizedAspectRatio(m_focusedAnnotation);
+            if (std::isfinite(aspectRatio) && aspectRatio > 0.0) {
+                QRectF adjustedRect(annotRect.left + delta1.x(), annotRect.top + delta1.y(), annotRect.width() + delta2.x() - delta1.x(), annotRect.height() + delta2.y() - delta1.y());
+                if (adjustedRect.width() > 0.0 && adjustedRect.height() > 0.0) {
+                    const ResizeHandle rotatedHandle = rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
+                    const bool adjustsLeft = rotatedHandle & RH_Left;
+                    const bool adjustsRight = rotatedHandle & RH_Right;
+                    const bool adjustsTop = rotatedHandle & RH_Top;
+                    const bool adjustsBottom = rotatedHandle & RH_Bottom;
+
+                    if ((adjustsLeft || adjustsRight) && !(adjustsTop || adjustsBottom)) {
+                        const double height = adjustedRect.width() / aspectRatio;
+                        const double centerY = annotRect.top + annotRect.height() / 2.0;
+                        adjustedRect.setTop(centerY - height / 2.0);
+                        adjustedRect.setBottom(centerY + height / 2.0);
+                    } else if ((adjustsTop || adjustsBottom) && !(adjustsLeft || adjustsRight)) {
+                        const double width = adjustedRect.height() * aspectRatio;
+                        const double centerX = annotRect.left + annotRect.width() / 2.0;
+                        adjustedRect.setLeft(centerX - width / 2.0);
+                        adjustedRect.setRight(centerX + width / 2.0);
+                    } else if (adjustedRect.width() / adjustedRect.height() > aspectRatio) {
+                        const double width = adjustedRect.height() * aspectRatio;
+                        if (adjustsLeft) {
+                            adjustedRect.setLeft(adjustedRect.right() - width);
+                        } else {
+                            adjustedRect.setRight(adjustedRect.left() + width);
+                        }
+                    } else {
+                        const double height = adjustedRect.width() / aspectRatio;
+                        if (adjustsTop) {
+                            adjustedRect.setTop(adjustedRect.bottom() - height);
+                        } else {
+                            adjustedRect.setBottom(adjustedRect.top() + height);
+                        }
+                    }
+
+                    delta1 = QPointF(adjustedRect.left() - annotRect.left, adjustedRect.top() - annotRect.top);
+                    delta2 = QPointF(adjustedRect.right() - annotRect.right, adjustedRect.bottom() - annotRect.bottom);
+                }
+            }
+        }
         m_document->adjustPageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, Okular::NormalizedPoint(delta1.x(), delta1.y()), Okular::NormalizedPoint(delta2.x(), delta2.y()));
     }
 }
@@ -503,6 +743,32 @@ void MouseAnnotation::finishCommand()
      * where modify flag needs to be already cleared. So it is important to call
      * setFlags before translatePageAnnotation-/adjustPageAnnotation.
      */
+    if (m_hasOriginalBoundingRect && isStampAnnotation(m_focusedAnnotation.annotation)) {
+        const bool wasMoved = isMoved();
+        const bool wasResized = isResized();
+        const Okular::NormalizedRect finalBoundingRect = m_focusedAnnotation.annotation->boundingRectangle();
+        m_focusedAnnotation.annotation->setBoundingRectangle(m_originalBoundingRect);
+        m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~(Okular::Annotation::BeingMoved | Okular::Annotation::BeingResized));
+
+        if (isUsableRect(finalBoundingRect) && isUsableRect(m_originalBoundingRect)) {
+            if (wasMoved) {
+                const Okular::NormalizedPoint delta(finalBoundingRect.left - m_originalBoundingRect.left, finalBoundingRect.top - m_originalBoundingRect.top);
+                if (!isZeroDelta(delta)) {
+                    m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta);
+                }
+            } else if (wasResized) {
+                const Okular::NormalizedPoint delta1(finalBoundingRect.left - m_originalBoundingRect.left, finalBoundingRect.top - m_originalBoundingRect.top);
+                const Okular::NormalizedPoint delta2(finalBoundingRect.right - m_originalBoundingRect.right, finalBoundingRect.bottom - m_originalBoundingRect.bottom);
+                if (!isZeroDelta(delta1) || !isZeroDelta(delta2)) {
+                    m_document->adjustPageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta1, delta2);
+                }
+            }
+        }
+
+        m_hasOriginalBoundingRect = false;
+        return;
+    }
+
     if (isMoved()) {
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~Okular::Annotation::BeingMoved);
         m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, Okular::NormalizedPoint(0.0, 0.0));
@@ -510,6 +776,19 @@ void MouseAnnotation::finishCommand()
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~Okular::Annotation::BeingResized);
         m_document->adjustPageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, Okular::NormalizedPoint(0.0, 0.0), Okular::NormalizedPoint(0.0, 0.0));
     }
+}
+
+void MouseAnnotation::rollbackCommand()
+{
+    if (m_hasOriginalBoundingRect && isStampAnnotation(m_focusedAnnotation.annotation)) {
+        m_focusedAnnotation.annotation->setBoundingRectangle(m_originalBoundingRect);
+        m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~(Okular::Annotation::BeingMoved | Okular::Annotation::BeingResized));
+        m_hasOriginalBoundingRect = false;
+        updateViewport(m_focusedAnnotation);
+        return;
+    }
+
+    finishCommand();
 }
 
 /* Tell viewport widget that the rectangular of the given annotation needs to be repainted. */

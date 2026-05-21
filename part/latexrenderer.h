@@ -20,7 +20,7 @@ namespace GuiUtils
 class LatexRenderer
 {
 public:
-    enum Error { NoError, LatexNotFound, DvipngNotFound, LatexFailed, DvipngFailed };
+    enum Error { NoError, LatexNotFound, DvipngNotFound, LatexFailed, DvipngFailed, PdfToImageNotFound, PdfToImageFailed };
 
     LatexRenderer();
     ~LatexRenderer();
@@ -29,10 +29,14 @@ public:
     LatexRenderer &operator=(const LatexRenderer &) = delete;
 
     Error renderLatexInHtml(QString &html, const QColor &textColor, int fontSize, int resolution, QString &latexOutput);
+    Error renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput);
+    Error renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput);
     static bool mightContainLatex(const QString &text);
 
 private:
-    Error handleLatex(QString &fileName, const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &latexOutput);
+    enum class BodyMode { Math, Source };
+
+    Error handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode = BodyMode::Math);
     static bool securityCheck(const QString &latexFormula);
 
     QStringList m_fileList;

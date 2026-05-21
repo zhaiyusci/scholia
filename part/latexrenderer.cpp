@@ -70,7 +70,7 @@ LatexRenderer::Error LatexRenderer::renderLatexInHtml(QString &html, const QColo
         formul.replace(QLatin1String("<br>"), QLatin1String(" "));
 
         QString fileName;
-        Error returnCode = handleLatex(fileName, formul, textColor, fontSize, resolution, latexOutput);
+        Error returnCode = handleLatex(fileName, nullptr, formul, textColor, fontSize, resolution, latexOutput);
         if (returnCode != NoError) {
             return returnCode;
         }
@@ -113,10 +113,46 @@ bool LatexRenderer::mightContainLatex(const QString &text)
     return true;
 }
 
-LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &latexOutput)
+LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput)
+{
+    QString formula = latexFormula.trimmed();
+    if (formula.isEmpty()) {
+        fileName.clear();
+        return LatexFailed;
+    }
+    if (!securityCheck(formula)) {
+        fileName.clear();
+        latexOutput = QStringLiteral("The formula contains unsupported LaTeX commands.");
+        return LatexFailed;
+    }
+
+    return handleLatex(fileName, nullptr, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
+}
+
+LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput)
+{
+    QString formula = latexFormula.trimmed();
+    if (formula.isEmpty()) {
+        imageFileName.clear();
+        pdfFileName.clear();
+        return LatexFailed;
+    }
+    if (!securityCheck(formula)) {
+        imageFileName.clear();
+        pdfFileName.clear();
+        latexOutput = QStringLiteral("The formula contains unsupported LaTeX commands.");
+        return LatexFailed;
+    }
+
+    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
+}
+
+LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode)
 {
     KProcess latexProc;
     KProcess dvipngProc;
+    KProcess pdfToImageProc;
+    const bool renderSource = bodyMode == BodyMode::Source;
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
     if (!tempFile->open()) {
@@ -130,23 +166,52 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, const QString
     delete tempFileInfo;
     QTextStream tempStream(tempFile);
 
-    tempStream << "\
+    if (renderSource) {
+        tempStream << "\
 \\documentclass["
-               << fontSize << "pt]{article} \
+                   << fontSize << "pt,varwidth,border=0pt]{standalone} \
+\\usepackage{xcolor} \
+\\usepackage{amsmath,mathtools,latexsym} \
+\\usepackage[version=4]{mhchem} \
+\\usepackage{physics} \
+\\usepackage{unicode-math} \
+\\pagestyle{empty} \
+\\begin{document} \
+{\\color[rgb]{" << textColor.redF()
+                   << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
+    } else {
+        tempStream << "\
+\\documentclass["
+                   << fontSize << "pt]{article} \
 \\usepackage{color} \
 \\usepackage{amsmath,latexsym,amsfonts,amssymb,ulem} \
 \\pagestyle{empty} \
 \\begin{document} \
 {\\color[rgb]{" << textColor.redF()
-               << "," << textColor.greenF() << "," << textColor.blueF() << "} \
+                   << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
+    }
+    if (!renderSource) {
+        tempStream << "\
 \\begin{eqnarray*} \
-" << latexFormula
-               << " \
-\\end{eqnarray*}} \
+" << latexSource
+                   << " \
+\\end{eqnarray*}";
+    } else {
+        tempStream << latexSource;
+    }
+    tempStream << "} \
 \\end{document}";
 
     tempFile->close();
-    QString latexExecutable = QStandardPaths::findExecutable(QStringLiteral("latex"));
+    QString latexExecutable;
+    if (renderSource) {
+        latexExecutable = QStandardPaths::findExecutable(QStringLiteral("xelatex"));
+        if (latexExecutable.isEmpty()) {
+            latexExecutable = QStandardPaths::findExecutable(QStringLiteral("lualatex"));
+        }
+    } else {
+        latexExecutable = QStandardPaths::findExecutable(QStringLiteral("latex"));
+    }
     if (latexExecutable.isEmpty()) {
         qCDebug(OkularUiDebug) << "Could not find latex!";
         delete tempFile;
@@ -162,6 +227,51 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, const QString
     QFile::remove(tempFileNameNS + QStringLiteral(".log"));
     QFile::remove(tempFileNameNS + QStringLiteral(".aux"));
     delete tempFile;
+
+    if (renderSource) {
+        const QString temporaryPdfFile = tempFileNameNS + QStringLiteral(".pdf");
+        if (!QFile::exists(temporaryPdfFile)) {
+            fileName = QString();
+            if (pdfFileName) {
+                pdfFileName->clear();
+            }
+            return LatexFailed;
+        }
+
+        const QString pdfToImageExecutable = QStandardPaths::findExecutable(QStringLiteral("pdftocairo"));
+        if (pdfToImageExecutable.isEmpty()) {
+            qCDebug(OkularUiDebug) << "Could not find pdftocairo!";
+            QFile::remove(temporaryPdfFile);
+            fileName = QString();
+            if (pdfFileName) {
+                pdfFileName->clear();
+            }
+            return PdfToImageNotFound;
+        }
+
+        pdfToImageProc << pdfToImageExecutable << QStringLiteral("-png") << QStringLiteral("-singlefile") << QStringLiteral("-transp") << QStringLiteral("-r") << QString::number(resolution) << QStringLiteral("%1").arg(temporaryPdfFile) << tempFileNameNS;
+        pdfToImageProc.setOutputChannelMode(KProcess::MergedChannels);
+        pdfToImageProc.execute();
+
+        if (pdfFileName) {
+            *pdfFileName = temporaryPdfFile;
+            m_fileList << temporaryPdfFile;
+        } else {
+            QFile::remove(temporaryPdfFile);
+        }
+
+        if (!QFile::exists(tempFileNameNS + QStringLiteral(".png"))) {
+            fileName = QString();
+            if (pdfFileName) {
+                pdfFileName->clear();
+            }
+            return PdfToImageFailed;
+        }
+
+        fileName = tempFileNameNS + QStringLiteral(".png");
+        m_fileList << fileName;
+        return NoError;
+    }
 
     if (!QFile::exists(tempFileNameNS + QStringLiteral(".dvi"))) {
         fileName = QString();

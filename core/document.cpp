@@ -13,6 +13,7 @@
 #include "documentcommands_p.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits.h>
 #include <memory>
 #ifdef Q_OS_WIN
@@ -1257,6 +1258,14 @@ void DocumentPrivate::saveDocumentInfo() const
 {
     if (m_xmlFileName.isEmpty()) {
         return;
+    }
+    for (const Page *page : std::as_const(m_pagesVector)) {
+        for (const Annotation *annotation : page->annotations()) {
+            if (annotation->flags() & (Annotation::BeingMoved | Annotation::BeingResized)) {
+                qCDebug(OkularCoreDebug) << "Skipping document info save while an annotation is being modified";
+                return;
+            }
+        }
     }
 
     QFile infoFile(m_xmlFileName);
@@ -3641,12 +3650,22 @@ void Document::setPrevPage()
 
 void Document::setViewport(const DocumentViewport &viewport, DocumentObserver *excludeObserver, bool smoothMove, bool updateHistory)
 {
-    if (!viewport.isValid()) {
-        qCDebug(OkularCoreDebug) << "invalid viewport:" << viewport.toString();
+    DocumentViewport sanitizedViewport = viewport;
+    if (sanitizedViewport.rePos.enabled) {
+        if (!std::isfinite(sanitizedViewport.rePos.normalizedX)) {
+            sanitizedViewport.rePos.normalizedX = 0.5;
+        }
+        if (!std::isfinite(sanitizedViewport.rePos.normalizedY)) {
+            sanitizedViewport.rePos.normalizedY = 0.0;
+        }
+    }
+
+    if (!sanitizedViewport.isValid()) {
+        qCDebug(OkularCoreDebug) << "invalid viewport:" << sanitizedViewport.toString();
         return;
     }
-    if (viewport.pageNumber >= int(d->m_pagesVector.count())) {
-        // qCDebug(OkularCoreDebug) << "viewport out of document:" << viewport.toString();
+    if (sanitizedViewport.pageNumber >= int(d->m_pagesVector.count())) {
+        // qCDebug(OkularCoreDebug) << "viewport out of document:" << sanitizedViewport.toString();
         return;
     }
 
@@ -3659,9 +3678,9 @@ void Document::setViewport(const DocumentViewport &viewport, DocumentObserver *e
     const int oldPageNumber = oldViewport.pageNumber;
 
     // set internal viewport taking care of history
-    if (oldViewport.pageNumber == viewport.pageNumber || !oldViewport.isValid() || !updateHistory) {
+    if (oldViewport.pageNumber == sanitizedViewport.pageNumber || !oldViewport.isValid() || !updateHistory) {
         // if page is unchanged save the viewport at current position in queue
-        oldViewport = viewport;
+        oldViewport = sanitizedViewport;
     } else {
         // remove elements after viewportIterator in queue
         d->m_viewportHistory.erase(++d->m_viewportIterator, d->m_viewportHistory.end());
@@ -3672,7 +3691,7 @@ void Document::setViewport(const DocumentViewport &viewport, DocumentObserver *e
         }
 
         // add the item at the end of the queue
-        d->m_viewportIterator = d->m_viewportHistory.insert(d->m_viewportHistory.end(), viewport);
+        d->m_viewportIterator = d->m_viewportHistory.insert(d->m_viewportHistory.end(), sanitizedViewport);
     }
 
     const int currentViewportPage = (*d->m_viewportIterator).pageNumber;

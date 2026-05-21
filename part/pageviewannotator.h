@@ -109,7 +109,7 @@ public:
     // selects the active tool
     void selectBuiltinTool(int toolId, ShowTip showTip);
     // selects a stamp tool and sets the stamp symbol
-    void selectStampTool(const QString &stampSymbol);
+    void selectStampTool(const QString &stampSymbol, const QString &contents = QString());
     // selects the active quick tool
     void selectQuickTool(int toolId);
     // selects the last used tool
@@ -144,6 +144,7 @@ Q_SIGNALS:
      * This signal is emitted whenever an annotation tool is activated or all the tools get deactivated
      */
     void toolActive(bool active);
+    void annotationCreated(PageViewItem *pageViewItem, Okular::Annotation *annotation);
     /**
      * Requests opening of a newly signed file
      * \param filePath path to signed file

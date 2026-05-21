@@ -295,26 +295,37 @@ static void setSharedAnnotationPropertiesToPopplerAnnotation(const Okular::Annot
     popplerAnnotation->setModificationDate(okularAnnotation->modificationDate());
 }
 
-static void setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Poppler::StampAnnotation *pStampAnnotation, const Okular::StampAnnotation *oStampAnnotation)
+static bool setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Poppler::StampAnnotation *pStampAnnotation, const Okular::StampAnnotation *oStampAnnotation)
 {
     const QString iconName = oStampAnnotation->stampIconName();
     if (iconName.isEmpty()) {
-        return;
+        return false;
     }
+
+    const QFileInfo stampFileInfo(iconName);
+    if (!stampFileInfo.exists() || !stampFileInfo.isFile()) {
+        return false;
+    }
+
+#ifdef POPPLER_QT6_HAS_STAMP_CUSTOM_PDF_APPEARANCE
+    if (stampFileInfo.exists() && stampFileInfo.suffix().compare(QStringLiteral("png"), Qt::CaseInsensitive) == 0 && QFileInfo(stampFileInfo.absolutePath()).fileName() == QLatin1String("latex-notes")) {
+        const QString pdfAppearanceFile = QDir(stampFileInfo.absolutePath()).filePath(stampFileInfo.completeBaseName() + QStringLiteral(".pdf"));
+        if (QFileInfo::exists(pdfAppearanceFile) && pStampAnnotation->setStampCustomPdf(pdfAppearanceFile)) {
+            return true;
+        }
+    }
+#endif
 
     QSize targetSize;
 
-    // Try to detect the native resolution of the image file
-    // Check if file exists first to avoid QImageReader searching for icon theme names on disk
-    if (QFile::exists(iconName)) {
-        QImageReader reader(iconName);
-        if (reader.canRead()) {
-            const QByteArray format = reader.format();
-            // If it is a raster image (PNG, JPG, etc.), use the native size.
-            // We strictly avoid downscaling user-provided signature scans.
-            if (format != "svg" && format != "svgz") {
-                targetSize = reader.size();
-            }
+    // Try to detect the native resolution of the image file.
+    QImageReader reader(iconName);
+    if (reader.canRead()) {
+        const QByteArray format = reader.format();
+        // If it is a raster image (PNG, JPG, etc.), use the native size.
+        // We strictly avoid downscaling user-provided signature scans.
+        if (format != "svg" && format != "svgz") {
+            targetSize = reader.size();
         }
     }
 
@@ -356,7 +367,9 @@ static void setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Popp
 
     if (!image.isNull()) {
         pStampAnnotation->setStampCustomImage(image);
+        return true;
     }
+    return false;
 }
 
 static void updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnotation *oTextAnnotation, Poppler::TextAnnotation *pTextAnnotation)
@@ -413,9 +426,10 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::HighlightA
     pHighlightAnnotation->setHighlightQuads(pQuads);
 }
 
-static void updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page)
+static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page)
 {
-    setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
+    pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
+    return setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
 }
 
 static void updatePopplerAnnotationFromOkularAnnotation(const Okular::InkAnnotation *oInkAnnotation, Poppler::InkAnnotation *pInkAnnotation)
@@ -702,6 +716,11 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
         return;
     }
 
+    std::unique_ptr<Poppler::AnnotationAppearance> preservedStampAppearance;
+    if (ppl_ann->subType() == Poppler::Annotation::AStamp) {
+        preservedStampAppearance = ppl_ann->annotationAppearance();
+    }
+
     // Set basic properties
     // Note: flags and boundary must be set first in order to correctly handle
     // FixedRotation annotations.
@@ -743,7 +762,10 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
         const Okular::StampAnnotation *okl_stampann = static_cast<const Okular::StampAnnotation *>(okl_ann);
         Poppler::StampAnnotation *ppl_stampann = static_cast<Poppler::StampAnnotation *>(ppl_ann);
         std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(page);
-        updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get());
+        const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get());
+        if (!appearanceUpdated && preservedStampAppearance) {
+            ppl_stampann->setAnnotationAppearance(*preservedStampAppearance);
+        }
         break;
     }
     case Poppler::Annotation::AInk: {
@@ -1260,11 +1282,10 @@ Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::Annotation *p
             Okular::StampAnnotation *oStampAnn = static_cast<Okular::StampAnnotation *>(okularAnnotation);
             Poppler::StampAnnotation *pStampAnn = static_cast<Poppler::StampAnnotation *>(popplerAnnotation);
             QFileInfo stampIconFile {oStampAnn->stampIconName()};
+            oStampAnn->setFlags(okularAnnotation->flags() & ~Okular::Annotation::Flag::DenyWrite);
             if (stampIconFile.exists() && stampIconFile.isFile()) {
                 setPopplerStampAnnotationCustomImage(&popplerPage, pStampAnn, oStampAnn);
             }
-
-            oStampAnn->setFlags(okularAnnotation->flags() | Okular::Annotation::Flag::DenyWrite);
         }
 
         // Convert the poppler annotation style to Okular annotation style

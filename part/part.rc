@@ -133,6 +133,8 @@
   <Action name="annotation_freehand_line"/>
   <Action name="annotation_geometrical_shape"/>
   <Action name="annotation_stamp"/>
+  <Action name="annotation_add_image_note"/>
+  <Action name="annotation_add_latex_note"/>
   <Separator/>
   <Action name="annotation_settings_width"/>
   <Action name="annotation_settings_color"/>
@@ -148,5 +150,7 @@
 </ToolBar>
 <ToolBar name="quickAnnotationToolBar" iconText="icononly" newline="true" hidden="true" position="right" iconSize="32"><text>Quick Annotation Toolbar</text>
     <Action name="quick_annotation_action_bar"/>
+    <Action name="annotation_add_image_note"/>
+    <Action name="annotation_add_latex_note"/>
 </ToolBar>
 </gui>

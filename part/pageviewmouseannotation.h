@@ -100,6 +100,8 @@ public:
     /* Reset to initial state. Cancel current action and relinquish references to PageViewItem widgets. */
     void reset();
 
+    void focusAnnotation(PageViewItem *pageViewItem, Okular::Annotation *annotation);
+
     Okular::Annotation *annotation() const;
     int pageNumber() const;
 
@@ -146,6 +148,7 @@ private:
     QRect getFullBoundingRect(const AnnotationDescription &ad) const;
     void performCommand(const QPoint newPos);
     void finishCommand();
+    void rollbackCommand();
     void updateViewport(const AnnotationDescription &ad) const;
     ResizeHandle getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const;
     QRect getHandleRect(ResizeHandle handle, const AnnotationDescription &ad) const;
@@ -162,6 +165,8 @@ private:
     MouseAnnotationState m_state;
     MouseAnnotation::ResizeHandle m_handle;
     AnnotationDescription m_focusedAnnotation;
+    Okular::NormalizedRect m_originalBoundingRect;
+    bool m_hasOriginalBoundingRect;
 
     /* Mouse tracking, always kept up to date with the latest mouse position and annotation under mouse cursor. */
     AnnotationDescription m_mouseOverAnnotation;

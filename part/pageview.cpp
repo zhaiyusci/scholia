@@ -64,6 +64,7 @@
 
 // system includes
 #include <array>
+#include <cmath>
 #include <math.h>
 #include <stdlib.h>
 
@@ -125,6 +126,9 @@ static const int linkTextPreviewLength = 30;
 
 static inline double normClamp(double value, double def)
 {
+    if (!std::isfinite(value)) {
+        return def;
+    }
     return (value < 0.0 || value > 1.0) ? def : value;
 }
 
@@ -851,6 +855,12 @@ void PageView::setupActions(KActionCollection *ac)
         }
     });
     connect(d->annotator, &PageViewAnnotator::toolActive, d->mouseAnnotation, &MouseAnnotation::reset);
+    connect(d->annotator, &PageViewAnnotator::annotationCreated, this, [this](PageViewItem *pageViewItem, Okular::Annotation *annotation) {
+        if (d->mouseMode != Okular::Settings::EnumMouseMode::Browse && d->aMouseNormal) {
+            d->aMouseNormal->trigger();
+        }
+        d->mouseAnnotation->focusAnnotation(pageViewItem, annotation);
+    });
     connect(d->annotator, &PageViewAnnotator::requestOpenNewlySignedFile, this, &PageView::requestOpenNewlySignedFile);
     d->annotator->setupActions(ac);
 }
@@ -5129,8 +5139,8 @@ void PageView::slotRequestVisiblePixmaps(int newValue)
         // determine the document viewport
         Okular::DocumentViewport newViewport(nearPageNumber);
         newViewport.rePos.enabled = true;
-        newViewport.rePos.normalizedX = focusedX;
-        newViewport.rePos.normalizedY = focusedY;
+        newViewport.rePos.normalizedX = normClamp(focusedX, 0.5);
+        newViewport.rePos.normalizedY = normClamp(focusedY, 0.0);
         // set the viewport to other observers
         // do not update history if the viewport is autoscrolling
         d->document->setViewport(newViewport, this, false, d->scroller->state() != QScroller::Scrolling);

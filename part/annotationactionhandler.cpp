@@ -10,11 +10,18 @@
 #include <QActionGroup>
 #include <QBitmap>
 #include <QColorDialog>
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDialog>
+#include <QInputDialog>
+#include <QImage>
 #include <QMenu>
 #include <QPainter>
 #include <QPen>
+#include <QStandardPaths>
 
 // kde includes
 #include <KActionCollection>
@@ -29,7 +36,9 @@
 #include "actionbar.h"
 #include "annotationwidgets.h"
 #include "core/annotations.h"
+#include "core/utils.h"
 #include "gui/guiutils.h"
+#include "latexrenderer.h"
 #include "pageview.h"
 #include "pageviewannotator.h"
 #include "settings.h"
@@ -52,6 +61,8 @@ public:
         , aQuickToolsBar(nullptr)
         , aGeomShapes(nullptr)
         , aStamp(nullptr)
+        , aSelectCustomStamp(nullptr)
+        , aAddLatexNote(nullptr)
         , aAddToQuickTools(nullptr)
         , aContinuousMode(nullptr)
         , aConstrainRatioAndAngle(nullptr)
@@ -97,7 +108,9 @@ public:
     const QIcon stampIcon(const QString &stampIconName);
 
     void selectTool(int toolId);
-    void slotStampToolSelected(const QString &stamp);
+    void slotStampToolSelected(const QString &stamp, const QString &contents = QString());
+    void slotSelectCustomStamp();
+    void slotAddLatexNote();
     void slotQuickToolSelected(int favToolId);
     void slotSetColor(AnnotationColor colorType, const QColor &color = QColor());
     void slotSelectAnnotationFont();
@@ -119,6 +132,8 @@ public:
     ActionBar *aQuickToolsBar;
     ToggleActionMenu *aGeomShapes;
     ToggleActionMenu *aStamp;
+    QAction *aSelectCustomStamp;
+    QAction *aAddLatexNote;
     QAction *aAddToQuickTools;
     KToggleAction *aContinuousMode;
     KToggleAction *aConstrainRatioAndAngle;
@@ -188,6 +203,13 @@ void AnnotationActionHandlerPrivate::maybeUpdateCustomStampAction(const QString 
     auto it = std::find_if(defaultStamps.begin(), defaultStamps.end(), [&stampIconName](const QPair<QString, QString> &element) { return element.second == stampIconName; });
     bool defaultStamp = it != defaultStamps.end();
 
+    if (aCustomStamp && aCustomStamp->data().toString() == stampIconName) {
+        agLastAction = aCustomStamp;
+        aStamp->setDefaultAction(aCustomStamp);
+        aCustomStamp->setChecked(true);
+        return;
+    }
+
     if (aCustomStamp) {
         aStamp->removeAction(aCustomStamp);
         agTools->removeAction(aCustomStamp);
@@ -198,11 +220,21 @@ void AnnotationActionHandlerPrivate::maybeUpdateCustomStampAction(const QString 
         QFileInfo info(stampIconName);
         QString stampActionName = info.fileName();
         aCustomStamp = new KToggleAction(stampIcon(stampIconName), stampActionName, q);
-        aStamp->addAction(aCustomStamp);
+        aCustomStamp->setData(stampIconName);
+        if (aSelectCustomStamp) {
+            aStamp->insertAction(aSelectCustomStamp, aCustomStamp);
+        } else {
+            aStamp->addAction(aCustomStamp);
+        }
         aStamp->setDefaultAction(aCustomStamp);
         agTools->addAction(aCustomStamp);
+        agLastAction = aCustomStamp;
         aCustomStamp->setChecked(true);
-        QObject::connect(aCustomStamp, &QAction::triggered, q, [this, stampIconName]() { slotStampToolSelected(stampIconName); });
+        QObject::connect(aCustomStamp, &QAction::toggled, q, [this, stampIconName](bool checked) {
+            if (checked) {
+                slotStampToolSelected(stampIconName);
+            }
+        });
     }
 }
 
@@ -477,10 +509,104 @@ void AnnotationActionHandlerPrivate::selectTool(int toolId)
     parseTool(toolId);
 }
 
-void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp)
+void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp, const QString &contents)
 {
     selectedBuiltinTool = PageViewAnnotator::STAMP_TOOL_ID;
-    annotator->selectStampTool(stamp); // triggers a reparsing thus calling parseTool
+    annotator->selectStampTool(stamp, contents);
+    maybeUpdateCustomStampAction(stamp);
+    updateConfigActions(QStringLiteral("stamp"));
+}
+
+void AnnotationActionHandlerPrivate::slotSelectCustomStamp()
+{
+    const QString customStampFile = QFileDialog::getOpenFileName(nullptr,
+                                                                 i18nc("@title:window file chooser", "Select Image Note"),
+                                                                 QString(),
+                                                                 i18n("*.ico *.png *.xpm *.svg *.svgz | Icon Files (*.ico *.png *.xpm *.svg *.svgz)"));
+    if (customStampFile.isEmpty()) {
+        return;
+    }
+
+    const QPixmap pixmap = Okular::AnnotationUtils::loadStamp(customStampFile, QSize(64, 64));
+    if (pixmap.isNull()) {
+        KMessageBox::error(nullptr, xi18nc("@info", "Could not load the file <filename>%1</filename>", customStampFile), i18nc("@title:window", "Invalid file"));
+        return;
+    }
+
+    slotStampToolSelected(customStampFile);
+}
+
+void AnnotationActionHandlerPrivate::slotAddLatexNote()
+{
+    bool ok = false;
+    const QString latexInput = QInputDialog::getMultiLineText(nullptr, i18nc("@title:window", "Add LaTeX Note"), i18nc("@label:textbox", "LaTeX source:"), QString(), &ok).trimmed();
+    if (!ok || latexInput.isEmpty()) {
+        return;
+    }
+
+    GuiUtils::LatexRenderer renderer;
+    QString latexOutput;
+    QString temporaryImageFile;
+    QString temporaryPdfFile;
+    const int fontSize = 12;
+    const int resolution = 300;
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, Qt::black, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput);
+    switch (errorCode) {
+    case GuiUtils::LatexRenderer::LatexNotFound:
+        KMessageBox::error(nullptr, i18n("Cannot find xelatex or lualatex executable."), i18n("LaTeX rendering failed"));
+        return;
+    case GuiUtils::LatexRenderer::DvipngNotFound:
+        KMessageBox::error(nullptr, i18n("Cannot find dvipng executable."), i18n("LaTeX rendering failed"));
+        return;
+    case GuiUtils::LatexRenderer::LatexFailed:
+        KMessageBox::detailedError(nullptr, i18n("A problem occurred during the execution of the 'latex' command."), latexOutput, i18n("LaTeX rendering failed"));
+        return;
+    case GuiUtils::LatexRenderer::DvipngFailed:
+        KMessageBox::error(nullptr, i18n("A problem occurred during the execution of the 'dvipng' command."), i18n("LaTeX rendering failed"));
+        return;
+    case GuiUtils::LatexRenderer::PdfToImageNotFound:
+        KMessageBox::error(nullptr, i18n("Cannot find pdftocairo executable."), i18n("LaTeX rendering failed"));
+        return;
+    case GuiUtils::LatexRenderer::PdfToImageFailed:
+        KMessageBox::error(nullptr, i18n("A problem occurred during the execution of the 'pdftocairo' command."), i18n("LaTeX rendering failed"));
+        return;
+    case GuiUtils::LatexRenderer::NoError:
+        break;
+    }
+
+    QString dataLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dataLocation.isEmpty()) {
+        dataLocation = QDir::tempPath();
+    }
+    QDir dataDir(dataLocation);
+    if (!dataDir.mkpath(QStringLiteral("latex-notes"))) {
+        KMessageBox::error(nullptr, i18n("Could not create a directory for LaTeX note images."), i18n("LaTeX rendering failed"));
+        return;
+    }
+
+    const QByteArray hashInput = (latexInput + QStringLiteral("|%1|%2").arg(fontSize).arg(resolution)).toUtf8();
+    const QString noteBaseName = QString::fromLatin1(QCryptographicHash::hash(hashInput, QCryptographicHash::Sha256).toHex());
+    const QString imageFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.png").arg(noteBaseName));
+    const QString pdfFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.pdf").arg(noteBaseName));
+    if (!QFile::exists(imageFileName)) {
+        QImage renderedImage(temporaryImageFile);
+        if (renderedImage.isNull()) {
+            KMessageBox::error(nullptr, i18n("Could not load the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
+            return;
+        }
+        renderedImage.setDotsPerMeterX(qRound(resolution / 0.0254));
+        renderedImage.setDotsPerMeterY(qRound(resolution / 0.0254));
+        if (!renderedImage.save(imageFileName, "PNG")) {
+            KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
+            return;
+        }
+    }
+    if (!temporaryPdfFile.isEmpty() && !QFile::exists(pdfFileName) && !QFile::copy(temporaryPdfFile, pdfFileName)) {
+        KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
+        return;
+    }
+
+    slotStampToolSelected(imageFileName, latexInput);
 }
 
 void AnnotationActionHandlerPrivate::slotQuickToolSelected(int favToolId)
@@ -632,7 +758,22 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     if (!d->aStamp->menu()->actions().isEmpty()) {
         d->aStamp->setDefaultAction(d->aStamp->menu()->actions().constFirst());
     }
-    connect(d->aStamp->menu(), &QMenu::triggered, d->aStamp, &ToggleActionMenu::setDefaultAction);
+    QAction *aStampSeparator = new QAction(this);
+    aStampSeparator->setSeparator(true);
+    d->aStamp->addAction(aStampSeparator);
+    d->aSelectCustomStamp = new QAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18nc("@action:intoolbar Annotation tool", "Add Image Note…"), this);
+    d->aSelectCustomStamp->setToolTip(i18nc("@info:tooltip", "Add an image as a movable annotation"));
+    d->aStamp->addAction(d->aSelectCustomStamp);
+    connect(d->aSelectCustomStamp, &QAction::triggered, this, [this]() { d->slotSelectCustomStamp(); });
+    d->aAddLatexNote = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Note…"), this);
+    d->aAddLatexNote->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX as a movable annotation"));
+    d->aStamp->addAction(d->aAddLatexNote);
+    connect(d->aAddLatexNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(); });
+    connect(d->aStamp->menu(), &QMenu::triggered, this, [this](QAction *action) {
+        if (action->isCheckable()) {
+            d->aStamp->setDefaultAction(action);
+        }
+    });
 
     // Quick annotations action
     d->aQuickTools = new ToggleActionMenu(i18nc("@action:intoolbar Show list of quick annotation tools", "Quick Annotations"), this);
@@ -738,6 +879,8 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_polygon"), aPolygon);
     ac->addAction(QStringLiteral("annotation_geometrical_shape"), d->aGeomShapes);
     ac->addAction(QStringLiteral("annotation_stamp"), d->aStamp);
+    ac->addAction(QStringLiteral("annotation_add_image_note"), d->aSelectCustomStamp);
+    ac->addAction(QStringLiteral("annotation_add_latex_note"), d->aAddLatexNote);
     ac->addAction(QStringLiteral("annotation_favorites"), d->aQuickTools);
     ac->addAction(QStringLiteral("annotation_bookmark"), d->aAddToQuickTools);
     ac->addAction(QStringLiteral("annotation_settings_pin"), d->aContinuousMode);
@@ -822,6 +965,8 @@ void AnnotationActionHandler::setToolsEnabled(bool on)
     d->aQuickTools->setEnabled(on);
     d->aGeomShapes->setEnabled(on);
     d->aStamp->setEnabled(on);
+    d->aSelectCustomStamp->setEnabled(on);
+    d->aAddLatexNote->setEnabled(on);
     d->aContinuousMode->setEnabled(on);
 }
 
@@ -840,6 +985,7 @@ void AnnotationActionHandler::deselectAllAnnotationActions()
 {
     QAction *checkedAction = d->agTools->checkedAction();
     if (checkedAction) {
+        d->agLastAction = checkedAction;
         checkedAction->trigger(); // action group workaround: using trigger instead of setChecked
     }
 }

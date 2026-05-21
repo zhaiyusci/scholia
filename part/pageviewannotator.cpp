@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QImageReader>
 #include <QList>
 #include <QLoggingCategory>
 #include <QPainter>
@@ -29,6 +30,7 @@
 #include <QKeyEvent>
 #include <QStandardPaths>
 #include <QTabletEvent>
+#include <cmath>
 #include <math.h>
 #include <memory>
 
@@ -57,6 +59,10 @@ public:
         , yscale(1.0)
         , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
         , iconName {m_annotElement.attribute(QStringLiteral("icon"))}
+        , fixedAspectRatio(0.0)
+        , hasIntrinsicStampSize(false)
+        , intrinsicStampDpiX(0.0)
+        , intrinsicStampDpiY(0.0)
         , pagewidth(1.0)
         , pageheight(1.0)
         , pageView(pageView)
@@ -76,6 +82,26 @@ public:
         // create engine objects
         if (!hoverIconName.simplified().isEmpty()) {
             pixmap = Okular::AnnotationUtils::loadStamp(hoverIconName, QSize(size, size));
+        }
+        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && QFile::exists(iconName)) {
+            QImageReader reader(iconName);
+            const QImage image = reader.read();
+            if (!image.isNull()) {
+                intrinsicStampSize = image.size();
+                if (image.dotsPerMeterX() > 0) {
+                    intrinsicStampDpiX = image.dotsPerMeterX() * 0.0254;
+                }
+                if (image.dotsPerMeterY() > 0) {
+                    intrinsicStampDpiY = image.dotsPerMeterY() * 0.0254;
+                }
+            }
+            if (intrinsicStampSize.isEmpty()) {
+                intrinsicStampSize = reader.size();
+            }
+            hasIntrinsicStampSize = !intrinsicStampSize.isEmpty();
+        }
+        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !pixmap.isNull() && pixmap.height() > 0) {
+            fixedAspectRatio = double(pixmap.width()) / pixmap.height();
         }
     }
 
@@ -106,8 +132,21 @@ public:
             return QRect();
         }
 
+        if (std::isfinite(fixedAspectRatio) && fixedAspectRatio > 0.0 && xScale > 0.0 && yScale > 0.0) {
+            const double width = qAbs(nX - startpoint.x) * xScale;
+            const double height = qAbs(nY - startpoint.y) * yScale;
+            if (width > 0.0 && height > 0.0) {
+                if (width / height > fixedAspectRatio) {
+                    const double direction = nX >= startpoint.x ? 1.0 : -1.0;
+                    nX = startpoint.x + direction * (height * fixedAspectRatio) / xScale;
+                } else {
+                    const double direction = nY >= startpoint.y ? 1.0 : -1.0;
+                    nY = startpoint.y + direction * (width / fixedAspectRatio) / yScale;
+                }
+            }
+        }
         // Constrain to 1:1 form factor (e.g. circle or square)
-        if (modifiers.constrainRatioAndAngle) {
+        else if (modifiers.constrainRatioAndAngle) {
             double side = qMin(qAbs(nX - startpoint.x) * xScale, qAbs(nY - startpoint.y) * yScale);
             nX = qBound(startpoint.x - side / xScale, nX, startpoint.x + side / xScale);
             nY = qBound(startpoint.y - side / yScale, nY, startpoint.y + side / yScale);
@@ -187,7 +226,12 @@ public:
                 painter->setPen(origpen);
             }
             if (!pixmap.isNull()) {
-                painter->drawPixmap(QPointF(rect.left * xScale, rect.top * yScale), pixmap);
+                if (m_block) {
+                    const Okular::NormalizedRect tmprect(qMin(startpoint.x, point.x), qMin(startpoint.y, point.y), qMax(startpoint.x, point.x), qMax(startpoint.y, point.y));
+                    painter->drawPixmap(tmprect.geometry((int)xScale, (int)yScale), pixmap);
+                } else {
+                    painter->drawPixmap(QPointF(rect.left * xScale, rect.top * yScale), pixmap);
+                }
             }
         }
     }
@@ -281,6 +325,9 @@ public:
             Okular::StampAnnotation *sa = new Okular::StampAnnotation();
             ann = sa;
             sa->setStampIconName(iconName);
+            if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
+                sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
+            }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
             rect.top = qMin(startpoint.y, point.y);
@@ -289,8 +336,29 @@ public:
             const QRectF rcf = rect.geometry((int)xscale, (int)yscale);
             const int ml = (rcf.bottomRight() - rcf.topLeft()).toPoint().manhattanLength();
             if (ml <= QApplication::startDragDistance()) {
-                const double stampxscale = pixmap.width() / xscale;
-                const double stampyscale = pixmap.height() / yscale;
+                double stampxscale = xscale > 0.0 ? pixmap.width() / xscale : 0.0;
+                double stampyscale = yscale > 0.0 ? pixmap.height() / yscale : 0.0;
+                if (hasIntrinsicStampSize && pagewidth > 0.0 && pageheight > 0.0) {
+                    if (intrinsicStampDpiX > 0.0 && intrinsicStampDpiY > 0.0) {
+                        constexpr double pdfDpi = 72.0;
+                        stampxscale = intrinsicStampSize.width() * pdfDpi / intrinsicStampDpiX / pagewidth;
+                        stampyscale = intrinsicStampSize.height() * pdfDpi / intrinsicStampDpiY / pageheight;
+                    } else {
+                        stampxscale = intrinsicStampSize.width() / pagewidth;
+                        stampyscale = intrinsicStampSize.height() / pageheight;
+                    }
+                    if (stampxscale > 1.0 || stampyscale > 1.0) {
+                        const double shrink = qMin(1.0 / stampxscale, 1.0 / stampyscale);
+                        stampxscale *= shrink;
+                        stampyscale *= shrink;
+                    }
+                }
+                if (!std::isfinite(stampxscale) || stampxscale <= 0.0) {
+                    stampxscale = 0.05;
+                }
+                if (!std::isfinite(stampyscale) || stampyscale <= 0.0) {
+                    stampyscale = 0.05;
+                }
                 if (center) {
                     rect.left = point.x - stampxscale / 2;
                     rect.top = point.y - stampyscale / 2;
@@ -367,6 +435,11 @@ private:
     QPixmap pixmap;
     QString hoverIconName, iconName;
     int size;
+    double fixedAspectRatio;
+    bool hasIntrinsicStampSize;
+    QSize intrinsicStampSize;
+    double intrinsicStampDpiX;
+    double intrinsicStampDpiY;
     double pagewidth, pageheight;
     bool center;
     PageView *pageView = nullptr;
@@ -1142,10 +1215,19 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
     if (m_engine->creationCompleted()) {
         // apply engine data to the Annotation's and reset engine
         const QList<Okular::Annotation *> annotations = m_engine->end();
+        bool detachAfterCreation = false;
+        PageViewItem *createdStampPageItem = nullptr;
+        Okular::Annotation *createdStampAnnotation = nullptr;
         // attach the newly filled annotations to the page
         for (Okular::Annotation *annotation : annotations) {
             if (!annotation) {
                 continue;
+            }
+
+            if (annotation->subType() == Okular::Annotation::AStamp) {
+                detachAfterCreation = true;
+                createdStampPageItem = m_lockedItem;
+                createdStampAnnotation = annotation;
             }
 
             annotation->setCreationDate(QDateTime::currentDateTime());
@@ -1224,10 +1306,14 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
             m_continuousMode = false;
         }
 
-        if (m_continuousMode) {
+        if (m_continuousMode && !detachAfterCreation) {
             selectLastTool();
         } else {
             detachAnnotation();
+        }
+
+        if (createdStampPageItem && createdStampAnnotation) {
+            Q_EMIT annotationCreated(createdStampPageItem, createdStampAnnotation);
         }
     }
 
@@ -1445,13 +1531,18 @@ void PageViewAnnotator::selectLastTool()
     selectTool(m_lastToolsDefinition, m_lastToolId, ShowTip::No);
 }
 
-void PageViewAnnotator::selectStampTool(const QString &stampSymbol)
+void PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString &contents)
 {
     QDomElement toolElement = builtinTool(STAMP_TOOL_ID);
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
     engineElement.setAttribute(QStringLiteral("hoverIcon"), stampSymbol);
     annotationElement.setAttribute(QStringLiteral("icon"), stampSymbol);
+    if (contents.isNull()) {
+        annotationElement.removeAttribute(QStringLiteral("contents"));
+    } else {
+        annotationElement.setAttribute(QStringLiteral("contents"), contents);
+    }
     saveBuiltinAnnotationTools();
     selectBuiltinTool(STAMP_TOOL_ID, ShowTip::Yes);
 }
