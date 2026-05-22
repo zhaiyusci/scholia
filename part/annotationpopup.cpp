@@ -6,13 +6,25 @@
 
 #include "annotationpopup.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include <KLocalizedString>
+#include <KMessageBox>
 #include <QApplication>
 #include <QClipboard>
+#include <QCryptographicHash>
+#include <QDateTime>
 #include <QDomDocument>
+#include <QFile>
+#include <QFont>
+#include <QFontMetricsF>
 #include <QIcon>
+#include <QImage>
 #include <QMenu>
 #include <QMimeData>
+#include <QStandardPaths>
+#include <QTransform>
 
 #include "annotationpropertiesdialog.h"
 
@@ -21,7 +33,9 @@
 #include "core/document.h"
 #include "core/page.h"
 #include "gui/guiutils.h"
+#include "latexrenderer.h"
 #include "okmenutitle.h"
+#include "settings.h"
 
 #include <KIO/JobUiDelegateFactory>
 #include <KIO/OpenUrlJob>
@@ -85,6 +99,288 @@ bool clipboardFormatVersionSupported(const QDomElement &root)
     return versionIsNumber && clipboardFormatVersion == AnnotationPopup::annotationClipboardFormatVersion;
 }
 
+Okular::TextAnnotation *convertibleTextAnnotation(Okular::Annotation *annotation)
+{
+    if (!annotation || annotation->subType() != Okular::Annotation::AText) {
+        return nullptr;
+    }
+
+    auto *textAnnotation = static_cast<Okular::TextAnnotation *>(annotation);
+    if (textAnnotation->textType() != Okular::TextAnnotation::InPlace || textAnnotation->contents().trimmed().isEmpty()) {
+        return nullptr;
+    }
+
+    const Okular::NormalizedRect rect = textAnnotation->boundingRectangle();
+    if (!std::isfinite(rect.left) || !std::isfinite(rect.top) || !std::isfinite(rect.right) || !std::isfinite(rect.bottom) || rect.width() <= 0.0) {
+        return nullptr;
+    }
+
+    return textAnnotation;
+}
+
+Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
+{
+    if (!annotation || annotation->subType() != Okular::Annotation::AStamp || annotation->contents().trimmed().isEmpty()) {
+        return nullptr;
+    }
+
+    auto *stampAnnotation = static_cast<Okular::StampAnnotation *>(annotation);
+    const Okular::NormalizedRect rect = stampAnnotation->boundingRectangle();
+    if (!std::isfinite(rect.left) || !std::isfinite(rect.top) || !std::isfinite(rect.right) || !std::isfinite(rect.bottom) || rect.width() <= 0.0 || rect.height() <= 0.0) {
+        return nullptr;
+    }
+
+    return stampAnnotation;
+}
+
+int latexFontSizeForTextAnnotation(const Okular::TextAnnotation *annotation)
+{
+    if (!annotation) {
+        return 12;
+    }
+
+    const QFont font = annotation->textFont();
+    double fontSize = font.pointSizeF();
+    if ((!std::isfinite(fontSize) || fontSize <= 0.0) && font.pixelSize() > 0) {
+        fontSize = font.pixelSize() * 72.0 / 96.0;
+    }
+    if (!std::isfinite(fontSize) || fontSize <= 0.0) {
+        fontSize = 12.0;
+    }
+
+    return qBound(1, qRound(fontSize), 200);
+}
+
+QColor latexTextColorForTextAnnotation(const Okular::TextAnnotation *annotation)
+{
+    if (!annotation) {
+        return Qt::black;
+    }
+
+    QColor textColor = annotation->textColor();
+    if (!textColor.isValid()) {
+        textColor = annotation->style().color();
+    }
+    if (!textColor.isValid()) {
+        textColor = Qt::black;
+    }
+    return textColor;
+}
+
+double latexMaxWidthForTextAnnotation(const Okular::TextAnnotation *annotation, const Okular::Page *page)
+{
+    if (!annotation || !page) {
+        return 0.0;
+    }
+
+    const Okular::NormalizedRect rect = annotation->boundingRectangle();
+    if (!std::isfinite(rect.width()) || rect.width() <= 0.0 || page->width() <= 0.0) {
+        return 0.0;
+    }
+
+    return qMax(1.0, rect.width() * page->width());
+}
+
+int textFontSizeForLatexStampAnnotation(const Okular::StampAnnotation *)
+{
+    return 12;
+}
+
+Okular::NormalizedRect textAnnotationRectForStampSource(const Okular::StampAnnotation *annotation, const Okular::Page *page, const QFont &font)
+{
+    if (!annotation || !page || page->width() <= 0.0 || page->height() <= 0.0) {
+        return annotation ? annotation->boundingRectangle() : Okular::NormalizedRect();
+    }
+
+    const Okular::NormalizedRect sourceRect = annotation->boundingRectangle();
+    constexpr int padding = 2;
+    const QRectF textArea = Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.right, 1.0).geometryF(page->width(), page->height()).adjusted(padding, padding, -padding, -padding);
+    if (textArea.width() <= 0.0 || textArea.height() <= 0.0) {
+        return sourceRect;
+    }
+
+    const QFontMetricsF metrics(font);
+    const QRectF textRect = metrics.boundingRect(textArea, Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, annotation->contents());
+    double normalizedHeight = (textRect.height() + padding * 2) / page->height();
+    const double minimumHeight = (metrics.height() + padding * 2) / page->height();
+    normalizedHeight = qMax(normalizedHeight, minimumHeight);
+    if (!std::isfinite(normalizedHeight) || normalizedHeight <= 0.0) {
+        return sourceRect;
+    }
+
+    return Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.right, qMin(1.0, sourceRect.top + normalizedHeight));
+}
+
+QColor textColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation)
+{
+    if (!annotation) {
+        return Qt::black;
+    }
+
+    QColor textColor = annotation->style().color();
+    if (!textColor.isValid() || textColor.alpha() == 0) {
+        textColor = Qt::black;
+    }
+    return textColor;
+}
+
+QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, int resolution, double maxWidth)
+{
+    const QString widthText = std::isfinite(maxWidth) && maxWidth > 0.0 ? QString::number(maxWidth, 'f', 3) : QStringLiteral("0");
+    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(resolution).arg(widthText);
+    return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+QDir latexNoteCacheDir()
+{
+    QString dataLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dataLocation.isEmpty()) {
+        dataLocation = QDir::tempPath();
+    }
+    return QDir(dataLocation);
+}
+
+bool ensureLatexNoteCacheDir(QWidget *parent, QDir *dataDir)
+{
+    if (!dataDir->mkpath(QStringLiteral("latex-notes"))) {
+        KMessageBox::error(parent, i18n("Could not create a directory for LaTeX note images."), i18n("LaTeX rendering failed"));
+        return false;
+    }
+    return true;
+}
+
+bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QColor &textColor, int fontSize, double maxWidth, QString *imageFileName)
+{
+    constexpr int resolution = 300;
+
+    GuiUtils::LatexRenderer renderer;
+    QString latexOutput;
+    QString temporaryImageFile;
+    QString temporaryPdfFile;
+    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, resolution, maxWidth);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, textColor, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, maxWidth);
+
+    switch (errorCode) {
+    case GuiUtils::LatexRenderer::LatexNotFound:
+        KMessageBox::error(parent, i18n("Cannot find xelatex or lualatex executable."), i18n("LaTeX rendering failed"));
+        return false;
+    case GuiUtils::LatexRenderer::DvipngNotFound:
+        KMessageBox::error(parent, i18n("Cannot find dvipng executable."), i18n("LaTeX rendering failed"));
+        return false;
+    case GuiUtils::LatexRenderer::LatexFailed: {
+        const QString shortError = GuiUtils::LatexRenderer::compactErrorMessage(latexOutput);
+        KMessageBox::error(parent, i18n("LaTeX rendering failed:\n%1", shortError), i18n("LaTeX rendering failed"));
+
+        QDir dataDir = latexNoteCacheDir();
+        if (!ensureLatexNoteCacheDir(parent, &dataDir)) {
+            return false;
+        }
+
+        const QString cachedImageFileName = dataDir.filePath(QStringLiteral("latex-notes/%1-error.png").arg(noteBaseName));
+        if (!GuiUtils::LatexRenderer::createErrorImage(shortError, resolution).save(cachedImageFileName, "PNG")) {
+            KMessageBox::error(parent, i18n("Could not save the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
+            return false;
+        }
+
+        *imageFileName = cachedImageFileName;
+        return true;
+    }
+    case GuiUtils::LatexRenderer::DvipngFailed:
+        KMessageBox::error(parent, i18n("A problem occurred during the execution of the 'dvipng' command."), i18n("LaTeX rendering failed"));
+        return false;
+    case GuiUtils::LatexRenderer::PdfToImageNotFound:
+        KMessageBox::error(parent, i18n("Cannot find pdftocairo executable."), i18n("LaTeX rendering failed"));
+        return false;
+    case GuiUtils::LatexRenderer::PdfToImageFailed:
+        KMessageBox::error(parent, i18n("A problem occurred during the execution of the 'pdftocairo' command."), i18n("LaTeX rendering failed"));
+        return false;
+    case GuiUtils::LatexRenderer::NoError:
+        break;
+    }
+
+    QDir dataDir = latexNoteCacheDir();
+    if (!ensureLatexNoteCacheDir(parent, &dataDir)) {
+        return false;
+    }
+
+    const QString cachedImageFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.png").arg(noteBaseName));
+    const QString cachedPdfFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.pdf").arg(noteBaseName));
+    if (!QFile::exists(cachedImageFileName)) {
+        QImage renderedImage(temporaryImageFile);
+        if (renderedImage.isNull()) {
+            KMessageBox::error(parent, i18n("Could not load the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
+            return false;
+        }
+        renderedImage.setDotsPerMeterX(qRound(resolution / 0.0254));
+        renderedImage.setDotsPerMeterY(qRound(resolution / 0.0254));
+        if (!renderedImage.save(cachedImageFileName, "PNG")) {
+            KMessageBox::error(parent, i18n("Could not save the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
+            return false;
+        }
+    }
+    if (!temporaryPdfFile.isEmpty() && !QFile::exists(cachedPdfFileName) && !QFile::copy(temporaryPdfFile, cachedPdfFileName)) {
+        KMessageBox::error(parent, i18n("Could not save the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
+        return false;
+    }
+
+    *imageFileName = cachedImageFileName;
+    return true;
+}
+
+Okular::NormalizedRect latexStampBoundingRect(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QImage &renderedImage)
+{
+    if (renderedImage.isNull() || renderedImage.height() <= 0 || sourceRect.width() <= 0.0) {
+        return sourceRect;
+    }
+
+    const double imageAspectRatio = double(renderedImage.width()) / renderedImage.height();
+    double normalizedHeight = sourceRect.height();
+    if (std::isfinite(imageAspectRatio) && imageAspectRatio > 0.0) {
+        if (page && page->width() > 0.0 && page->height() > 0.0) {
+            normalizedHeight = sourceRect.width() * page->width() / (imageAspectRatio * page->height());
+        } else {
+            normalizedHeight = sourceRect.width() / imageAspectRatio;
+        }
+    }
+
+    if (!std::isfinite(normalizedHeight) || normalizedHeight <= 0.0) {
+        normalizedHeight = sourceRect.height();
+    }
+
+    return Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.right, sourceRect.top + normalizedHeight);
+}
+
+QTransform pageRotationMatrix(Okular::Rotation rotation)
+{
+    QTransform matrix;
+    matrix.rotate(int(rotation) * 90);
+
+    switch (rotation) {
+    case Okular::Rotation90:
+        matrix.translate(0, -1);
+        break;
+    case Okular::Rotation180:
+        matrix.translate(-1, -1);
+        break;
+    case Okular::Rotation270:
+        matrix.translate(-1, 0);
+        break;
+    default:
+        break;
+    }
+
+    return matrix;
+}
+
+Okular::NormalizedRect rectForDocumentAdd(const Okular::NormalizedRect &baseRect, const Okular::Page *page)
+{
+    Okular::NormalizedRect rect = baseRect;
+    if (page) {
+        rect.transform(pageRotationMatrix(page->rotation()));
+    }
+    return rect;
+}
+
 }
 
 AnnotationPopup::AnnotationPopup(Okular::Document *document, MenuMode mode, QWidget *parent)
@@ -97,7 +393,17 @@ AnnotationPopup::AnnotationPopup(Okular::Document *document, MenuMode mode, QWid
 void AnnotationPopup::addAnnotation(Okular::Annotation *annotation, int pageNumber)
 {
     AnnotPagePair pair(annotation, pageNumber);
-    if (!mAnnotations.contains(pair)) {
+    const auto sameAnnotation = [pair](const AnnotPagePair &existing) {
+        if (existing == pair) {
+            return true;
+        }
+        if (existing.pageNumber != pair.pageNumber || !existing.annotation || !pair.annotation) {
+            return false;
+        }
+        const QString existingUniqueName = existing.annotation->uniqueName();
+        return !existingUniqueName.isEmpty() && existingUniqueName == pair.annotation->uniqueName();
+    };
+    if (!std::any_of(mAnnotations.cbegin(), mAnnotations.cend(), sameAnnotation)) {
         mAnnotations.append(pair);
     }
 }
@@ -159,6 +465,18 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
                 action->setText(i18n("Copy forbidden by DRM"));
             }
             connect(action, &QAction::triggered, menu, [this, pair] { doCopyAnnotationText(pair); });
+        }
+
+        if (onlyOne && convertibleTextAnnotation(pair.annotation)) {
+            action = menu->addAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:inmenu", "Convert to LaTeX Note"));
+            action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
+            connect(action, &QAction::triggered, menu, [this, pair] { doConvertTextAnnotationToLatex(pair); });
+        }
+
+        if (onlyOne && latexStampAnnotation(pair.annotation)) {
+            action = menu->addAction(QIcon::fromTheme(QStringLiteral("tool-text")), i18nc("@action:inmenu", "Convert Comment to Text"));
+            action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
+            connect(action, &QAction::triggered, menu, [this, pair] { doConvertLatexAnnotationToText(pair); });
         }
 
         action = menu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), i18n("&Delete"));
@@ -228,6 +546,18 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
                 connect(action, &QAction::triggered, menu, [this, pair] { doCopyAnnotationText(pair); });
             }
 
+            if (convertibleTextAnnotation(pair.annotation)) {
+                action = menu->addAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:inmenu", "Convert to LaTeX Note"));
+                action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
+                connect(action, &QAction::triggered, menu, [this, pair] { doConvertTextAnnotationToLatex(pair); });
+            }
+
+            if (latexStampAnnotation(pair.annotation)) {
+                action = menu->addAction(QIcon::fromTheme(QStringLiteral("tool-text")), i18nc("@action:inmenu", "Convert Comment to Text"));
+                action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
+                connect(action, &QAction::triggered, menu, [this, pair] { doConvertLatexAnnotationToText(pair); });
+            }
+
             action = menu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), i18n("&Delete"));
             action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
             connect(action, &QAction::triggered, menu, [this, pair] { doRemovePageAnnotation(pair); });
@@ -284,6 +614,87 @@ void AnnotationPopup::doCopyAnnotationText(AnnotPagePair pair)
         QClipboard *cb = QApplication::clipboard();
         cb->setText(text, QClipboard::Clipboard);
     }
+}
+
+void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
+{
+    if (pair.pageNumber == -1 || !mDocument->isAllowed(Okular::AllowNotes) || !mDocument->canRemovePageAnnotation(pair.annotation)) {
+        return;
+    }
+
+    Okular::TextAnnotation *textAnnotation = convertibleTextAnnotation(pair.annotation);
+    if (!textAnnotation) {
+        return;
+    }
+
+    const QString latexInput = textAnnotation->contents();
+    const int fontSize = latexFontSizeForTextAnnotation(textAnnotation);
+    const QColor textColor = latexTextColorForTextAnnotation(textAnnotation);
+    const Okular::Page *page = mDocument->page(pair.pageNumber);
+    const double maxWidth = latexMaxWidthForTextAnnotation(textAnnotation, page);
+
+    QString imageFileName;
+    if (!renderLatexNoteToCache(mParent, latexInput, textColor, fontSize, maxWidth, &imageFileName)) {
+        return;
+    }
+
+    QImage renderedImage(imageFileName);
+    if (renderedImage.isNull()) {
+        KMessageBox::error(mParent, i18n("Could not load the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
+        return;
+    }
+
+    auto *stampAnnotation = new Okular::StampAnnotation();
+    stampAnnotation->setStampIconName(imageFileName);
+    stampAnnotation->setContents(latexInput);
+    stampAnnotation->setBoundingRectangle(rectForDocumentAdd(latexStampBoundingRect(textAnnotation->boundingRectangle(), page, renderedImage), page));
+    stampAnnotation->style() = textAnnotation->style();
+    stampAnnotation->style().setColor(textColor);
+    stampAnnotation->window().setSummary(i18n("LaTeX Note"));
+
+    const QDateTime now = QDateTime::currentDateTime();
+    stampAnnotation->setCreationDate(textAnnotation->creationDate().isValid() ? textAnnotation->creationDate() : now);
+    stampAnnotation->setModificationDate(now);
+    stampAnnotation->setAuthor(textAnnotation->author().isEmpty() ? Okular::Settings::identityAuthor() : textAnnotation->author());
+
+    mDocument->addPageAnnotation(pair.pageNumber, stampAnnotation);
+    mDocument->removePageAnnotation(pair.pageNumber, pair.annotation);
+}
+
+void AnnotationPopup::doConvertLatexAnnotationToText(AnnotPagePair pair)
+{
+    if (pair.pageNumber == -1 || !mDocument->isAllowed(Okular::AllowNotes) || !mDocument->canRemovePageAnnotation(pair.annotation)) {
+        return;
+    }
+
+    Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation);
+    if (!stampAnnotation) {
+        return;
+    }
+
+    const Okular::Page *page = mDocument->page(pair.pageNumber);
+    auto *textAnnotation = new Okular::TextAnnotation();
+    textAnnotation->setFlags(textAnnotation->flags() | Okular::Annotation::FixedRotation);
+    textAnnotation->setContents(stampAnnotation->contents());
+    textAnnotation->setTextType(Okular::TextAnnotation::InPlace);
+    textAnnotation->setInplaceIntent(Okular::TextAnnotation::TypeWriter);
+    textAnnotation->setTextColor(textColorForLatexStampAnnotation(stampAnnotation));
+
+    QFont font(QStringLiteral("Noto Sans"));
+    font.setPointSize(textFontSizeForLatexStampAnnotation(stampAnnotation));
+    textAnnotation->setTextFont(font);
+    textAnnotation->setBoundingRectangle(rectForDocumentAdd(textAnnotationRectForStampSource(stampAnnotation, page, font), page));
+    textAnnotation->style().setColor(QColor(255, 255, 255, 0));
+    textAnnotation->style().setWidth(0);
+    textAnnotation->window().setSummary(i18n("Typewriter"));
+
+    const QDateTime now = QDateTime::currentDateTime();
+    textAnnotation->setCreationDate(stampAnnotation->creationDate().isValid() ? stampAnnotation->creationDate() : now);
+    textAnnotation->setModificationDate(now);
+    textAnnotation->setAuthor(stampAnnotation->author().isEmpty() ? Okular::Settings::identityAuthor() : stampAnnotation->author());
+
+    mDocument->addPageAnnotation(pair.pageNumber, textAnnotation);
+    mDocument->removePageAnnotation(pair.pageNumber, pair.annotation);
 }
 
 void AnnotationPopup::pasteAnnotationToPage(int pageNumber, const Okular::NormalizedPoint *targetPoint)

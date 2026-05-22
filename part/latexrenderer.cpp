@@ -9,14 +9,19 @@
 
 #include "latexrenderer.h"
 
+#include <cmath>
+
 #include <QDebug>
 
+#include <KLocalizedString>
 #include <KProcess>
 
 #include <QColor>
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QPainter>
+#include <QPen>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -113,6 +118,79 @@ bool LatexRenderer::mightContainLatex(const QString &text)
     return true;
 }
 
+QString LatexRenderer::compactErrorMessage(const QString &latexOutput)
+{
+    const QStringList lines = latexOutput.split(QLatin1Char('\n'));
+    QString message;
+    QString context;
+    bool foundErrorLine = false;
+
+    for (const QString &line : lines) {
+        const QString trimmed = line.trimmed();
+        if (trimmed.isEmpty()) {
+            continue;
+        }
+        if (!foundErrorLine && trimmed.startsWith(QLatin1Char('!'))) {
+            message = trimmed.mid(1).trimmed();
+            foundErrorLine = true;
+            continue;
+        }
+        if (foundErrorLine && trimmed.startsWith(QLatin1String("l."))) {
+            context = trimmed;
+            break;
+        }
+        if (message.isEmpty()) {
+            message = trimmed;
+        }
+    }
+
+    if (message.isEmpty()) {
+        message = i18n("Unknown LaTeX error.");
+    }
+    if (!context.isEmpty()) {
+        message = i18nc("LaTeX error with compiler context", "%1 (%2)", message, context);
+    }
+
+    message = message.simplified();
+    constexpr int maxLength = 180;
+    if (message.size() > maxLength) {
+        message = message.left(maxLength - 3) + QStringLiteral("...");
+    }
+    return message;
+}
+
+QImage LatexRenderer::createErrorImage(const QString &message, int resolution)
+{
+    QImage image(QSize(960, 260), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    image.setDotsPerMeterX(qRound(resolution / 0.0254));
+    image.setDotsPerMeterY(qRound(resolution / 0.0254));
+
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    const QRect frame = image.rect().adjusted(12, 12, -12, -12);
+    painter.setPen(QPen(QColor(170, 32, 32), 5));
+    painter.setBrush(QColor(255, 250, 245, 245));
+    painter.drawRoundedRect(frame, 10, 10);
+
+    QFont titleFont = painter.font();
+    titleFont.setBold(true);
+    titleFont.setPixelSize(42);
+    painter.setFont(titleFont);
+    painter.setPen(QColor(120, 16, 16));
+    painter.drawText(frame.adjusted(28, 22, -28, -120), Qt::AlignLeft | Qt::AlignTop, i18n("LaTeX error"));
+
+    QFont bodyFont = painter.font();
+    bodyFont.setBold(false);
+    bodyFont.setPixelSize(32);
+    painter.setFont(bodyFont);
+    painter.setPen(QColor(55, 45, 40));
+    painter.drawText(frame.adjusted(28, 88, -28, -24), Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, message);
+    painter.end();
+
+    return image;
+}
+
 LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput)
 {
     QString formula = latexFormula.trimmed();
@@ -129,7 +207,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     return handleLatex(fileName, nullptr, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
 }
 
-LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput)
+LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput, double maxWidth)
 {
     QString formula = latexFormula.trimmed();
     if (formula.isEmpty()) {
@@ -144,15 +222,17 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &late
         return LatexFailed;
     }
 
-    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
+    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source, maxWidth);
 }
 
-LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode)
+LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth)
 {
     KProcess latexProc;
     KProcess dvipngProc;
     KProcess pdfToImageProc;
     const bool renderSource = bodyMode == BodyMode::Source;
+    const bool constrainSourceWidth = renderSource && std::isfinite(maxWidth) && maxWidth > 0.0;
+    const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
     if (!tempFile->open()) {
@@ -179,6 +259,9 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
 \\begin{document} \
 {\\color[rgb]{" << textColor.redF()
                    << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
+        if (constrainSourceWidth) {
+            tempStream << "\\noindent\\begin{minipage}{" << sourceWidth << "} ";
+        }
     } else {
         tempStream << "\
 \\documentclass["
@@ -198,6 +281,9 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
 \\end{eqnarray*}";
     } else {
         tempStream << latexSource;
+    }
+    if (constrainSourceWidth) {
+        tempStream << " \\end{minipage}";
     }
     tempStream << "} \
 \\end{document}";

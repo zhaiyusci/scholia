@@ -84,6 +84,8 @@ private:
     Okular::DocumentViewport calculateAnnotationViewport(AnnotPagePair pair) const;
     void doCopyAnnotationText(AnnotPagePair pair);
     void doPasteAnnotation(AnnotPagePair pair);
+    void doConvertTextAnnotationToLatex(AnnotPagePair pair);
+    void doConvertLatexAnnotationToText(AnnotPagePair pair);
     void doRemovePageAnnotation(AnnotPagePair pair);
     void doOpenAnnotationWindow(AnnotPagePair pair);
     void doOpenPropertiesDialog(AnnotPagePair pair);
