@@ -9,6 +9,7 @@
 
 #include <QColor>
 #include <QIcon>
+#include <QSizeF>
 #include <QString>
 
 class QImage;
@@ -63,6 +64,11 @@ Okular::Movie *renditionMovieFromScreenAnnotation(const Okular::ScreenAnnotation
 
 // colorize a gray image to the given color
 void colorizeImage(QImage &image, const QColor &color, unsigned int alpha = 255);
+
+QString latexNotePdfFileForStamp(const QString &stampIconName);
+QSizeF pdfPageSizeInPoints(const QString &pdfFileName);
+QSizeF latexNotePdfSizeInPointsForStamp(const QString &stampIconName);
+QPixmap stampPixmap(const QString &nameOrPath, QSize size, Qt::AspectRatioMode aspectRatio = Qt::KeepAspectRatio);
 
 enum ColorIconFlags {
     NoFlags = 0x0,

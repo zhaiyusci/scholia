@@ -577,7 +577,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
             Okular::StampAnnotation *stamp = static_cast<Okular::StampAnnotation *>(a);
 
             // get pixmap and alpha blend it if needed
-            const QPixmap stampPixmap = Okular::AnnotationUtils::loadStamp(stamp->stampIconName(), annotBoundary.size() * dpr);
+            const QPixmap stampPixmap = GuiUtils::stampPixmap(stamp->stampIconName(), annotBoundary.size() * dpr);
             if (!stampPixmap.isNull()) // should never happen but can happen on huge sizes
             {
                 // Draw pixmap with opacity:

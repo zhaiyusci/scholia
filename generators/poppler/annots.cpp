@@ -306,15 +306,24 @@ static bool setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Popp
     if (!stampFileInfo.exists() || !stampFileInfo.isFile()) {
         return false;
     }
+    const bool isLatexNoteStamp = QFileInfo(stampFileInfo.absolutePath()).fileName() == QLatin1String("latex-notes");
 
 #ifdef POPPLER_QT6_HAS_STAMP_CUSTOM_PDF_APPEARANCE
-    if (stampFileInfo.exists() && stampFileInfo.suffix().compare(QStringLiteral("png"), Qt::CaseInsensitive) == 0 && QFileInfo(stampFileInfo.absolutePath()).fileName() == QLatin1String("latex-notes")) {
-        const QString pdfAppearanceFile = QDir(stampFileInfo.absolutePath()).filePath(stampFileInfo.completeBaseName() + QStringLiteral(".pdf"));
+    if (stampFileInfo.exists() && isLatexNoteStamp) {
+        QString pdfAppearanceFile;
+        if (stampFileInfo.suffix().compare(QStringLiteral("pdf"), Qt::CaseInsensitive) == 0) {
+            pdfAppearanceFile = stampFileInfo.absoluteFilePath();
+        } else if (stampFileInfo.suffix().compare(QStringLiteral("png"), Qt::CaseInsensitive) == 0) {
+            pdfAppearanceFile = QDir(stampFileInfo.absolutePath()).filePath(stampFileInfo.completeBaseName() + QStringLiteral(".pdf"));
+        }
         if (QFileInfo::exists(pdfAppearanceFile) && pStampAnnotation->setStampCustomPdf(pdfAppearanceFile)) {
             return true;
         }
     }
 #endif
+    if (isLatexNoteStamp) {
+        return false;
+    }
 
     QSize targetSize;
 

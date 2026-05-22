@@ -10,10 +10,18 @@
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <QApplication>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QImage>
 #include <QPainter>
+#include <QPixmap>
+#include <QSize>
+#include <QSizeF>
 #include <QStandardPaths>
 #include <QTextDocument>
+
+#include <poppler-qt6.h>
 
 // local includes
 #include "core/action.h"
@@ -264,6 +272,87 @@ void colorizeImage(QImage &grayImage, const QColor &color, unsigned int destAlph
             data[i] = qRgba(newR, newG, newB, sourceAlpha);
         }
     }
+}
+
+QString latexNotePdfFileForStamp(const QString &stampIconName)
+{
+    const QFileInfo stampInfo(stampIconName);
+    if (!stampInfo.exists() || !stampInfo.isFile() || QFileInfo(stampInfo.absolutePath()).fileName() != QLatin1String("latex-notes")) {
+        return QString();
+    }
+
+    if (stampInfo.suffix().compare(QStringLiteral("pdf"), Qt::CaseInsensitive) == 0) {
+        return stampInfo.absoluteFilePath();
+    }
+
+    if (stampInfo.suffix().compare(QStringLiteral("png"), Qt::CaseInsensitive) == 0) {
+        const QString siblingPdf = stampInfo.dir().filePath(stampInfo.completeBaseName() + QStringLiteral(".pdf"));
+        return QFileInfo::exists(siblingPdf) ? siblingPdf : QString();
+    }
+
+    return QString();
+}
+
+QSizeF pdfPageSizeInPoints(const QString &pdfFileName)
+{
+    std::unique_ptr<Poppler::Document> document(Poppler::Document::load(pdfFileName, nullptr, nullptr));
+    if (!document || document->numPages() < 1) {
+        return QSizeF();
+    }
+
+    std::unique_ptr<Poppler::Page> page(document->page(0));
+    if (!page) {
+        return QSizeF();
+    }
+
+    return page->pageSizeF();
+}
+
+QSizeF latexNotePdfSizeInPointsForStamp(const QString &stampIconName)
+{
+    const QString pdfFileName = latexNotePdfFileForStamp(stampIconName);
+    if (pdfFileName.isEmpty()) {
+        return QSizeF();
+    }
+    return pdfPageSizeInPoints(pdfFileName);
+}
+
+QPixmap stampPixmap(const QString &nameOrPath, QSize size, Qt::AspectRatioMode aspectRatio)
+{
+    const QString pdfFileName = latexNotePdfFileForStamp(nameOrPath);
+    if (pdfFileName.isEmpty()) {
+        const QFileInfo stampInfo(nameOrPath);
+        if (stampInfo.exists() && QFileInfo(stampInfo.absolutePath()).fileName() == QLatin1String("latex-notes")) {
+            return QPixmap();
+        }
+        return Okular::AnnotationUtils::loadStamp(nameOrPath, size, aspectRatio);
+    }
+
+    std::unique_ptr<Poppler::Document> document(Poppler::Document::load(pdfFileName, nullptr, nullptr));
+    if (!document || document->numPages() < 1) {
+        return QPixmap();
+    }
+
+    std::unique_ptr<Poppler::Page> page(document->page(0));
+    if (!page) {
+        return QPixmap();
+    }
+
+    const QSizeF pageSizePoints = page->pageSizeF();
+    if (!pageSizePoints.isValid() || pageSizePoints.isEmpty() || size.isEmpty()) {
+        return QPixmap();
+    }
+
+    const QSize targetSize = pageSizePoints.toSize().scaled(size, aspectRatio);
+    if (targetSize.isEmpty()) {
+        return QPixmap();
+    }
+
+    constexpr double pdfDpi = 72.0;
+    const double dpiX = targetSize.width() * pdfDpi / pageSizePoints.width();
+    const double dpiY = targetSize.height() * pdfDpi / pageSizePoints.height();
+    const QImage image = page->renderToImage(dpiX, dpiY);
+    return image.isNull() ? QPixmap() : QPixmap::fromImage(image);
 }
 
 QIcon createColorIcon(const QList<QColor> &colors, const QIcon &background, ColorIconFlags flags)

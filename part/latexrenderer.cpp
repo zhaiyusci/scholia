@@ -20,8 +20,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
-#include <QPainter>
-#include <QPen>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -168,38 +166,6 @@ QString LatexRenderer::compactErrorMessage(const QString &latexOutput)
     return message;
 }
 
-QImage LatexRenderer::createErrorImage(const QString &message, int resolution)
-{
-    QImage image(QSize(960, 260), QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-    image.setDotsPerMeterX(qRound(resolution / 0.0254));
-    image.setDotsPerMeterY(qRound(resolution / 0.0254));
-
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::Antialiasing);
-    const QRect frame = image.rect().adjusted(12, 12, -12, -12);
-    painter.setPen(QPen(QColor(170, 32, 32), 5));
-    painter.setBrush(QColor(255, 250, 245, 245));
-    painter.drawRoundedRect(frame, 10, 10);
-
-    QFont titleFont = painter.font();
-    titleFont.setBold(true);
-    titleFont.setPixelSize(42);
-    painter.setFont(titleFont);
-    painter.setPen(QColor(120, 16, 16));
-    painter.drawText(frame.adjusted(28, 22, -28, -120), Qt::AlignLeft | Qt::AlignTop, i18n("LaTeX error"));
-
-    QFont bodyFont = painter.font();
-    bodyFont.setBold(false);
-    bodyFont.setPixelSize(32);
-    painter.setFont(bodyFont);
-    painter.setPen(QColor(55, 45, 40));
-    painter.drawText(frame.adjusted(28, 88, -28, -24), Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, message);
-    painter.end();
-
-    return image;
-}
-
 LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput)
 {
     QString formula = latexFormula.trimmed();
@@ -216,22 +182,21 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     return handleLatex(fileName, nullptr, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
 }
 
-LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble)
+LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble)
 {
     QString formula = latexFormula.trimmed();
     if (formula.isEmpty()) {
-        imageFileName.clear();
         pdfFileName.clear();
         return LatexFailed;
     }
     if (!securityCheck(formula)) {
-        imageFileName.clear();
         pdfFileName.clear();
         latexOutput = QStringLiteral("The formula contains unsupported LaTeX commands.");
         return LatexFailed;
     }
 
-    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source, maxWidth, sourcePreamble);
+    QString imageFileName;
+    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, 0, latexOutput, BodyMode::Source, maxWidth, sourcePreamble);
 }
 
 LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth, const QString &sourcePreamble)
@@ -242,6 +207,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     const bool renderSource = bodyMode == BodyMode::Source;
     const bool constrainSourceWidth = renderSource && std::isfinite(maxWidth) && maxWidth > 0.0;
     const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
+    const QString sourceVarWidth = constrainSourceWidth ? QStringLiteral("varwidth=%1").arg(sourceWidth) : QStringLiteral("varwidth");
     const QString effectiveSourcePreamble = sourcePreamble.isNull() ? defaultSourcePreamble() : sourcePreamble;
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
@@ -259,16 +225,14 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     if (renderSource) {
         tempStream << "\
 \\documentclass["
-                   << fontSize << "pt,varwidth,border=0pt]{standalone}\n"
+                   << fontSize << "pt," << sourceVarWidth << ",border=0pt]{standalone}\n"
                    << effectiveSourcePreamble << "\n"
                    << "\\pagestyle{empty}\n"
                       "\\begin{document}\n"
                       "{\\color[rgb]{"
                    << textColor.redF()
                    << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
-        if (constrainSourceWidth) {
-            tempStream << "\\noindent\\begin{minipage}{" << sourceWidth << "} ";
-        }
+        tempStream << "\\noindent ";
     } else {
         tempStream << "\
 \\documentclass["
@@ -288,9 +252,6 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
 \\end{eqnarray*}";
     } else {
         tempStream << latexSource;
-    }
-    if (constrainSourceWidth) {
-        tempStream << " \\end{minipage}";
     }
     tempStream << "} \
 \\end{document}";
@@ -329,6 +290,17 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
                 pdfFileName->clear();
             }
             return LatexFailed;
+        }
+
+        if (resolution <= 0) {
+            fileName.clear();
+            if (pdfFileName) {
+                *pdfFileName = temporaryPdfFile;
+                m_fileList << temporaryPdfFile;
+            } else {
+                QFile::remove(temporaryPdfFile);
+            }
+            return NoError;
         }
 
         const QString pdfToImageExecutable = QStandardPaths::findExecutable(QStringLiteral("pdftocairo"));

@@ -14,6 +14,7 @@
 #include <QEvent>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QImageReader>
 #include <QList>
@@ -25,6 +26,7 @@
 #include <KUser>
 #include <QDebug>
 #include <QMenu>
+#include <QSizeF>
 
 // system includes
 #include <QKeyEvent>
@@ -60,6 +62,7 @@ public:
         , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
         , iconName {m_annotElement.attribute(QStringLiteral("icon"))}
         , fixedAspectRatio(0.0)
+        , hasIntrinsicStampSizeInPoints(false)
         , hasIntrinsicStampSize(false)
         , intrinsicStampDpiX(0.0)
         , intrinsicStampDpiY(0.0)
@@ -81,26 +84,33 @@ public:
 
         // create engine objects
         if (!hoverIconName.simplified().isEmpty()) {
-            pixmap = Okular::AnnotationUtils::loadStamp(hoverIconName, QSize(size, size));
+            pixmap = GuiUtils::stampPixmap(hoverIconName, QSize(size, size));
         }
         if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && QFile::exists(iconName)) {
-            QImageReader reader(iconName);
-            const QImage image = reader.read();
-            if (!image.isNull()) {
-                intrinsicStampSize = image.size();
-                if (image.dotsPerMeterX() > 0) {
-                    intrinsicStampDpiX = image.dotsPerMeterX() * 0.0254;
+            intrinsicStampSizeInPoints = GuiUtils::latexNotePdfSizeInPointsForStamp(iconName);
+            hasIntrinsicStampSizeInPoints = intrinsicStampSizeInPoints.isValid() && !intrinsicStampSizeInPoints.isEmpty();
+            const bool isLatexNoteStamp = QFileInfo(QFileInfo(iconName).absolutePath()).fileName() == QLatin1String("latex-notes");
+            if (!hasIntrinsicStampSizeInPoints && !isLatexNoteStamp) {
+                QImageReader reader(iconName);
+                const QImage image = reader.read();
+                if (!image.isNull()) {
+                    intrinsicStampSize = image.size();
+                    if (image.dotsPerMeterX() > 0) {
+                        intrinsicStampDpiX = image.dotsPerMeterX() * 0.0254;
+                    }
+                    if (image.dotsPerMeterY() > 0) {
+                        intrinsicStampDpiY = image.dotsPerMeterY() * 0.0254;
+                    }
                 }
-                if (image.dotsPerMeterY() > 0) {
-                    intrinsicStampDpiY = image.dotsPerMeterY() * 0.0254;
+                if (intrinsicStampSize.isEmpty()) {
+                    intrinsicStampSize = reader.size();
                 }
+                hasIntrinsicStampSize = !intrinsicStampSize.isEmpty();
             }
-            if (intrinsicStampSize.isEmpty()) {
-                intrinsicStampSize = reader.size();
-            }
-            hasIntrinsicStampSize = !intrinsicStampSize.isEmpty();
         }
-        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !pixmap.isNull() && pixmap.height() > 0) {
+        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && hasIntrinsicStampSizeInPoints && intrinsicStampSizeInPoints.height() > 0.0) {
+            fixedAspectRatio = intrinsicStampSizeInPoints.width() / intrinsicStampSizeInPoints.height();
+        } else if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !pixmap.isNull() && pixmap.height() > 0) {
             fixedAspectRatio = double(pixmap.width()) / pixmap.height();
         }
     }
@@ -338,7 +348,15 @@ public:
             if (ml <= QApplication::startDragDistance()) {
                 double stampxscale = xscale > 0.0 ? pixmap.width() / xscale : 0.0;
                 double stampyscale = yscale > 0.0 ? pixmap.height() / yscale : 0.0;
-                if (hasIntrinsicStampSize && pagewidth > 0.0 && pageheight > 0.0) {
+                if (hasIntrinsicStampSizeInPoints && pagewidth > 0.0 && pageheight > 0.0) {
+                    stampxscale = intrinsicStampSizeInPoints.width() / pagewidth;
+                    stampyscale = intrinsicStampSizeInPoints.height() / pageheight;
+                    if (stampxscale > 1.0 || stampyscale > 1.0) {
+                        const double shrink = qMin(1.0 / stampxscale, 1.0 / stampyscale);
+                        stampxscale *= shrink;
+                        stampyscale *= shrink;
+                    }
+                } else if (hasIntrinsicStampSize && pagewidth > 0.0 && pageheight > 0.0) {
                     if (intrinsicStampDpiX > 0.0 && intrinsicStampDpiY > 0.0) {
                         constexpr double pdfDpi = 72.0;
                         stampxscale = intrinsicStampSize.width() * pdfDpi / intrinsicStampDpiX / pagewidth;
@@ -436,6 +454,8 @@ private:
     QString hoverIconName, iconName;
     int size;
     double fixedAspectRatio;
+    bool hasIntrinsicStampSizeInPoints;
+    QSizeF intrinsicStampSizeInPoints;
     bool hasIntrinsicStampSize;
     QSize intrinsicStampSize;
     double intrinsicStampDpiX;

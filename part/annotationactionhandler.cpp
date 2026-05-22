@@ -17,7 +17,6 @@
 #include <QFileInfo>
 #include <QFontDialog>
 #include <QInputDialog>
-#include <QImage>
 #include <QMenu>
 #include <QPainter>
 #include <QPen>
@@ -494,7 +493,7 @@ const QIcon AnnotationActionHandlerPrivate::widthIcon(double width)
 
 const QIcon AnnotationActionHandlerPrivate::stampIcon(const QString &stampIconName)
 {
-    QPixmap stampPix = Okular::AnnotationUtils::loadStamp(stampIconName, QSize(32, 32));
+    QPixmap stampPix = GuiUtils::stampPixmap(stampIconName, QSize(32, 32));
     if (stampPix.width() == stampPix.height()) {
         return QIcon(stampPix);
     } else {
@@ -546,14 +545,12 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote()
 
     GuiUtils::LatexRenderer renderer;
     QString latexOutput;
-    QString temporaryImageFile;
     QString temporaryPdfFile;
     const int fontSize = qBound(1, Okular::Settings::latexAnnotationFontSize(), 72);
-    const int resolution = 300;
     const QString sourcePreamble = Okular::Settings::latexPreamble();
-    const QByteArray hashInput = (latexInput + QStringLiteral("|%1|%2|%3").arg(fontSize).arg(resolution).arg(sourcePreamble)).toUtf8();
+    const QByteArray hashInput = (latexInput + QStringLiteral("|%1|%2").arg(fontSize).arg(sourcePreamble)).toUtf8();
     const QString noteBaseName = QString::fromLatin1(QCryptographicHash::hash(hashInput, QCryptographicHash::Sha256).toHex());
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, Qt::black, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, 0.0, sourcePreamble);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, Qt::black, fontSize, temporaryPdfFile, latexOutput, 0.0, sourcePreamble);
     switch (errorCode) {
     case GuiUtils::LatexRenderer::LatexNotFound:
         KMessageBox::error(nullptr, i18n("Cannot find xelatex or lualatex executable."), i18n("LaTeX rendering failed"));
@@ -564,24 +561,6 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote()
     case GuiUtils::LatexRenderer::LatexFailed: {
         const QString shortError = GuiUtils::LatexRenderer::compactErrorMessage(latexOutput);
         KMessageBox::error(nullptr, i18n("LaTeX rendering failed:\n%1", shortError), i18n("LaTeX rendering failed"));
-
-        QString dataLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-        if (dataLocation.isEmpty()) {
-            dataLocation = QDir::tempPath();
-        }
-        QDir dataDir(dataLocation);
-        if (!dataDir.mkpath(QStringLiteral("latex-notes"))) {
-            KMessageBox::error(nullptr, i18n("Could not create a directory for LaTeX note images."), i18n("LaTeX rendering failed"));
-            return;
-        }
-
-        const QString imageFileName = dataDir.filePath(QStringLiteral("latex-notes/%1-error.png").arg(noteBaseName));
-        if (!GuiUtils::LatexRenderer::createErrorImage(shortError, resolution).save(imageFileName, "PNG")) {
-            KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
-            return;
-        }
-
-        slotStampToolSelected(imageFileName, latexInput);
         return;
     }
     case GuiUtils::LatexRenderer::DvipngFailed:
@@ -603,31 +582,21 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote()
     }
     QDir dataDir(dataLocation);
     if (!dataDir.mkpath(QStringLiteral("latex-notes"))) {
-        KMessageBox::error(nullptr, i18n("Could not create a directory for LaTeX note images."), i18n("LaTeX rendering failed"));
+        KMessageBox::error(nullptr, i18n("Could not create a directory for LaTeX notes."), i18n("LaTeX rendering failed"));
         return;
     }
 
-    const QString imageFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.png").arg(noteBaseName));
     const QString pdfFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.pdf").arg(noteBaseName));
-    if (!QFile::exists(imageFileName)) {
-        QImage renderedImage(temporaryImageFile);
-        if (renderedImage.isNull()) {
-            KMessageBox::error(nullptr, i18n("Could not load the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
-            return;
-        }
-        renderedImage.setDotsPerMeterX(qRound(resolution / 0.0254));
-        renderedImage.setDotsPerMeterY(qRound(resolution / 0.0254));
-        if (!renderedImage.save(imageFileName, "PNG")) {
-            KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note image."), i18n("LaTeX rendering failed"));
-            return;
-        }
-    }
     if (!temporaryPdfFile.isEmpty() && !QFile::exists(pdfFileName) && !QFile::copy(temporaryPdfFile, pdfFileName)) {
         KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
         return;
     }
+    if (!QFile::exists(pdfFileName)) {
+        KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
+        return;
+    }
 
-    slotStampToolSelected(imageFileName, latexInput);
+    slotStampToolSelected(pdfFileName, latexInput);
 }
 
 void AnnotationActionHandlerPrivate::slotQuickToolSelected(int favToolId)

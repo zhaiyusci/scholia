@@ -143,7 +143,7 @@ void PixmapPreviewSelector::iconComboChanged(const QString &icon)
     }
 
     const QRect cr = m_iconLabel->contentsRect();
-    QPixmap pixmap = Okular::AnnotationUtils::loadStamp(m_icon, cr.size());
+    QPixmap pixmap = GuiUtils::stampPixmap(m_icon, cr.size());
     m_iconLabel->setPixmap(pixmap);
 
     Q_EMIT iconChanged(m_icon);
@@ -153,7 +153,7 @@ void PixmapPreviewSelector::selectCustomStamp()
 {
     const QString customStampFile = QFileDialog::getOpenFileName(this, i18nc("@title:window file chooser", "Select custom stamp symbol"), QString(), i18n("*.ico *.png *.xpm *.svg *.svgz | Icon Files (*.ico *.png *.xpm *.svg *.svgz)"));
     if (!customStampFile.isEmpty()) {
-        QPixmap pixmap = Okular::AnnotationUtils::loadStamp(customStampFile, QSize(m_previewSize, m_previewSize));
+        QPixmap pixmap = GuiUtils::stampPixmap(customStampFile, QSize(m_previewSize, m_previewSize));
         if (pixmap.isNull()) {
             KMessageBox::error(this, xi18nc("@info", "Could not load the file <filename>%1</filename>", customStampFile), i18nc("@title:window", "Invalid file"));
         } else {

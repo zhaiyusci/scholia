@@ -85,6 +85,7 @@ private:
     void doCopyAnnotationText(AnnotPagePair pair);
     void doPasteAnnotation(AnnotPagePair pair);
     void doConvertTextAnnotationToLatex(AnnotPagePair pair);
+    void doChangeLatexAnnotationColor(AnnotPagePair pair);
     void doConvertLatexAnnotationToText(AnnotPagePair pair);
     void doRemovePageAnnotation(AnnotPagePair pair);
     void doOpenAnnotationWindow(AnnotPagePair pair);

@@ -583,6 +583,7 @@ generate_export_header(okularpart BASE_NAME okularpart)
 
 target_link_libraries(okularpart okularcore
     ${MATH_LIB}
+    Poppler::Qt6
     Qt6::Svg
     KF6::Archive
     KF6::Bookmarks
