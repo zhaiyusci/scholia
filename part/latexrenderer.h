@@ -31,15 +31,16 @@ public:
 
     Error renderLatexInHtml(QString &html, const QColor &textColor, int fontSize, int resolution, QString &latexOutput);
     Error renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput);
-    Error renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput, double maxWidth = 0.0);
+    Error renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput, double maxWidth = 0.0, const QString &sourcePreamble = QString());
     static bool mightContainLatex(const QString &text);
+    static QString defaultSourcePreamble();
     static QString compactErrorMessage(const QString &latexOutput);
     static QImage createErrorImage(const QString &message, int resolution);
 
 private:
     enum class BodyMode { Math, Source };
 
-    Error handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode = BodyMode::Math, double maxWidth = 0.0);
+    Error handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode = BodyMode::Math, double maxWidth = 0.0, const QString &sourcePreamble = QString());
     static bool securityCheck(const QString &latexFormula);
 
     QStringList m_fileList;

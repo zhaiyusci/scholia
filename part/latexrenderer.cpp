@@ -118,6 +118,15 @@ bool LatexRenderer::mightContainLatex(const QString &text)
     return true;
 }
 
+QString LatexRenderer::defaultSourcePreamble()
+{
+    return QStringLiteral("\\usepackage{xcolor}\n"
+                          "\\usepackage{amsmath,mathtools,latexsym}\n"
+                          "\\usepackage[version=4]{mhchem}\n"
+                          "\\usepackage{physics}\n"
+                          "\\usepackage{unicode-math}");
+}
+
 QString LatexRenderer::compactErrorMessage(const QString &latexOutput)
 {
     const QStringList lines = latexOutput.split(QLatin1Char('\n'));
@@ -207,7 +216,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     return handleLatex(fileName, nullptr, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
 }
 
-LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput, double maxWidth)
+LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &imageFileName, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble)
 {
     QString formula = latexFormula.trimmed();
     if (formula.isEmpty()) {
@@ -222,10 +231,10 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdfAndImage(const QString &late
         return LatexFailed;
     }
 
-    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source, maxWidth);
+    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source, maxWidth, sourcePreamble);
 }
 
-LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth)
+LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth, const QString &sourcePreamble)
 {
     KProcess latexProc;
     KProcess dvipngProc;
@@ -233,6 +242,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     const bool renderSource = bodyMode == BodyMode::Source;
     const bool constrainSourceWidth = renderSource && std::isfinite(maxWidth) && maxWidth > 0.0;
     const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
+    const QString effectiveSourcePreamble = sourcePreamble.isNull() ? defaultSourcePreamble() : sourcePreamble;
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
     if (!tempFile->open()) {
@@ -249,15 +259,12 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     if (renderSource) {
         tempStream << "\
 \\documentclass["
-                   << fontSize << "pt,varwidth,border=0pt]{standalone} \
-\\usepackage{xcolor} \
-\\usepackage{amsmath,mathtools,latexsym} \
-\\usepackage[version=4]{mhchem} \
-\\usepackage{physics} \
-\\usepackage{unicode-math} \
-\\pagestyle{empty} \
-\\begin{document} \
-{\\color[rgb]{" << textColor.redF()
+                   << fontSize << "pt,varwidth,border=0pt]{standalone}\n"
+                   << effectiveSourcePreamble << "\n"
+                   << "\\pagestyle{empty}\n"
+                      "\\begin{document}\n"
+                      "{\\color[rgb]{"
+                   << textColor.redF()
                    << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
         if (constrainSourceWidth) {
             tempStream << "\\noindent\\begin{minipage}{" << sourceWidth << "} ";

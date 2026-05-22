@@ -135,7 +135,7 @@ Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
 
 int latexFontSizeForTextAnnotation(const Okular::TextAnnotation *)
 {
-    return 10;
+    return qBound(1, Okular::Settings::latexAnnotationFontSize(), 72);
 }
 
 QColor latexTextColorForTextAnnotation(const Okular::TextAnnotation *annotation)
@@ -170,7 +170,7 @@ double latexMaxWidthForTextAnnotation(const Okular::TextAnnotation *annotation, 
 
 int textFontSizeForLatexStampAnnotation(const Okular::StampAnnotation *)
 {
-    return 9;
+    return qBound(1, Okular::Settings::latexTextAnnotationFontSize(), 72);
 }
 
 Okular::NormalizedRect textAnnotationRectForStampSource(const Okular::StampAnnotation *annotation, const Okular::Page *page, const QFont &font)
@@ -245,7 +245,7 @@ bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QC
     QString temporaryImageFile;
     QString temporaryPdfFile;
     const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, resolution, maxWidth);
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, textColor, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, maxWidth);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, textColor, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, maxWidth, Okular::Settings::latexPreamble());
 
     switch (errorCode) {
     case GuiUtils::LatexRenderer::LatexNotFound:

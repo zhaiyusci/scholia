@@ -14,6 +14,8 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
+#include <QSpinBox>
 
 DlgAnnotations::DlgAnnotations(QWidget *parent)
     : QWidget(parent)
@@ -39,6 +41,30 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     authorInfoLabel->setWordWrap(true);
     layout->addRow(authorInfoLabel);
     // END Author row
+
+    // Silly 1Em spacer:
+    layout->addRow(new QLabel(this));
+
+    QLabel *latexLabel = new QLabel(this);
+    latexLabel->setText(i18nc("@label Config dialog, annotations page, heading line for LaTeX note settings", "<h3>LaTeX Notes</h3>"));
+    layout->addRow(latexLabel);
+
+    QSpinBox *latexAnnotationFontSize = new QSpinBox(this);
+    latexAnnotationFontSize->setObjectName(QStringLiteral("kcfg_LatexAnnotationFontSize"));
+    latexAnnotationFontSize->setRange(1, 72);
+    latexAnnotationFontSize->setSuffix(i18nc("@item:spinbox Config dialog, annotations page, font size unit", " pt"));
+    layout->addRow(i18nc("@label:spinbox Config dialog, annotations page", "LaTeX render font size:"), latexAnnotationFontSize);
+
+    QSpinBox *latexTextAnnotationFontSize = new QSpinBox(this);
+    latexTextAnnotationFontSize->setObjectName(QStringLiteral("kcfg_LatexTextAnnotationFontSize"));
+    latexTextAnnotationFontSize->setRange(1, 72);
+    latexTextAnnotationFontSize->setSuffix(i18nc("@item:spinbox Config dialog, annotations page, font size unit", " pt"));
+    layout->addRow(i18nc("@label:spinbox Config dialog, annotations page", "Converted text font size:"), latexTextAnnotationFontSize);
+
+    QPlainTextEdit *latexPreamble = new QPlainTextEdit(this);
+    latexPreamble->setObjectName(QStringLiteral("kcfg_LatexPreamble"));
+    latexPreamble->setMinimumHeight(latexPreamble->fontMetrics().lineSpacing() * 7);
+    layout->addRow(i18nc("@label:textbox Config dialog, annotations page", "LaTeX preamble:"), latexPreamble);
 
     // Silly 1Em spacer:
     layout->addRow(new QLabel(this));

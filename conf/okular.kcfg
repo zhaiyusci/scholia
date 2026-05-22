@@ -170,6 +170,19 @@
   <entry key="QuickAnnotationDefaultAction" type="UInt">
    <default>0</default>
   </entry>
+  <entry key="LatexAnnotationFontSize" type="Int">
+   <default>10</default>
+   <min>1</min>
+   <max>72</max>
+  </entry>
+  <entry key="LatexTextAnnotationFontSize" type="Int">
+   <default>9</default>
+   <min>1</min>
+   <max>72</max>
+  </entry>
+  <entry key="LatexPreamble" type="String">
+   <default code="true">QStringLiteral("\\usepackage{xcolor}\n\\usepackage{amsmath,mathtools,latexsym}\n\\usepackage[version=4]{mhchem}\n\\usepackage{physics}\n\\usepackage{unicode-math}")</default>
+  </entry>
  </group>
  <group name="Zoom">
    <entry key="ZoomMode" type="UInt" >
