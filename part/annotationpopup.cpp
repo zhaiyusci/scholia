@@ -133,22 +133,9 @@ Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
     return stampAnnotation;
 }
 
-int latexFontSizeForTextAnnotation(const Okular::TextAnnotation *annotation)
+int latexFontSizeForTextAnnotation(const Okular::TextAnnotation *)
 {
-    if (!annotation) {
-        return 12;
-    }
-
-    const QFont font = annotation->textFont();
-    double fontSize = font.pointSizeF();
-    if ((!std::isfinite(fontSize) || fontSize <= 0.0) && font.pixelSize() > 0) {
-        fontSize = font.pixelSize() * 72.0 / 96.0;
-    }
-    if (!std::isfinite(fontSize) || fontSize <= 0.0) {
-        fontSize = 12.0;
-    }
-
-    return qBound(1, qRound(fontSize), 200);
+    return 10;
 }
 
 QColor latexTextColorForTextAnnotation(const Okular::TextAnnotation *annotation)
@@ -183,7 +170,7 @@ double latexMaxWidthForTextAnnotation(const Okular::TextAnnotation *annotation, 
 
 int textFontSizeForLatexStampAnnotation(const Okular::StampAnnotation *)
 {
-    return 12;
+    return 9;
 }
 
 Okular::NormalizedRect textAnnotationRectForStampSource(const Okular::StampAnnotation *annotation, const Okular::Page *page, const QFont &font)

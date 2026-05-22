@@ -548,7 +548,7 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote()
     QString latexOutput;
     QString temporaryImageFile;
     QString temporaryPdfFile;
-    const int fontSize = 12;
+    const int fontSize = 10;
     const int resolution = 300;
     const QByteArray hashInput = (latexInput + QStringLiteral("|%1|%2").arg(fontSize).arg(resolution)).toUtf8();
     const QString noteBaseName = QString::fromLatin1(QCryptographicHash::hash(hashInput, QCryptographicHash::Sha256).toHex());
