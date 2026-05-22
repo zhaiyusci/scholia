@@ -211,10 +211,10 @@ QColor textColorForLatexStampAnnotation(const Okular::StampAnnotation *annotatio
     return textColor;
 }
 
-QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, int resolution, double maxWidth)
+QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, int resolution, double maxWidth, const QString &sourcePreamble)
 {
     const QString widthText = std::isfinite(maxWidth) && maxWidth > 0.0 ? QString::number(maxWidth, 'f', 3) : QStringLiteral("0");
-    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(resolution).arg(widthText);
+    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(resolution).arg(widthText, sourcePreamble);
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
@@ -244,8 +244,9 @@ bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QC
     QString latexOutput;
     QString temporaryImageFile;
     QString temporaryPdfFile;
-    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, resolution, maxWidth);
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, textColor, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, maxWidth, Okular::Settings::latexPreamble());
+    const QString sourcePreamble = Okular::Settings::latexPreamble();
+    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, resolution, maxWidth, sourcePreamble);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, textColor, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, maxWidth, sourcePreamble);
 
     switch (errorCode) {
     case GuiUtils::LatexRenderer::LatexNotFound:

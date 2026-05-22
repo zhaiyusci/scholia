@@ -550,9 +550,10 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote()
     QString temporaryPdfFile;
     const int fontSize = qBound(1, Okular::Settings::latexAnnotationFontSize(), 72);
     const int resolution = 300;
-    const QByteArray hashInput = (latexInput + QStringLiteral("|%1|%2").arg(fontSize).arg(resolution)).toUtf8();
+    const QString sourcePreamble = Okular::Settings::latexPreamble();
+    const QByteArray hashInput = (latexInput + QStringLiteral("|%1|%2|%3").arg(fontSize).arg(resolution).arg(sourcePreamble)).toUtf8();
     const QString noteBaseName = QString::fromLatin1(QCryptographicHash::hash(hashInput, QCryptographicHash::Sha256).toHex());
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, Qt::black, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, 0.0, Okular::Settings::latexPreamble());
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdfAndImage(latexInput, Qt::black, fontSize, resolution, temporaryImageFile, temporaryPdfFile, latexOutput, 0.0, sourcePreamble);
     switch (errorCode) {
     case GuiUtils::LatexRenderer::LatexNotFound:
         KMessageBox::error(nullptr, i18n("Cannot find xelatex or lualatex executable."), i18n("LaTeX rendering failed"));
