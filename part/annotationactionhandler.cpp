@@ -787,7 +787,6 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     connect(d->aSelectCustomStamp, &QAction::triggered, this, [this]() { d->slotSelectCustomStamp(); });
     d->aAddLatexNote = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Note…"), this);
     d->aAddLatexNote->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX as a movable annotation"));
-    d->aStamp->addAction(d->aAddLatexNote);
     connect(d->aAddLatexNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(); });
     connect(d->aStamp->menu(), &QMenu::triggered, this, [this](QAction *action) {
         if (action->isCheckable()) {
@@ -900,7 +899,6 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_geometrical_shape"), d->aGeomShapes);
     ac->addAction(QStringLiteral("annotation_stamp"), d->aStamp);
     ac->addAction(QStringLiteral("annotation_add_image_note"), d->aSelectCustomStamp);
-    ac->addAction(QStringLiteral("annotation_add_latex_note"), d->aAddLatexNote);
     ac->addAction(QStringLiteral("annotation_favorites"), d->aQuickTools);
     ac->addAction(QStringLiteral("annotation_bookmark"), d->aAddToQuickTools);
     ac->addAction(QStringLiteral("annotation_settings_pin"), d->aContinuousMode);
