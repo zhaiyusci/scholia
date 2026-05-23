@@ -18,6 +18,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QBoxLayout>
+#include <QDateTime>
 #include <QDebug>
 #include <QEvent>
 #include <QFont>
@@ -39,9 +40,23 @@
 // local includes
 #include "core/annotations.h"
 #include "core/document.h"
+#include "core/page.h"
+#include "gui/guiutils.h"
+#include "latexnoteutils.h"
 #include "latexrenderer.h"
+#include "settings.h"
 #include <KMessageBox>
 #include <core/utils.h>
+
+#include <cmath>
+
+namespace
+{
+Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
+{
+    return LatexNoteUtils::annotationAsLatexNote(annotation);
+}
+}
 
 class CloseButton : public QPushButton
 {
@@ -397,7 +412,10 @@ void AnnotWindow::updateAnnotation(Okular::Annotation *a)
 void AnnotWindow::reloadInfo()
 {
     QColor newcolor;
-    if (m_annot->subType() == Okular::Annotation::AText) {
+    const bool isLatexNote = latexStampAnnotation(m_annot);
+    if (isLatexNote) {
+        newcolor = QColor(255, 248, 225);
+    } else if (m_annot->subType() == Okular::Annotation::AText) {
         Okular::TextAnnotation *textAnn = static_cast<Okular::TextAnnotation *>(m_annot);
         if (textAnn->textType() == Okular::TextAnnotation::InPlace && textAnn->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
             newcolor = QColor(0xfd, 0xfd, 0x96);
@@ -411,6 +429,10 @@ void AnnotWindow::reloadInfo()
         setPalette(QPalette(m_color));
         QPalette pl = textEdit->palette();
         pl.setColor(QPalette::Base, m_color);
+        if (isLatexNote) {
+            pl.setColor(QPalette::Text, QColor(32, 28, 20));
+            pl.setColor(QPalette::WindowText, QColor(32, 28, 20));
+        }
         textEdit->setPalette(pl);
     }
 
@@ -506,6 +528,8 @@ bool AnnotWindow::eventFilter(QObject *watched, QEvent *event)
             }
         } else if (event->type() == QEvent::FocusIn) {
             raise();
+        } else if (event->type() == QEvent::FocusOut) {
+            updateLatexNoteAppearance();
         }
     }
     return QFrame::eventFilter(watched, event);
@@ -563,6 +587,44 @@ void AnnotWindow::slotsaveWindowText()
     }
     m_prevCursorPos = cursorPos;
     m_prevAnchorPos = textEdit->textCursor().anchor();
+}
+
+void AnnotWindow::updateLatexNoteAppearance()
+{
+    Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(m_annot);
+    if (!stampAnnotation || stampAnnotation->contents().trimmed().isEmpty()) {
+        return;
+    }
+
+    const Okular::Page *page = m_document->page(m_page);
+    const QColor textColor = LatexNoteUtils::colorForLatexNote(stampAnnotation);
+    const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
+    const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
+    const double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexNote(stampAnnotation, page);
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stampAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
+    if (!rendered.ok) {
+        qWarning() << "LaTeX note auto-update failed:" << rendered.errorMessage;
+        return;
+    }
+    const QSizeF stampSizePoints = GuiUtils::pdfPageSizeInPoints(rendered.pdfFileName);
+    if (!stampSizePoints.isValid() || stampSizePoints.isEmpty()) {
+        qWarning() << "Could not read updated LaTeX note PDF size";
+        return;
+    }
+    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForPdf(stampAnnotation->boundingRectangle(), page, stampSizePoints, visualScale);
+    const bool sameLayoutWidth = qAbs(stampAnnotation->latexNoteLayoutWidth() - layoutWidthPoints) < 1e-3;
+    const bool sameScale = qAbs(stampAnnotation->latexNoteScale() - visualScale) < 1e-6;
+    if (rendered.pdfFileName == stampAnnotation->stampIconName() && updatedRect == stampAnnotation->boundingRectangle() && sameLayoutWidth && sameScale) {
+        return;
+    }
+
+    m_document->prepareToModifyAnnotationProperties(stampAnnotation);
+    stampAnnotation->setStampIconName(rendered.pdfFileName);
+    stampAnnotation->setLatexNoteLayoutWidth(layoutWidthPoints);
+    stampAnnotation->setLatexNoteScale(visualScale);
+    stampAnnotation->setBoundingRectangle(updatedRect);
+    stampAnnotation->setModificationDate(QDateTime::currentDateTime());
+    m_document->modifyPageAnnotationProperties(m_page, stampAnnotation);
 }
 
 void AnnotWindow::renderLatex(bool render)

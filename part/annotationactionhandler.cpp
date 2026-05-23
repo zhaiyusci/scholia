@@ -10,9 +10,6 @@
 #include <QActionGroup>
 #include <QBitmap>
 #include <QColorDialog>
-#include <QCryptographicHash>
-#include <QDir>
-#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDialog>
@@ -20,7 +17,6 @@
 #include <QMenu>
 #include <QPainter>
 #include <QPen>
-#include <QStandardPaths>
 
 // kde includes
 #include <KActionCollection>
@@ -37,7 +33,7 @@
 #include "core/annotations.h"
 #include "core/utils.h"
 #include "gui/guiutils.h"
-#include "latexrenderer.h"
+#include "latexnoteutils.h"
 #include "pageview.h"
 #include "pageviewannotator.h"
 #include "settings.h"
@@ -543,60 +539,13 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote()
         return;
     }
 
-    GuiUtils::LatexRenderer renderer;
-    QString latexOutput;
-    QString temporaryPdfFile;
-    const int fontSize = qBound(1, Okular::Settings::latexAnnotationFontSize(), 72);
-    const QString sourcePreamble = Okular::Settings::latexPreamble();
-    const QByteArray hashInput = (latexInput + QStringLiteral("|%1|%2").arg(fontSize).arg(sourcePreamble)).toUtf8();
-    const QString noteBaseName = QString::fromLatin1(QCryptographicHash::hash(hashInput, QCryptographicHash::Sha256).toHex());
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, Qt::black, fontSize, temporaryPdfFile, latexOutput, 0.0, sourcePreamble);
-    switch (errorCode) {
-    case GuiUtils::LatexRenderer::LatexNotFound:
-        KMessageBox::error(nullptr, i18n("Cannot find xelatex or lualatex executable."), i18n("LaTeX rendering failed"));
-        return;
-    case GuiUtils::LatexRenderer::DvipngNotFound:
-        KMessageBox::error(nullptr, i18n("Cannot find dvipng executable."), i18n("LaTeX rendering failed"));
-        return;
-    case GuiUtils::LatexRenderer::LatexFailed: {
-        const QString shortError = GuiUtils::LatexRenderer::compactErrorMessage(latexOutput);
-        KMessageBox::error(nullptr, i18n("LaTeX rendering failed:\n%1", shortError), i18n("LaTeX rendering failed"));
-        return;
-    }
-    case GuiUtils::LatexRenderer::DvipngFailed:
-        KMessageBox::error(nullptr, i18n("A problem occurred during the execution of the 'dvipng' command."), i18n("LaTeX rendering failed"));
-        return;
-    case GuiUtils::LatexRenderer::PdfToImageNotFound:
-        KMessageBox::error(nullptr, i18n("Cannot find pdftocairo executable."), i18n("LaTeX rendering failed"));
-        return;
-    case GuiUtils::LatexRenderer::PdfToImageFailed:
-        KMessageBox::error(nullptr, i18n("A problem occurred during the execution of the 'pdftocairo' command."), i18n("LaTeX rendering failed"));
-        return;
-    case GuiUtils::LatexRenderer::NoError:
-        break;
-    }
-
-    QString dataLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (dataLocation.isEmpty()) {
-        dataLocation = QDir::tempPath();
-    }
-    QDir dataDir(dataLocation);
-    if (!dataDir.mkpath(QStringLiteral("latex-notes"))) {
-        KMessageBox::error(nullptr, i18n("Could not create a directory for LaTeX notes."), i18n("LaTeX rendering failed"));
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0);
+    if (!rendered.ok) {
+        KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return;
     }
 
-    const QString pdfFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.pdf").arg(noteBaseName));
-    if (!temporaryPdfFile.isEmpty() && !QFile::exists(pdfFileName) && !QFile::copy(temporaryPdfFile, pdfFileName)) {
-        KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
-        return;
-    }
-    if (!QFile::exists(pdfFileName)) {
-        KMessageBox::error(nullptr, i18n("Could not save the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
-        return;
-    }
-
-    slotStampToolSelected(pdfFileName, latexInput);
+    slotStampToolSelected(rendered.pdfFileName, latexInput);
 }
 
 void AnnotationActionHandlerPrivate::slotQuickToolSelected(int favToolId)

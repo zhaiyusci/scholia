@@ -232,7 +232,11 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
                       "{\\color[rgb]{"
                    << textColor.redF()
                    << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
-        tempStream << "\\noindent ";
+        if (constrainSourceWidth) {
+            tempStream << "\\noindent\\begin{minipage}[t]{" << sourceWidth << "}%\n";
+        } else {
+            tempStream << "\\noindent ";
+        }
     } else {
         tempStream << "\
 \\documentclass["
@@ -252,6 +256,9 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
 \\end{eqnarray*}";
     } else {
         tempStream << latexSource;
+        if (constrainSourceWidth) {
+            tempStream << "\n\\end{minipage}";
+        }
     }
     tempStream << "} \
 \\end{document}";

@@ -1341,6 +1341,30 @@ public:
     QString stampIconName() const;
 
     /**
+     * Sets the LaTeX note layout width in PDF points.
+     *
+     * A value less than or equal to 0 means natural content width.
+     */
+    void setLatexNoteLayoutWidth(double width);
+
+    /**
+     * Returns the LaTeX note layout width in PDF points.
+     *
+     * A value less than or equal to 0 means natural content width.
+     */
+    double latexNoteLayoutWidth() const;
+
+    /**
+     * Sets the LaTeX note visual scale applied to the rendered appearance.
+     */
+    void setLatexNoteScale(double scale);
+
+    /**
+     * Returns the LaTeX note visual scale applied to the rendered appearance.
+     */
+    double latexNoteScale() const;
+
+    /**
      * Returns the sub type of the stamp annotation.
      */
     SubType subType() const override;

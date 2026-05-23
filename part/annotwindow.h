@@ -60,6 +60,8 @@ private:
     int m_prevCursorPos;
     int m_prevAnchorPos;
 
+    void updateLatexNoteAppearance();
+
 public Q_SLOTS:
     void renderLatex(bool render);
 

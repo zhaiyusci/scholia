@@ -2281,6 +2281,8 @@ public:
     StampAnnotationPrivate()
         : AnnotationPrivate()
         , m_stampIconName(QStringLiteral("Draft"))
+        , m_latexNoteLayoutWidth(0.0)
+        , m_latexNoteScale(1.0)
     {
     }
     void setAnnotationProperties(const QDomNode &node) override;
@@ -2288,6 +2290,8 @@ public:
     AnnotationPrivate *getNewAnnotationPrivate() override;
 
     QString m_stampIconName;
+    double m_latexNoteLayoutWidth;
+    double m_latexNoteScale;
 };
 
 StampAnnotation::StampAnnotation()
@@ -2316,6 +2320,30 @@ QString StampAnnotation::stampIconName() const
     return d->m_stampIconName;
 }
 
+void StampAnnotation::setLatexNoteLayoutWidth(double width)
+{
+    Q_D(StampAnnotation);
+    d->m_latexNoteLayoutWidth = width;
+}
+
+double StampAnnotation::latexNoteLayoutWidth() const
+{
+    Q_D(const StampAnnotation);
+    return d->m_latexNoteLayoutWidth;
+}
+
+void StampAnnotation::setLatexNoteScale(double scale)
+{
+    Q_D(StampAnnotation);
+    d->m_latexNoteScale = scale;
+}
+
+double StampAnnotation::latexNoteScale() const
+{
+    Q_D(const StampAnnotation);
+    return d->m_latexNoteScale;
+}
+
 Annotation::SubType StampAnnotation::subType() const
 {
     return AStamp;
@@ -2335,6 +2363,12 @@ void StampAnnotation::store(QDomNode &node, QDomDocument &document) const
     if (d->m_stampIconName != QLatin1String("Draft")) {
         stampElement.setAttribute(QStringLiteral("icon"), d->m_stampIconName);
     }
+    if (d->m_latexNoteLayoutWidth > 0.0) {
+        stampElement.setAttribute(QStringLiteral("latexNoteLayoutWidth"), QString::number(d->m_latexNoteLayoutWidth, 'f', 3));
+    }
+    if (d->m_latexNoteScale > 0.0 && d->m_latexNoteScale != 1.0) {
+        stampElement.setAttribute(QStringLiteral("latexNoteScale"), QString::number(d->m_latexNoteScale, 'f', 6));
+    }
 }
 
 void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
@@ -2353,6 +2387,20 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         // parse the attributes
         if (e.hasAttribute(QStringLiteral("icon"))) {
             m_stampIconName = e.attribute(QStringLiteral("icon"));
+        }
+        if (e.hasAttribute(QStringLiteral("latexNoteLayoutWidth"))) {
+            bool ok = false;
+            const double width = e.attribute(QStringLiteral("latexNoteLayoutWidth")).toDouble(&ok);
+            if (ok && width > 0.0) {
+                m_latexNoteLayoutWidth = width;
+            }
+        }
+        if (e.hasAttribute(QStringLiteral("latexNoteScale"))) {
+            bool ok = false;
+            const double scale = e.attribute(QStringLiteral("latexNoteScale")).toDouble(&ok);
+            if (ok && scale > 0.0) {
+                m_latexNoteScale = scale;
+            }
         }
 
         // loading complete

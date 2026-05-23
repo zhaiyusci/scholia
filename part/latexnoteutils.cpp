@@ -1,0 +1,251 @@
+/*
+    SPDX-License-Identifier: GPL-2.0-or-later
+*/
+
+#include "latexnoteutils.h"
+
+#include <cmath>
+
+#include <KLocalizedString>
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
+#include <QStandardPaths>
+
+#include "core/annotations.h"
+#include "core/page.h"
+#include "gui/guiutils.h"
+#include "latexrenderer.h"
+#include "settings.h"
+
+namespace
+{
+bool isFiniteUsableRect(const Okular::NormalizedRect &rect)
+{
+    return std::isfinite(rect.left) && std::isfinite(rect.top) && std::isfinite(rect.right) && std::isfinite(rect.bottom) && rect.width() > 0.0 && rect.height() > 0.0;
+}
+
+Okular::NormalizedRect fitRectInsidePage(Okular::NormalizedRect rect)
+{
+    if (rect.right > 1.0) {
+        rect.left -= rect.right - 1.0;
+        rect.right = 1.0;
+    }
+    if (rect.bottom > 1.0) {
+        rect.top -= rect.bottom - 1.0;
+        rect.bottom = 1.0;
+    }
+    if (rect.left < 0.0) {
+        rect.right -= rect.left;
+        rect.left = 0.0;
+    }
+    if (rect.top < 0.0) {
+        rect.bottom -= rect.top;
+        rect.top = 0.0;
+    }
+    rect.right = qBound(0.0, rect.right, 1.0);
+    rect.bottom = qBound(0.0, rect.bottom, 1.0);
+    return rect;
+}
+
+QString latexErrorMessage(GuiUtils::LatexRenderer::Error errorCode, const QString &latexOutput)
+{
+    switch (errorCode) {
+    case GuiUtils::LatexRenderer::LatexNotFound:
+        return i18n("Cannot find xelatex or lualatex executable.");
+    case GuiUtils::LatexRenderer::DvipngNotFound:
+        return i18n("Cannot find dvipng executable.");
+    case GuiUtils::LatexRenderer::LatexFailed:
+        return i18n("LaTeX rendering failed:\n%1", GuiUtils::LatexRenderer::compactErrorMessage(latexOutput));
+    case GuiUtils::LatexRenderer::DvipngFailed:
+        return i18n("A problem occurred during the execution of the 'dvipng' command.");
+    case GuiUtils::LatexRenderer::PdfToImageNotFound:
+        return i18n("Cannot find pdftocairo executable.");
+    case GuiUtils::LatexRenderer::PdfToImageFailed:
+        return i18n("A problem occurred during the execution of the 'pdftocairo' command.");
+    case GuiUtils::LatexRenderer::NoError:
+        break;
+    }
+    return QString();
+}
+
+QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &sourcePreamble)
+{
+    const bool fixedWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0;
+    const QString widthText = fixedWidth ? QString::number(layoutWidthPoints, 'f', 3) : QStringLiteral("0");
+    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-v1") : QStringLiteral("natural-width-v1");
+    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, sourcePreamble, renderMode);
+    return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+QDir latexNoteCacheDir()
+{
+    QString dataLocation = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dataLocation.isEmpty()) {
+        dataLocation = QDir::tempPath();
+    }
+    return QDir(dataLocation);
+}
+}
+
+namespace LatexNoteUtils
+{
+const Okular::StampAnnotation *annotationAsLatexNote(const Okular::Annotation *annotation)
+{
+    if (!annotation || annotation->subType() != Okular::Annotation::AStamp || annotation->contents().trimmed().isEmpty()) {
+        return nullptr;
+    }
+
+    const auto *stampAnnotation = static_cast<const Okular::StampAnnotation *>(annotation);
+    if (GuiUtils::latexNotePdfFileForStamp(stampAnnotation->stampIconName()).isEmpty()) {
+        return nullptr;
+    }
+
+    if (!isFiniteUsableRect(stampAnnotation->boundingRectangle())) {
+        return nullptr;
+    }
+
+    return stampAnnotation;
+}
+
+Okular::StampAnnotation *annotationAsLatexNote(Okular::Annotation *annotation)
+{
+    return const_cast<Okular::StampAnnotation *>(annotationAsLatexNote(static_cast<const Okular::Annotation *>(annotation)));
+}
+
+QColor colorForLatexNote(const Okular::StampAnnotation *annotation)
+{
+    if (!annotation) {
+        return Qt::black;
+    }
+
+    QColor textColor = annotation->style().color();
+    if (!textColor.isValid() || textColor.alpha() == 0) {
+        textColor = Qt::black;
+    }
+    return textColor;
+}
+
+int latexFontSize()
+{
+    return qBound(1, Okular::Settings::latexAnnotationFontSize(), 72);
+}
+
+int convertedTextFontSize()
+{
+    return qBound(1, Okular::Settings::latexTextAnnotationFontSize(), 72);
+}
+
+double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page)
+{
+    if (!page || page->width() <= 0.0 || !std::isfinite(rect.width()) || rect.width() <= 0.0) {
+        return 0.0;
+    }
+    return qMax(1.0, rect.width() * page->width());
+}
+
+double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page)
+{
+    return annotation ? rectWidthInPoints(annotation->boundingRectangle(), page) : 0.0;
+}
+
+double layoutWidthForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page)
+{
+    if (!annotation) {
+        return 0.0;
+    }
+
+    const double storedWidth = annotation->latexNoteLayoutWidth();
+    if (std::isfinite(storedWidth) && storedWidth > 0.0) {
+        return storedWidth;
+    }
+
+    Q_UNUSED(page);
+    return 0.0;
+}
+
+double scaleForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page, const QSizeF &pdfSizePoints)
+{
+    if (!annotation) {
+        return 1.0;
+    }
+
+    const double storedScale = annotation->latexNoteScale();
+    if (std::isfinite(storedScale) && storedScale > 0.0) {
+        return storedScale;
+    }
+
+    const double visibleWidth = annotationWidthInPoints(annotation, page);
+    if (pdfSizePoints.isValid() && pdfSizePoints.width() > 0.0 && std::isfinite(visibleWidth) && visibleWidth > 0.0) {
+        return qMax(0.01, visibleWidth / pdfSizePoints.width());
+    }
+
+    return 1.0;
+}
+
+Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale)
+{
+    if (!page || page->width() <= 0.0 || page->height() <= 0.0 || !pdfSizePoints.isValid() || pdfSizePoints.isEmpty()) {
+        return sourceRect;
+    }
+
+    if (!std::isfinite(scale) || scale <= 0.0) {
+        scale = 1.0;
+    }
+
+    double normalizedWidth = pdfSizePoints.width() * scale / page->width();
+    double normalizedHeight = pdfSizePoints.height() * scale / page->height();
+    if (!std::isfinite(normalizedWidth) || !std::isfinite(normalizedHeight) || normalizedWidth <= 0.0 || normalizedHeight <= 0.0) {
+        return sourceRect;
+    }
+
+    if (normalizedWidth > 1.0 || normalizedHeight > 1.0) {
+        const double shrink = qMin(1.0 / normalizedWidth, 1.0 / normalizedHeight);
+        normalizedWidth *= shrink;
+        normalizedHeight *= shrink;
+    }
+
+    return fitRectInsidePage(Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.left + normalizedWidth, sourceRect.top + normalizedHeight));
+}
+
+RenderResult renderToCache(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints)
+{
+    RenderResult result;
+    if (latexInput.trimmed().isEmpty()) {
+        result.errorMessage = i18n("LaTeX source is empty.");
+        return result;
+    }
+
+    GuiUtils::LatexRenderer renderer;
+    QString latexOutput;
+    QString temporaryPdfFile;
+    const QString sourcePreamble = Okular::Settings::latexPreamble();
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, fontSize, temporaryPdfFile, latexOutput, layoutWidthPoints, sourcePreamble);
+    if (errorCode != GuiUtils::LatexRenderer::NoError) {
+        result.errorMessage = latexErrorMessage(errorCode, latexOutput);
+        return result;
+    }
+
+    QDir dataDir = latexNoteCacheDir();
+    if (!dataDir.mkpath(QStringLiteral("latex-notes"))) {
+        result.errorMessage = i18n("Could not create a directory for LaTeX notes.");
+        return result;
+    }
+
+    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, sourcePreamble);
+    const QString cachedPdfFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.pdf").arg(noteBaseName));
+    if (!temporaryPdfFile.isEmpty() && !QFile::exists(cachedPdfFileName) && !QFile::copy(temporaryPdfFile, cachedPdfFileName)) {
+        result.errorMessage = i18n("Could not save the rendered LaTeX note PDF.");
+        return result;
+    }
+
+    if (!QFile::exists(cachedPdfFileName)) {
+        result.errorMessage = i18n("Could not save the rendered LaTeX note PDF.");
+        return result;
+    }
+
+    result.ok = true;
+    result.pdfFileName = cachedPdfFileName;
+    return result;
+}
+}

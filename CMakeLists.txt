@@ -536,6 +536,7 @@ if(BUILD_DESKTOP)
     part/kleopatraintegration.h
     part/kleopatraintegration.cpp
     part/ktreeviewsearchline.cpp
+    part/latexnoteutils.cpp
     part/latexrenderer.cpp
     part/minibar.cpp
     part/okmenutitle.cpp

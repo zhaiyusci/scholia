@@ -21,6 +21,8 @@
 
 #include <cmath>
 
+#include <QDateTime>
+#include <QDebug>
 #include <QFile>
 #include <QImageReader>
 #include <qevent.h>
@@ -30,11 +32,14 @@
 #include "core/document.h"
 #include "core/page.h"
 #include "gui/guiutils.h"
+#include "latexnoteutils.h"
 #include "pageview.h"
 #include "videowidget.h"
 
 static const int handleSize = 10;
 static const int handleSizeHalf = handleSize / 2;
+static const int latexWidthHandleLength = 18;
+static const int latexWidthHandleHalf = latexWidthHandleLength / 2;
 
 static bool isStampAnnotation(const Okular::Annotation *annotation)
 {
@@ -65,6 +70,34 @@ static Okular::NormalizedRect toNormalizedRect(const QRectF &rect)
 static QRectF toRectF(const Okular::NormalizedRect &rect)
 {
     return QRectF(QPointF(rect.left, rect.top), QPointF(rect.right, rect.bottom)).normalized();
+}
+
+static bool isLatexNoteWidthHandle(MouseAnnotation::ResizeHandle rotatedHandle)
+{
+    const bool adjustsHorizontally = rotatedHandle & (MouseAnnotation::RH_Left | MouseAnnotation::RH_Right);
+    const bool adjustsVertically = rotatedHandle & (MouseAnnotation::RH_Top | MouseAnnotation::RH_Bottom);
+    return adjustsHorizontally && !adjustsVertically;
+}
+
+static MouseAnnotation::ResizeHandle rotateHandleForPage(MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation)
+{
+    unsigned int rotatedHandle = 0;
+    switch (rotation) {
+    case Okular::Rotation90:
+        rotatedHandle = (handle << 3 | handle >> (4 - 3)) & MouseAnnotation::RH_AllHandles;
+        break;
+    case Okular::Rotation180:
+        rotatedHandle = (handle << 2 | handle >> (4 - 2)) & MouseAnnotation::RH_AllHandles;
+        break;
+    case Okular::Rotation270:
+        rotatedHandle = (handle << 1 | handle >> (4 - 1)) & MouseAnnotation::RH_AllHandles;
+        break;
+    case Okular::Rotation0:
+    default:
+        rotatedHandle = handle;
+        break;
+    }
+    return static_cast<MouseAnnotation::ResizeHandle>(rotatedHandle);
 }
 
 static void fitRectInsidePage(QRectF &rect)
@@ -102,6 +135,13 @@ static double stampImageAspectRatio(const Okular::Annotation *annotation)
     }
 
     const auto *stamp = static_cast<const Okular::StampAnnotation *>(annotation);
+    if (LatexNoteUtils::annotationAsLatexNote(stamp)) {
+        const QSizeF pdfSize = GuiUtils::latexNotePdfSizeInPointsForStamp(stamp->stampIconName());
+        if (pdfSize.isValid() && pdfSize.width() > 0.0 && pdfSize.height() > 0.0) {
+            return pdfSize.width() / pdfSize.height();
+        }
+    }
+
     const QString iconName = stamp->stampIconName();
     if (QFile::exists(iconName)) {
         QImageReader reader(iconName);
@@ -115,6 +155,75 @@ static double stampImageAspectRatio(const Okular::Annotation *annotation)
     }
 
     return 0.0;
+}
+
+static bool updateLatexNoteAfterResize(Okular::Document *document, int pageNumber, Okular::StampAnnotation *stamp, const Okular::NormalizedRect &resizedRect, MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation)
+{
+    if (!document || !stamp || stamp->contents().trimmed().isEmpty()) {
+        return false;
+    }
+
+    const Okular::Page *page = document->page(pageNumber);
+    const QSizeF currentPdfSize = GuiUtils::latexNotePdfSizeInPointsForStamp(stamp->stampIconName());
+    if (!page || !currentPdfSize.isValid() || currentPdfSize.isEmpty()) {
+        return false;
+    }
+
+    const MouseAnnotation::ResizeHandle rotatedHandle = rotateHandleForPage(handle, rotation);
+    if (isLatexNoteWidthHandle(rotatedHandle)) {
+        const double visualScale = LatexNoteUtils::scaleForLatexNote(stamp, page, currentPdfSize);
+        const double visibleWidthPoints = LatexNoteUtils::rectWidthInPoints(resizedRect, page);
+        const double layoutWidthPoints = visibleWidthPoints / visualScale;
+        if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
+            return false;
+        }
+
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stamp->contents(), LatexNoteUtils::colorForLatexNote(stamp), LatexNoteUtils::latexFontSize(), layoutWidthPoints);
+        if (!rendered.ok) {
+            qWarning() << "LaTeX note resize reflow failed:" << rendered.errorMessage;
+            return false;
+        }
+
+        const QSizeF pdfSize = GuiUtils::pdfPageSizeInPoints(rendered.pdfFileName);
+        if (!pdfSize.isValid() || pdfSize.isEmpty()) {
+            qWarning() << "Could not read resized LaTeX note PDF size";
+            return false;
+        }
+
+        const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForPdf(resizedRect, page, pdfSize, visualScale);
+        if (!isUsableRect(updatedRect)) {
+            qWarning() << "LaTeX note resize produced an invalid annotation rectangle";
+            return false;
+        }
+
+        document->prepareToModifyAnnotationProperties(stamp);
+        stamp->setStampIconName(rendered.pdfFileName);
+        stamp->setLatexNoteLayoutWidth(layoutWidthPoints);
+        stamp->setLatexNoteScale(visualScale);
+        stamp->setBoundingRectangle(updatedRect);
+        stamp->setModificationDate(QDateTime::currentDateTime());
+        document->modifyPageAnnotationProperties(pageNumber, stamp);
+        return true;
+    }
+
+    double visualScale = 1.0;
+    const double visibleWidthPoints = LatexNoteUtils::rectWidthInPoints(resizedRect, page);
+    const double visibleHeightPoints = page && page->height() > 0.0 ? resizedRect.height() * page->height() : 0.0;
+    if (rotatedHandle & (MouseAnnotation::RH_Top | MouseAnnotation::RH_Bottom)) {
+        visualScale = visibleHeightPoints / currentPdfSize.height();
+    } else {
+        visualScale = visibleWidthPoints / currentPdfSize.width();
+    }
+    if (!std::isfinite(visualScale) || visualScale <= 0.0) {
+        return false;
+    }
+
+    document->prepareToModifyAnnotationProperties(stamp);
+    stamp->setLatexNoteScale(visualScale);
+    stamp->setBoundingRectangle(resizedRect);
+    stamp->setModificationDate(QDateTime::currentDateTime());
+    document->modifyPageAnnotationProperties(pageNumber, stamp);
+    return true;
 }
 
 static double stampNormalizedAspectRatio(const AnnotationDescription &ad)
@@ -368,11 +477,27 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
     painter->setPen(QPen(fillColor, 2, Qt::SolidLine, Qt::SquareCap, Qt::BevelJoin));
     painter->drawRect(boundingRect);
     if (m_focusedAnnotation.annotation->canBeResized()) {
-        painter->setPen(borderColor);
-        painter->setBrush(fillColor);
+        const bool isLatexNote = LatexNoteUtils::annotationAsLatexNote(m_focusedAnnotation.annotation);
         for (const ResizeHandle &handle : std::as_const(m_resizeHandleList)) {
             QRect rect = getHandleRect(handle, m_focusedAnnotation);
-            painter->drawRect(rect);
+            if (isLatexNote && (handle == RH_Left || handle == RH_Right)) {
+                const QPoint center = rect.center();
+                const QRect widthHandleRect(center.x() - 3, center.y() - latexWidthHandleHalf, 6, latexWidthHandleLength);
+                painter->setPen(QPen(QColor(20, 82, 160), 1));
+                painter->setBrush(QColor(37, 99, 235));
+                painter->drawRoundedRect(widthHandleRect, 3, 3);
+
+                painter->setPen(QPen(Qt::white, 1.2));
+                painter->drawLine(center.x() - 5, center.y(), center.x() + 5, center.y());
+                painter->drawLine(center.x() - 5, center.y(), center.x() - 2, center.y() - 3);
+                painter->drawLine(center.x() - 5, center.y(), center.x() - 2, center.y() + 3);
+                painter->drawLine(center.x() + 5, center.y(), center.x() + 2, center.y() - 3);
+                painter->drawLine(center.x() + 5, center.y(), center.x() + 2, center.y() + 3);
+            } else {
+                painter->setPen(borderColor);
+                painter->setBrush(fillColor);
+                painter->drawRect(rect);
+            }
         }
     }
     painter->restore();
@@ -595,7 +720,8 @@ QRect MouseAnnotation::getFullBoundingRect(const AnnotationDescription &ad) cons
     QRect boundingRect;
     if (ad.isValid()) {
         boundingRect = Okular::AnnotationUtils::annotationGeometry(ad.annotation, ad.pageViewItem->uncroppedWidth(), ad.pageViewItem->uncroppedHeight());
-        boundingRect = boundingRect.adjusted(-handleSizeHalf, -handleSizeHalf, handleSizeHalf, handleSizeHalf);
+        const int handleHalf = LatexNoteUtils::annotationAsLatexNote(ad.annotation) ? latexWidthHandleHalf : handleSizeHalf;
+        boundingRect = boundingRect.adjusted(-handleHalf, -handleHalf, handleHalf, handleHalf);
     }
     return boundingRect;
 }
@@ -642,11 +768,23 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         handleToAdjust(normalizedRotatedMouseDelta, delta1, delta2, m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
         if (isStampAnnotation(m_focusedAnnotation.annotation) && m_hasOriginalBoundingRect) {
             const Okular::NormalizedRect annotRect = m_focusedAnnotation.annotation->boundingRectangle();
+            const ResizeHandle rotatedHandle = rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
+            if (LatexNoteUtils::annotationAsLatexNote(m_focusedAnnotation.annotation) && isLatexNoteWidthHandle(rotatedHandle)) {
+                QRectF adjustedRect(annotRect.left + delta1.x(), annotRect.top, annotRect.width() + delta2.x() - delta1.x(), annotRect.height());
+                if (adjustedRect.width() > 0.0 && adjustedRect.height() > 0.0) {
+                    fitRectInsidePage(adjustedRect);
+                    const Okular::NormalizedRect normalizedRect = toNormalizedRect(adjustedRect);
+                    if (isUsableRect(normalizedRect)) {
+                        m_focusedAnnotation.annotation->setBoundingRectangle(normalizedRect);
+                    }
+                }
+                return;
+            }
+
             const double aspectRatio = stampNormalizedAspectRatio(m_focusedAnnotation);
             if (std::isfinite(aspectRatio) && aspectRatio > 0.0) {
                 QRectF adjustedRect(annotRect.left + delta1.x(), annotRect.top + delta1.y(), annotRect.width() + delta2.x() - delta1.x(), annotRect.height() + delta2.y() - delta1.y());
                 if (adjustedRect.width() > 0.0 && adjustedRect.height() > 0.0) {
-                    const ResizeHandle rotatedHandle = rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
                     const bool adjustsLeft = rotatedHandle & RH_Left;
                     const bool adjustsRight = rotatedHandle & RH_Right;
                     const bool adjustsTop = rotatedHandle & RH_Top;
@@ -757,6 +895,13 @@ void MouseAnnotation::finishCommand()
                     m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta);
                 }
             } else if (wasResized) {
+                if (Okular::StampAnnotation *latexStamp = LatexNoteUtils::annotationAsLatexNote(m_focusedAnnotation.annotation)) {
+                    if (!updateLatexNoteAfterResize(m_document, m_focusedAnnotation.pageNumber, latexStamp, finalBoundingRect, m_handle, m_focusedAnnotation.pageViewItem->page()->rotation())) {
+                        updateViewport(m_focusedAnnotation);
+                    }
+                    m_hasOriginalBoundingRect = false;
+                    return;
+                }
                 const Okular::NormalizedPoint delta1(finalBoundingRect.left - m_originalBoundingRect.left, finalBoundingRect.top - m_originalBoundingRect.top);
                 const Okular::NormalizedPoint delta2(finalBoundingRect.right - m_originalBoundingRect.right, finalBoundingRect.bottom - m_originalBoundingRect.bottom);
                 if (!isZeroDelta(delta1) || !isZeroDelta(delta2)) {
