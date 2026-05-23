@@ -33,6 +33,7 @@ QColor colorForLatexNote(const Okular::StampAnnotation *annotation);
 int latexFontSize();
 int convertedTextFontSize();
 
+double pageWidthInPoints(const Okular::Page *page);
 double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
 double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page);
 double layoutWidthForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page);

@@ -639,7 +639,12 @@ void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
 
     const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
     const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
-    updateLatexNoteAppearance(mParent, mDocument, pair.pageNumber, stampAnnotation, textColorForLatexStampAnnotation(stampAnnotation), page->width() * selectedPercent / 100.0 / visualScale);
+    updateLatexNoteAppearance(mParent,
+                              mDocument,
+                              pair.pageNumber,
+                              stampAnnotation,
+                              textColorForLatexStampAnnotation(stampAnnotation),
+                              LatexNoteUtils::pageWidthInPoints(page) * selectedPercent / 100.0 / visualScale);
 }
 
 void AnnotationPopup::doFitLatexAnnotationToContent(AnnotPagePair pair)

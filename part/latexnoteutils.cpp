@@ -14,6 +14,7 @@
 
 #include "core/annotations.h"
 #include "core/page.h"
+#include "core/utils.h"
 #include "gui/guiutils.h"
 #include "latexrenderer.h"
 #include "settings.h"
@@ -86,6 +87,18 @@ QDir latexNoteCacheDir()
     }
     return QDir(dataLocation);
 }
+
+QSizeF pageSizeInPoints(const Okular::Page *page)
+{
+    if (!page || page->width() <= 0.0 || page->height() <= 0.0) {
+        return {};
+    }
+
+    const QSizeF dpi = Okular::Utils::realDpi(nullptr);
+    const double dpiX = dpi.width() > 0.0 && std::isfinite(dpi.width()) ? dpi.width() : 72.0;
+    const double dpiY = dpi.height() > 0.0 && std::isfinite(dpi.height()) ? dpi.height() : 72.0;
+    return QSizeF(page->width() * 72.0 / dpiX, page->height() * 72.0 / dpiY);
+}
 }
 
 namespace LatexNoteUtils
@@ -138,10 +151,16 @@ int convertedTextFontSize()
 
 double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page)
 {
-    if (!page || page->width() <= 0.0 || !std::isfinite(rect.width()) || rect.width() <= 0.0) {
+    const double pageWidth = pageWidthInPoints(page);
+    if (pageWidth <= 0.0 || !std::isfinite(rect.width()) || rect.width() <= 0.0) {
         return 0.0;
     }
-    return qMax(1.0, rect.width() * page->width());
+    return qMax(1.0, rect.width() * pageWidth);
+}
+
+double pageWidthInPoints(const Okular::Page *page)
+{
+    return pageSizeInPoints(page).width();
 }
 
 double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page)
@@ -185,7 +204,8 @@ double scaleForLatexNote(const Okular::StampAnnotation *annotation, const Okular
 
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale)
 {
-    if (!page || page->width() <= 0.0 || page->height() <= 0.0 || !pdfSizePoints.isValid() || pdfSizePoints.isEmpty()) {
+    const QSizeF pageSizePoints = pageSizeInPoints(page);
+    if (!pageSizePoints.isValid() || pageSizePoints.isEmpty() || !pdfSizePoints.isValid() || pdfSizePoints.isEmpty()) {
         return sourceRect;
     }
 
@@ -193,8 +213,8 @@ Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRe
         scale = 1.0;
     }
 
-    double normalizedWidth = pdfSizePoints.width() * scale / page->width();
-    double normalizedHeight = pdfSizePoints.height() * scale / page->height();
+    double normalizedWidth = pdfSizePoints.width() * scale / pageSizePoints.width();
+    double normalizedHeight = pdfSizePoints.height() * scale / pageSizePoints.height();
     if (!std::isfinite(normalizedWidth) || !std::isfinite(normalizedHeight) || normalizedWidth <= 0.0 || normalizedHeight <= 0.0) {
         return sourceRect;
     }

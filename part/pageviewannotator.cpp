@@ -43,6 +43,7 @@
 #include "core/document.h"
 #include "core/page.h"
 #include "core/signatureutils.h"
+#include "core/utils.h"
 #include "editannottooldialog.h"
 #include "gui/debug_ui.h"
 #include "gui/guiutils.h"
@@ -119,8 +120,11 @@ public:
     {
         xscale = xScale;
         yscale = yScale;
-        pagewidth = page->width();
-        pageheight = page->height();
+        const QSizeF dpi = Okular::Utils::realDpi(nullptr);
+        const double dpiX = dpi.width() > 0.0 && std::isfinite(dpi.width()) ? dpi.width() : 72.0;
+        const double dpiY = dpi.height() > 0.0 && std::isfinite(dpi.height()) ? dpi.height() : 72.0;
+        pagewidth = page->width() * 72.0 / dpiX;
+        pageheight = page->height() * 72.0 / dpiY;
         // only proceed if pressing left button
         if (button != Left) {
             return QRect();
