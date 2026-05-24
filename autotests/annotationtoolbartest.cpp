@@ -287,6 +287,7 @@ void AnnotationToolBarTest::testAnnotationToolBarActionsEnabledState()
     QAction *aFreehandLine = ac->action(QStringLiteral("annotation_freehand_line"));
     QAction *aGeomShapes = ac->action(QStringLiteral("annotation_geometrical_shape"));
     QAction *aStamp = ac->action(QStringLiteral("annotation_stamp"));
+    QAction *aAddLatexNote = ac->action(QStringLiteral("annotation_add_latex_note"));
 
     QFETCH(bool, aQuickToolsEnabled);
     QFETCH(bool, aHighlighterEnabled);
@@ -299,6 +300,7 @@ void AnnotationToolBarTest::testAnnotationToolBarActionsEnabledState()
     QFETCH(bool, aFreehandLineEnabled);
     QFETCH(bool, aGeomShapesEnabled);
     QFETCH(bool, aStampEnabled);
+    QFETCH(bool, aAddLatexNoteEnabled);
 
     QCOMPARE(aQuickTools->isEnabled(), aQuickToolsEnabled);
     QCOMPARE(aHighlighter->isEnabled(), aHighlighterEnabled);
@@ -311,6 +313,7 @@ void AnnotationToolBarTest::testAnnotationToolBarActionsEnabledState()
     QCOMPARE(aFreehandLine->isEnabled(), aFreehandLineEnabled);
     QCOMPARE(aGeomShapes->isEnabled(), aGeomShapesEnabled);
     QCOMPARE(aStamp->isEnabled(), aStampEnabled);
+    QCOMPARE(aAddLatexNote->isEnabled(), aAddLatexNoteEnabled);
 
     // trigger a reparsing of the tools to ensure that the enabled/disabled state is not changed (bug: 424296)
     QAction *aMouseSelect = ac->action(QStringLiteral("mouse_select"));
@@ -329,6 +332,7 @@ void AnnotationToolBarTest::testAnnotationToolBarActionsEnabledState()
     QCOMPARE(aFreehandLine->isEnabled(), aFreehandLineEnabled);
     QCOMPARE(aGeomShapes->isEnabled(), aGeomShapesEnabled);
     QCOMPARE(aStamp->isEnabled(), aStampEnabled);
+    QCOMPARE(aAddLatexNote->isEnabled(), aAddLatexNoteEnabled);
 }
 
 void AnnotationToolBarTest::testAnnotationToolBarActionsEnabledState_data()
@@ -345,10 +349,11 @@ void AnnotationToolBarTest::testAnnotationToolBarActionsEnabledState_data()
     QTest::addColumn<bool>("aFreehandLineEnabled");
     QTest::addColumn<bool>("aGeomShapesEnabled");
     QTest::addColumn<bool>("aStampEnabled");
+    QTest::addColumn<bool>("aAddLatexNoteEnabled");
 
-    QTest::addRow("pdf") << QStringLiteral(KDESRCDIR "data/file1.pdf") << true << true << true << true << true << true << true << true << true << true << true;
-    QTest::addRow("protected-pdf") << QStringLiteral(KDESRCDIR "data/protected.pdf") << false << false << false << false << false << false << false << false << false << false << false;
-    QTest::addRow("image") << QStringLiteral(KDESRCDIR "data/potato.jpg") << true << false << false << false << false << true << true << true << true << true << true;
+    QTest::addRow("pdf") << QStringLiteral(KDESRCDIR "data/file1.pdf") << true << true << true << true << true << true << true << true << true << true << true << true;
+    QTest::addRow("protected-pdf") << QStringLiteral(KDESRCDIR "data/protected.pdf") << false << false << false << false << false << false << false << false << false << false << false << false;
+    QTest::addRow("image") << QStringLiteral(KDESRCDIR "data/potato.jpg") << true << false << false << false << false << true << true << true << true << true << true << true;
 }
 
 void AnnotationToolBarTest::testAnnotationToolBarConfigActionsEnabledState()
