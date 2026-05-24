@@ -289,6 +289,7 @@ endif()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${PHONON_INCLUDES} core/synctex ${CMAKE_BINARY_DIR}/core)
 
 option(BUILD_COVERAGE "Build the project with gcov support" OFF)
+option(OKULAR_PDF_ONLY "Build only the PDF document generator" OFF)
 
 if(BUILD_COVERAGE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")

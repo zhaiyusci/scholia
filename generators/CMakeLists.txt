@@ -15,6 +15,10 @@ if(Poppler_Qt6_FOUND)
   add_subdirectory(poppler)
 endif(Poppler_Qt6_FOUND)
 
+if(OKULAR_PDF_ONLY)
+  return()
+endif()
+
 if(LIBSPECTRE_FOUND)
   add_subdirectory(spectre)
 endif(LIBSPECTRE_FOUND)
