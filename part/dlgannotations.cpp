@@ -12,15 +12,29 @@
 
 #include <QComboBox>
 #include <QFormLayout>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QScrollArea>
 #include <QSpinBox>
+#include <QVBoxLayout>
 
 DlgAnnotations::DlgAnnotations(QWidget *parent)
     : QWidget(parent)
 {
-    QFormLayout *layout = new QFormLayout(this);
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setWidgetResizable(true);
+    mainLayout->addWidget(scrollArea);
+
+    auto *content = new QWidget(scrollArea);
+    scrollArea->setWidget(content);
+
+    QFormLayout *layout = new QFormLayout(content);
 
     // BEGIN Annotation toolbar: Combo box to set the annotation toolbar associated to annotation action in tool menu
     QComboBox *primaryAnnotationToolBar = new QComboBox(this);
