@@ -26,6 +26,7 @@
 #include <QDesktopServices>
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QFrame>
 #include <QGestureEvent>
 #include <QImage>
 #include <QInputDialog>
@@ -124,6 +125,8 @@ static const int searchTextPreviewLength = 21;
 // When following a link, only a preview of this length will be used to set the text of the action.
 static const int linkTextPreviewLength = 30;
 
+static bool viewportForInternalGotoLink(const Okular::Document *document, const Okular::ObjectRect *rect, Okular::DocumentViewport *viewport);
+
 static inline double normClamp(double value, double def)
 {
     if (!std::isfinite(value)) {
@@ -146,6 +149,602 @@ TableSelectionPart::TableSelectionPart(PageViewItem *item_p, const Okular::Norma
     , rectInSelection(rectInSelection_p)
 {
 }
+
+class LinkPreviewWidget final : public QFrame, public Okular::DocumentObserver
+{
+public:
+    LinkPreviewWidget(Okular::Document *document, QWidget *parent)
+        : QFrame(parent)
+        , m_document(document)
+    {
+        setAutoFillBackground(false);
+        setMouseTracking(true);
+        hide();
+        m_document->addObserver(this);
+    }
+
+    ~LinkPreviewWidget() override
+    {
+        m_document->removeObserver(this);
+    }
+
+    void setPreview(const Okular::DocumentViewport &viewport, const QPoint &viewportPos, int scaledWidth, int scaledHeight, const Okular::NormalizedRect &pageCrop)
+    {
+        const bool resetGeometry = !isVisible() || !(m_viewport == viewport);
+        m_viewport = viewport;
+        m_scaledWidth = qMax(1, scaledWidth);
+        m_scaledHeight = qMax(1, scaledHeight);
+        m_pageCrop = pageCrop;
+        if (resetGeometry) {
+            m_zoomFactor = 1.0;
+            resetPreviewCenter();
+        }
+        const QSize wantedSize = resetGeometry ? preferredSize() : size();
+        if (resetGeometry || size() != wantedSize) {
+            setFixedSize(wantedSize);
+        }
+        moveNear(viewportPos);
+        show();
+        raise();
+        requestPixmap();
+        update();
+    }
+
+    void moveNear(const QPoint &viewportPos)
+    {
+        QWidget *parent = parentWidget();
+        const QSize parentSize = parent ? parent->size() : QSize();
+        QPoint pos = QPoint(parentSize.isValid() ? (parentSize.width() - width()) / 2 : viewportPos.x(), viewportPos.y() + 18);
+
+        if (parentSize.isValid()) {
+            pos.setX(qBound(4, pos.x(), qMax(4, parentSize.width() - width() - 4)));
+            if (pos.y() + height() > parentSize.height() - 4) {
+                pos.setY(viewportPos.y() - height() - 18);
+            }
+            pos.setY(qBound(4, pos.y(), qMax(4, parentSize.height() - height() - 4)));
+        }
+
+        move(pos);
+    }
+
+    void notifySetup(const QList<Okular::Page *> &, int setupFlags) override
+    {
+        if (setupFlags & Okular::DocumentObserver::DocumentChanged) {
+            hide();
+        }
+    }
+
+    void notifyPageChanged(int pageNumber, int changedFlags) override
+    {
+        if (isVisible() && pageNumber == m_viewport.pageNumber && (changedFlags & Okular::DocumentObserver::Pixmap)) {
+            update();
+        }
+    }
+
+    void notifyContentsCleared(int changedFlags) override
+    {
+        if (isVisible() && (changedFlags & Okular::DocumentObserver::Pixmap)) {
+            requestPixmap();
+            update();
+        }
+    }
+
+    bool canUnloadPixmap(int pageNumber) const override
+    {
+        return !isVisible() || pageNumber != m_viewport.pageNumber;
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        const QColor base = palette().color(QPalette::ToolTipBase);
+        const QColor text = palette().color(QPalette::ToolTipText);
+        const QColor border = palette().color(QPalette::Mid);
+
+        painter.setPen(border);
+        painter.setBrush(base);
+        painter.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 6, 6);
+
+        painter.fillRect(headerRect(), base.darker(105));
+        painter.setPen(text);
+        painter.drawText(headerTextRect(), Qt::AlignVCenter | Qt::AlignLeft, i18nc("@label Link preview page number", "Page %1", m_viewport.pageNumber + 1));
+        drawButton(&painter, zoomOutButtonRect(), QStringLiteral("-"));
+        drawButton(&painter, resetZoomButtonRect(), QString::number(qRound(m_zoomFactor * 100)) + QLatin1Char('%'));
+        drawButton(&painter, zoomInButtonRect(), QStringLiteral("+"));
+        drawButton(&painter, closeButtonRect(), QStringLiteral("x"));
+
+        const Okular::Page *page = m_document->page(m_viewport.pageNumber);
+        const QRect pageArea = pageRect();
+        painter.fillRect(pageArea, Qt::white);
+
+        if (page && !pageArea.isEmpty()) {
+            const Okular::NormalizedRect crop = previewCrop(page);
+            const QRect paintArea = previewPaintArea(crop, pageArea);
+
+            painter.save();
+            painter.translate(paintArea.topLeft());
+            painter.setClipRect(QRect(QPoint(0, 0), paintArea.size()));
+            PagePainter::paintCroppedPageOnPainter(&painter,
+                                                   page,
+                                                   this,
+                                                   PagePainter::Accessibility | PagePainter::Highlights | PagePainter::Annotations,
+                                                   renderedWidth(),
+                                                   renderedHeight(),
+                                                   QRect(QPoint(0, 0), paintArea.size()),
+                                                   crop,
+                                                   nullptr);
+            painter.restore();
+
+            drawDestinationMarker(&painter, crop, paintArea);
+        }
+
+        painter.setPen(border);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(pageArea.adjusted(0, 0, -1, -1));
+        drawResizeGrip(&painter);
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() != Qt::LeftButton) {
+            event->ignore();
+            return;
+        }
+
+        if (closeButtonRect().contains(event->pos())) {
+            hide();
+            event->accept();
+            return;
+        }
+        if (zoomOutButtonRect().contains(event->pos())) {
+            setPreviewZoom(m_zoomFactor / 1.25);
+            event->accept();
+            return;
+        }
+        if (zoomInButtonRect().contains(event->pos())) {
+            setPreviewZoom(m_zoomFactor * 1.25);
+            event->accept();
+            return;
+        }
+        if (resetZoomButtonRect().contains(event->pos())) {
+            setPreviewZoom(1.0);
+            event->accept();
+            return;
+        }
+        const int resizeEdges = resizeEdgesAt(event->pos());
+        if (resizeEdges != ResizeNone) {
+            m_resizing = true;
+            m_resizeEdges = resizeEdges;
+            m_pressGlobalPos = event->globalPosition().toPoint();
+            m_startGeometry = geometry();
+            event->accept();
+            return;
+        }
+        if (headerRect().contains(event->pos())) {
+            m_dragging = true;
+            m_pressGlobalPos = event->globalPosition().toPoint();
+            m_startGeometry = geometry();
+            event->accept();
+            return;
+        }
+
+        event->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (m_dragging) {
+            const QPoint delta = event->globalPosition().toPoint() - m_pressGlobalPos;
+            move(clampedPosition(m_startGeometry.topLeft() + delta, size()));
+            event->accept();
+            return;
+        }
+
+        if (m_resizing) {
+            const QPoint delta = event->globalPosition().toPoint() - m_pressGlobalPos;
+            resizeFromEdges(delta);
+            event->accept();
+            return;
+        }
+
+        setCursor(cursorForResizeEdges(resizeEdgesAt(event->pos())));
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (m_dragging || m_resizing) {
+            m_dragging = false;
+            m_resizing = false;
+            m_resizeEdges = ResizeNone;
+            unsetCursor();
+            event->accept();
+            return;
+        }
+        event->accept();
+    }
+
+    void wheelEvent(QWheelEvent *event) override
+    {
+        if (event->modifiers() & Qt::ControlModifier) {
+            const int delta = event->angleDelta().y();
+            if (delta != 0) {
+                setPreviewZoom(delta > 0 ? m_zoomFactor * 1.25 : m_zoomFactor / 1.25);
+                event->accept();
+                return;
+            }
+        }
+
+        panPreview(event);
+        event->accept();
+    }
+
+private:
+    enum ResizeEdge {
+        ResizeNone = 0x0,
+        ResizeLeft = 0x1,
+        ResizeRight = 0x2,
+        ResizeTop = 0x4,
+        ResizeBottom = 0x8,
+    };
+
+    QSize preferredSize() const
+    {
+        const QWidget *parent = parentWidget();
+        const QSize parentSize = parent ? parent->size() : QSize(1280, 800);
+        const int maxWidth = qMax(1, parentSize.width() - 16);
+        const int maxHeight = qMax(1, parentSize.height() - 16);
+        const int minWidth = qMin(320, maxWidth);
+        const int minHeight = qMin(220, maxHeight);
+        const int pageWidth = qRound((m_pageCrop.right - m_pageCrop.left) * m_scaledWidth);
+        const int width = qBound(minWidth, qMax(1, pageWidth), maxWidth);
+        const int height = qBound(minHeight, qMax(1, parentSize.height() * 2 / 3), maxHeight);
+        return QSize(width, height);
+    }
+
+    QRect headerRect() const
+    {
+        return QRect(0, 0, width(), qMin(32, height()));
+    }
+
+    QRect headerTextRect() const
+    {
+        return headerRect().adjusted(10, 0, -150, 0);
+    }
+
+    QRect pageRect() const
+    {
+        const int top = qMin(32, height());
+        return QRect(0, top, width(), qMax(0, height() - top));
+    }
+
+    QRect closeButtonRect() const
+    {
+        return QRect(width() - 30, 4, 24, 24);
+    }
+
+    QRect zoomInButtonRect() const
+    {
+        return closeButtonRect().translated(-30, 0);
+    }
+
+    QRect resetZoomButtonRect() const
+    {
+        return QRect(zoomInButtonRect().left() - 56, 4, 50, 24);
+    }
+
+    QRect zoomOutButtonRect() const
+    {
+        return resetZoomButtonRect().translated(-30, 0).adjusted(0, 0, -26, 0);
+    }
+
+    QRect resizeGripRect() const
+    {
+        return QRect(width() - 18, height() - 18, 18, 18);
+    }
+
+    int resizeEdgesAt(const QPoint &pos) const
+    {
+        int edges = ResizeNone;
+        if (pos.x() >= 0 && pos.x() <= ResizeMargin) {
+            edges |= ResizeLeft;
+        } else if (pos.x() >= width() - ResizeMargin && pos.x() < width()) {
+            edges |= ResizeRight;
+        }
+        if (pos.y() >= 0 && pos.y() <= ResizeMargin) {
+            edges |= ResizeTop;
+        } else if (pos.y() >= height() - ResizeMargin && pos.y() < height()) {
+            edges |= ResizeBottom;
+        }
+        return edges;
+    }
+
+    Qt::CursorShape cursorForResizeEdges(int edges) const
+    {
+        if ((edges & ResizeLeft && edges & ResizeTop) || (edges & ResizeRight && edges & ResizeBottom)) {
+            return Qt::SizeFDiagCursor;
+        }
+        if ((edges & ResizeRight && edges & ResizeTop) || (edges & ResizeLeft && edges & ResizeBottom)) {
+            return Qt::SizeBDiagCursor;
+        }
+        if (edges & (ResizeLeft | ResizeRight)) {
+            return Qt::SizeHorCursor;
+        }
+        if (edges & (ResizeTop | ResizeBottom)) {
+            return Qt::SizeVerCursor;
+        }
+        return Qt::ArrowCursor;
+    }
+
+    int renderedWidth() const
+    {
+        return qMax(1, qRound(m_scaledWidth * m_zoomFactor));
+    }
+
+    int renderedHeight() const
+    {
+        return qMax(1, qRound(m_scaledHeight * m_zoomFactor));
+    }
+
+    Okular::NormalizedRect previewCrop(const Okular::Page *page) const
+    {
+        const QRect area = pageRect();
+        if (!page || area.isEmpty()) {
+            return Okular::NormalizedRect(0.0, 0.0, 1.0, 1.0);
+        }
+
+        const double pageCropWidth = qBound(0.0, m_pageCrop.right - m_pageCrop.left, 1.0);
+        const double pageCropHeight = qBound(0.0, m_pageCrop.bottom - m_pageCrop.top, 1.0);
+        if (pageCropWidth <= 0.0 || pageCropHeight <= 0.0) {
+            return Okular::NormalizedRect(0.0, 0.0, 1.0, 1.0);
+        }
+
+        const double cropWidth = qMin(pageCropWidth, area.width() / qMax(1.0, static_cast<double>(renderedWidth())));
+        const double cropHeight = qMin(pageCropHeight, area.height() / qMax(1.0, static_cast<double>(renderedHeight())));
+
+        const double centerX = qBound(m_pageCrop.left + cropWidth / 2.0, m_centerX, m_pageCrop.right - cropWidth / 2.0);
+        const double centerY = qBound(m_pageCrop.top + cropHeight / 2.0, m_centerY, m_pageCrop.bottom - cropHeight / 2.0);
+
+        double left = centerX - cropWidth / 2.0;
+        double top = centerY - cropHeight / 2.0;
+        left = qBound(m_pageCrop.left, left, m_pageCrop.right - cropWidth);
+        top = qBound(m_pageCrop.top, top, m_pageCrop.bottom - cropHeight);
+
+        return Okular::NormalizedRect(left, top, left + cropWidth, top + cropHeight);
+    }
+
+    QRect previewPaintArea(const Okular::NormalizedRect &crop, const QRect &pageArea) const
+    {
+        const int cropWidth = qMin(pageArea.width(), qMax(1, qRound((crop.right - crop.left) * renderedWidth())));
+        const int cropHeight = qMin(pageArea.height(), qMax(1, qRound((crop.bottom - crop.top) * renderedHeight())));
+        const int x = pageArea.left() + (cropWidth < pageArea.width() ? (pageArea.width() - cropWidth) / 2 : 0);
+        const int y = pageArea.top() + (cropHeight < pageArea.height() ? (pageArea.height() - cropHeight) / 2 : 0);
+        return QRect(x, y, cropWidth, cropHeight);
+    }
+
+    QPoint clampedPosition(const QPoint &wantedPos, const QSize &wantedSize) const
+    {
+        const QWidget *parent = parentWidget();
+        const QSize parentSize = parent ? parent->size() : QSize();
+        if (!parentSize.isValid()) {
+            return wantedPos;
+        }
+        return QPoint(qBound(4, wantedPos.x(), qMax(4, parentSize.width() - wantedSize.width() - 4)), qBound(4, wantedPos.y(), qMax(4, parentSize.height() - wantedSize.height() - 4)));
+    }
+
+    QSize boundedSize(const QSize &wantedSize) const
+    {
+        const QWidget *parent = parentWidget();
+        const QSize parentSize = parent ? parent->size() : QSize(1280, 800);
+        const int maxWidth = qMax(260, parentSize.width() - 8);
+        const int maxHeight = qMax(160, parentSize.height() - 8);
+        return QSize(qBound(260, wantedSize.width(), maxWidth), qBound(160, wantedSize.height(), maxHeight));
+    }
+
+    void resizeTo(const QSize &wantedSize)
+    {
+        const QSize newSize = boundedSize(wantedSize);
+        setFixedSize(newSize);
+        move(clampedPosition(pos(), newSize));
+        requestPixmap();
+        update();
+    }
+
+    void resizeFromEdges(const QPoint &delta)
+    {
+        int left = m_startGeometry.left();
+        int top = m_startGeometry.top();
+        int width = m_startGeometry.width();
+        int height = m_startGeometry.height();
+
+        if (m_resizeEdges & ResizeLeft) {
+            left += delta.x();
+            width -= delta.x();
+        } else if (m_resizeEdges & ResizeRight) {
+            width += delta.x();
+        }
+        if (m_resizeEdges & ResizeTop) {
+            top += delta.y();
+            height -= delta.y();
+        } else if (m_resizeEdges & ResizeBottom) {
+            height += delta.y();
+        }
+
+        const QSize newSize = boundedSize(QSize(width, height));
+        if (m_resizeEdges & ResizeLeft) {
+            left = m_startGeometry.right() + 1 - newSize.width();
+        }
+        if (m_resizeEdges & ResizeTop) {
+            top = m_startGeometry.bottom() + 1 - newSize.height();
+        }
+
+        setFixedSize(newSize);
+        move(clampedPosition(QPoint(left, top), newSize));
+        requestPixmap();
+        update();
+    }
+
+    void setPreviewZoom(double zoom)
+    {
+        m_zoomFactor = qBound(0.25, zoom, 4.0);
+        requestPixmap();
+        update();
+    }
+
+    void resetPreviewCenter()
+    {
+        m_centerX = (m_pageCrop.left + m_pageCrop.right) / 2.0;
+        m_centerY = m_pageCrop.top;
+        if (m_viewport.rePos.enabled) {
+            m_centerX = qBound(m_pageCrop.left, m_viewport.rePos.normalizedX, m_pageCrop.right);
+            m_centerY = qBound(m_pageCrop.top, m_viewport.rePos.normalizedY, m_pageCrop.bottom);
+        }
+    }
+
+    void panPreview(QWheelEvent *event)
+    {
+        const Okular::Page *page = m_document->page(m_viewport.pageNumber);
+        if (!page) {
+            return;
+        }
+
+        const Okular::NormalizedRect crop = previewCrop(page);
+        const QPoint angleDelta = event->angleDelta();
+        const QPoint pixelDelta = event->pixelDelta();
+
+        double deltaX = 0.0;
+        double deltaY = 0.0;
+        if (!pixelDelta.isNull()) {
+            deltaX = -pixelDelta.x() / qMax(1.0, static_cast<double>(pageRect().width())) * (crop.right - crop.left);
+            deltaY = -pixelDelta.y() / qMax(1.0, static_cast<double>(pageRect().height())) * (crop.bottom - crop.top);
+        } else {
+            deltaX = -angleDelta.x() / 120.0 * (crop.right - crop.left) * 0.18;
+            deltaY = -angleDelta.y() / 120.0 * (crop.bottom - crop.top) * 0.18;
+        }
+
+        if (event->modifiers() & Qt::ShiftModifier) {
+            deltaX += deltaY;
+            deltaY = 0.0;
+        }
+
+        m_centerX += deltaX;
+        m_centerY += deltaY;
+        clampPreviewCenter(crop.right - crop.left, crop.bottom - crop.top);
+        requestPixmap();
+        update();
+    }
+
+    void clampPreviewCenter(double cropWidth, double cropHeight)
+    {
+        const double pageCropWidth = qBound(0.0, m_pageCrop.right - m_pageCrop.left, 1.0);
+        const double pageCropHeight = qBound(0.0, m_pageCrop.bottom - m_pageCrop.top, 1.0);
+        cropWidth = qBound(0.0, cropWidth, pageCropWidth);
+        cropHeight = qBound(0.0, cropHeight, pageCropHeight);
+        m_centerX = qBound(m_pageCrop.left + cropWidth / 2.0, m_centerX, m_pageCrop.right - cropWidth / 2.0);
+        m_centerY = qBound(m_pageCrop.top + cropHeight / 2.0, m_centerY, m_pageCrop.bottom - cropHeight / 2.0);
+    }
+
+    void drawButton(QPainter *painter, const QRect &buttonRect, const QString &text) const
+    {
+        if (buttonRect.width() <= 0 || buttonRect.height() <= 0) {
+            return;
+        }
+
+        const QColor border = palette().color(QPalette::Mid);
+        const QColor base = palette().color(QPalette::Button);
+        const QColor label = palette().color(QPalette::ButtonText);
+        painter->setPen(border);
+        painter->setBrush(base);
+        painter->drawRoundedRect(buttonRect.adjusted(0, 0, -1, -1), 3, 3);
+        painter->setPen(label);
+        painter->drawText(buttonRect, Qt::AlignCenter, text);
+    }
+
+    void drawResizeGrip(QPainter *painter) const
+    {
+        painter->save();
+        painter->setPen(palette().color(QPalette::Mid));
+        const QRect grip = resizeGripRect().adjusted(2, 2, -3, -3);
+        for (int offset = 0; offset < 9; offset += 4) {
+            painter->drawLine(grip.right() - offset, grip.bottom(), grip.right(), grip.bottom() - offset);
+        }
+        painter->restore();
+    }
+
+    void drawDestinationMarker(QPainter *painter, const Okular::NormalizedRect &crop, const QRect &pageArea) const
+    {
+        if (!m_viewport.rePos.enabled) {
+            return;
+        }
+
+        const double cropWidth = crop.right - crop.left;
+        const double cropHeight = crop.bottom - crop.top;
+        if (cropWidth <= 0.0 || cropHeight <= 0.0) {
+            return;
+        }
+
+        const double relX = (qBound(0.0, m_viewport.rePos.normalizedX, 1.0) - crop.left) / cropWidth;
+        const double relY = (qBound(0.0, m_viewport.rePos.normalizedY, 1.0) - crop.top) / cropHeight;
+        if (relX < 0.0 || relX > 1.0 || relY < 0.0 || relY > 1.0) {
+            return;
+        }
+
+        const QPoint center(pageArea.left() + qRound(relX * pageArea.width()), pageArea.top() + qRound(relY * pageArea.height()));
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(QPen(QColor(0, 95, 180), 2));
+        painter->setBrush(QColor(0, 95, 180, 45));
+        painter->drawEllipse(center, 7, 7);
+        painter->drawLine(center + QPoint(-12, 0), center + QPoint(-4, 0));
+        painter->drawLine(center + QPoint(4, 0), center + QPoint(12, 0));
+        painter->drawLine(center + QPoint(0, -12), center + QPoint(0, -4));
+        painter->drawLine(center + QPoint(0, 4), center + QPoint(0, 12));
+        painter->restore();
+    }
+
+    void requestPixmap()
+    {
+        const Okular::Page *page = m_document->page(m_viewport.pageNumber);
+        if (!page) {
+            return;
+        }
+
+        const QRect area = pageRect();
+        if (area.isEmpty()) {
+            return;
+        }
+
+        const Okular::NormalizedRect crop = previewCrop(page);
+        if (page->hasPixmap(this, renderedWidth(), renderedHeight(), crop)) {
+            return;
+        }
+
+        auto *request = new Okular::PixmapRequest(this, m_viewport.pageNumber, renderedWidth(), renderedHeight(), devicePixelRatioF(), PAGEVIEW_PRIO, Okular::PixmapRequest::Asynchronous);
+        if (page->hasTilesManager(this)) {
+            request->setTile(true);
+        }
+        request->setNormalizedRect(crop);
+        m_document->requestPixmaps({request});
+    }
+
+    Okular::Document *m_document = nullptr;
+    Okular::DocumentViewport m_viewport;
+    int m_scaledWidth = 1;
+    int m_scaledHeight = 1;
+    Okular::NormalizedRect m_pageCrop {0.0, 0.0, 1.0, 1.0};
+    double m_zoomFactor = 1.0;
+    double m_centerX = 0.5;
+    double m_centerY = 0.0;
+    bool m_dragging = false;
+    bool m_resizing = false;
+    int m_resizeEdges = ResizeNone;
+    QPoint m_pressGlobalPos;
+    QRect m_startGeometry;
+    static constexpr int ResizeMargin = 8;
+};
 
 // structure used internally by PageView for data storage
 class PageViewPrivate
@@ -286,6 +885,15 @@ public:
 
     // Keep track of mouse over link object
     const Okular::ObjectRect *mouseOverLinkObject = nullptr;
+
+    LinkPreviewWidget *linkPreview = nullptr;
+    const Okular::ObjectRect *linkPreviewObject = nullptr;
+    const Okular::ObjectRect *linkPreviewPressObject = nullptr;
+    Okular::DocumentViewport linkPreviewViewport;
+    QPoint linkPreviewPos;
+    QPoint linkPreviewPressPos;
+    QPointF linkPreviewPressGlobalPos;
+    bool linkPreviewMiddleClickPending = false;
 
     QScroller *scroller = nullptr;
 
@@ -456,6 +1064,8 @@ PageView::PageView(QWidget *parent, Okular::Document *document)
     d->leftClickTimer.setSingleShot(true);
     connect(&d->leftClickTimer, &QTimer::timeout, this, &PageView::slotShowSizeAllCursor);
 
+    d->linkPreview = new LinkPreviewWidget(document, viewport());
+
     // set a corner button to resize the view to the page size
     //    QPushButton * resizeButton = new QPushButton( viewport() );
     //    resizeButton->setPixmap( SmallIcon("crop") );
@@ -497,6 +1107,7 @@ PageView::~PageView()
     qDeleteAll(annowindows);
 
     // delete all widgets
+    delete d->linkPreview;
     qDeleteAll(d->items);
     delete d->formsWidgetController;
     d->document->removeObserver(this);
@@ -534,7 +1145,14 @@ bool PageView::mapGlobalPosToPagePoint(QPoint globalPos, int *pageNumber, Okular
 void PageView::setupViewport(QWidget *viewport)
 {
     notifyAnnotationWindowsAboutViewportBoundsChange();
+    if (d->linkPreview) {
+        d->linkPreview->hide();
+        d->linkPreview->setParent(nullptr);
+    }
     QAbstractScrollArea::setupViewport(viewport);
+    if (d->linkPreview) {
+        d->linkPreview->setParent(viewport);
+    }
 }
 
 void PageView::setupBaseActions(KActionCollection *ac)
@@ -1200,6 +1818,8 @@ void PageView::createAnnotationsVideoWidgets(PageViewItem *item, const QList<Oku
 // BEGIN DocumentObserver inherited methods
 void PageView::notifySetup(const QList<Okular::Page *> &pageSet, int setupFlags)
 {
+    hideLinkPreview();
+
     bool documentChanged = setupFlags & Okular::DocumentObserver::DocumentChanged;
     const bool allowfillforms = d->document->isAllowed(Okular::AllowFillForms);
 
@@ -2304,6 +2924,9 @@ void PageView::mouseMoveEvent(QMouseEvent *e)
     }
 
     // if holding mouse mid button, perform zoom
+    if ((e->buttons() & Qt::MiddleButton) && d->linkPreviewMiddleClickPending) {
+        return;
+    }
     if (e->buttons() & Qt::MiddleButton) {
         int deltaY = d->mouseMidLastY - e->globalPosition().y();
         d->mouseMidLastY = e->globalPosition().y();
@@ -2436,6 +3059,26 @@ void PageView::mousePressEvent(QMouseEvent *e)
         return;
     }
 
+    const QPoint eventPos = contentAreaPoint(e->pos());
+
+    if (e->button() == Qt::MiddleButton && !(d->annotator && d->annotator->active())) {
+        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        if (pageItem) {
+            const double nX = pageItem->absToPageX(eventPos.x());
+            const double nY = pageItem->absToPageY(eventPos.y());
+            const Okular::ObjectRect *linkobj = pageItem->page()->objectRect(Okular::ObjectRect::Action, nX, nY, pageItem->uncroppedWidth(), pageItem->uncroppedHeight());
+            Okular::DocumentViewport target;
+            if (viewportForInternalGotoLink(d->document, linkobj, &target)) {
+                d->linkPreviewMiddleClickPending = true;
+                d->linkPreviewPressObject = linkobj;
+                d->linkPreviewPressPos = eventPos;
+                d->linkPreviewPressGlobalPos = e->globalPosition();
+                e->accept();
+                return;
+            }
+        }
+    }
+
     // if the page is scrolling, stop it
     if (d->autoScrollTimer) {
         d->scrollIncrement = 0;
@@ -2449,8 +3092,6 @@ void PageView::mousePressEvent(QMouseEvent *e)
         CursorWrapHelper::startDrag();
         return;
     }
-
-    const QPoint eventPos = contentAreaPoint(e->pos());
 
     // if we're editing an annotation, dispatch event to it
     if (d->annotator && d->annotator->active()) {
@@ -2688,6 +3329,16 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
     // handle mode independent mid bottom zoom
     if (e->button() == Qt::MiddleButton) {
+        if (d->linkPreviewMiddleClickPending) {
+            const bool isClick = (d->linkPreviewPressGlobalPos - e->globalPosition()).manhattanLength() < QApplication::startDragDistance();
+            if (isClick && d->linkPreviewPressObject) {
+                updateLinkPreview(d->linkPreviewPressObject, d->linkPreviewPressPos);
+            }
+            d->linkPreviewMiddleClickPending = false;
+            d->linkPreviewPressObject = nullptr;
+            e->accept();
+            return;
+        }
         continuousZoomEnd();
         return;
     }
@@ -3529,14 +4180,22 @@ bool PageView::viewportEvent(QEvent *e)
 void PageView::scrollContentsBy(int dx, int dy)
 {
     const QRect r = viewport()->rect();
-    viewport()->scroll(dx, dy, r);
-    // HACK manually repaint the damaged regions, as it seems some updates are missed
-    // thus leaving artifacts around
-    QRegion rgn(r);
-    rgn -= rgn & r.translated(dx, dy);
+    if (d->linkPreview && d->linkPreview->isVisible()) {
+        // The link preview is a viewport overlay. Bit-scroll would copy its
+        // pixels into the document backing store, so repaint the page area
+        // instead and keep the overlay fixed in viewport coordinates.
+        viewport()->update(r);
+        d->linkPreview->raise();
+    } else {
+        viewport()->scroll(dx, dy, r);
+        // HACK manually repaint the damaged regions, as it seems some updates are missed
+        // thus leaving artifacts around
+        QRegion rgn(r);
+        rgn -= rgn & r.translated(dx, dy);
 
-    for (const QRect &rect : rgn) {
-        viewport()->update(rect);
+        for (const QRect &rect : rgn) {
+            viewport()->update(rect);
+        }
     }
 
     updateCursor();
@@ -4294,6 +4953,77 @@ void PageView::updateViewMode(const int nr)
             action->trigger();
         }
     }
+}
+
+static bool viewportForInternalGotoLink(const Okular::Document *document, const Okular::ObjectRect *rect, Okular::DocumentViewport *viewport)
+{
+    if (!document || !rect || !rect->object()) {
+        return false;
+    }
+
+    const auto *action = static_cast<const Okular::Action *>(rect->object());
+    if (action->actionType() != Okular::Action::Goto) {
+        return false;
+    }
+
+    const auto *gotoAction = static_cast<const Okular::GotoAction *>(action);
+    if (gotoAction->isExternal()) {
+        return false;
+    }
+
+    Okular::DocumentViewport target = gotoAction->destViewport();
+    if (!target.isValid() && !gotoAction->destinationName().isEmpty()) {
+        target = Okular::DocumentViewport(document->metaData(QStringLiteral("NamedViewport"), gotoAction->destinationName()).toString());
+    }
+
+    if (!target.isValid() || target.pageNumber < 0 || target.pageNumber >= static_cast<int>(document->pages())) {
+        return false;
+    }
+
+    *viewport = target;
+    return true;
+}
+
+void PageView::updateLinkPreview(const Okular::ObjectRect *rect, const QPoint &contentPos)
+{
+    Okular::DocumentViewport target;
+    if (!viewportForInternalGotoLink(d->document, rect, &target)) {
+        return;
+    }
+
+    const QPoint viewportPos = contentPos - contentAreaPosition();
+    d->linkPreviewObject = rect;
+    d->linkPreviewViewport = target;
+    d->linkPreviewPos = viewportPos;
+    showLinkPreview();
+}
+
+void PageView::hideLinkPreview()
+{
+    d->linkPreviewObject = nullptr;
+    d->linkPreviewPressObject = nullptr;
+    d->linkPreviewMiddleClickPending = false;
+    if (d->linkPreview) {
+        d->linkPreview->hide();
+    }
+}
+
+void PageView::showLinkPreview()
+{
+    if (!d->linkPreview || !d->linkPreviewObject) {
+        return;
+    }
+    if (d->linkPreviewViewport.pageNumber < 0 || d->linkPreviewViewport.pageNumber >= d->items.count()) {
+        return;
+    }
+
+    const PageViewItem *targetItem = d->items.at(d->linkPreviewViewport.pageNumber);
+    if (!targetItem || targetItem->uncroppedWidth() <= 0 || targetItem->uncroppedHeight() <= 0) {
+        return;
+    }
+
+    QToolTip::hideText();
+    d->linkPreview->setPreview(d->linkPreviewViewport, d->linkPreviewPos, targetItem->uncroppedWidth(), targetItem->uncroppedHeight(), targetItem->crop());
 }
 
 void PageView::updateCursor()

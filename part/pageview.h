@@ -239,6 +239,9 @@ private:
     void textSelectionClear();
     // updates cursor
     void updateCursor(const QPoint p);
+    void updateLinkPreview(const Okular::ObjectRect *rect, const QPoint &contentPos);
+    void hideLinkPreview();
+    void showLinkPreview();
 
     void moveMagnifier(const QPoint p);
     void updateMagnifier(const QPoint p);
