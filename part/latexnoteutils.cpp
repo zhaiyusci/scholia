@@ -8,9 +8,11 @@
 
 #include <KLocalizedString>
 #include <QCryptographicHash>
+#include <QCursor>
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
+#include <QToolTip>
 
 #include "core/annotations.h"
 #include "core/page.h"
@@ -64,18 +66,20 @@ QString latexErrorMessage(GuiUtils::LatexRenderer::Error errorCode, const QStrin
         return i18n("Cannot find pdftocairo executable.");
     case GuiUtils::LatexRenderer::PdfToImageFailed:
         return i18n("A problem occurred during the execution of the 'pdftocairo' command.");
+    case GuiUtils::LatexRenderer::MicrotexFailed:
+        return i18n("MicroTeX fallback failed:\n%1", GuiUtils::LatexRenderer::compactErrorMessage(latexOutput));
     case GuiUtils::LatexRenderer::NoError:
         break;
     }
     return QString();
 }
 
-QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &sourcePreamble)
+QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &sourcePreamble, const QString &backendName)
 {
     const bool fixedWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0;
     const QString widthText = fixedWidth ? QString::number(layoutWidthPoints, 'f', 3) : QStringLiteral("0");
-    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-v1") : QStringLiteral("natural-width-v1");
-    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, sourcePreamble, renderMode);
+    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-v4") : QStringLiteral("natural-width-v3");
+    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5|%6").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, sourcePreamble, renderMode, backendName);
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
@@ -283,7 +287,7 @@ RenderResult renderToCache(const QString &latexInput, const QColor &textColor, i
         return result;
     }
 
-    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, sourcePreamble);
+    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, sourcePreamble, renderer.lastBackendName());
     const QString cachedPdfFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.pdf").arg(noteBaseName));
     if (!temporaryPdfFile.isEmpty() && !QFile::exists(cachedPdfFileName) && !QFile::copy(temporaryPdfFile, cachedPdfFileName)) {
         result.errorMessage = i18n("Could not save the rendered LaTeX note PDF.");
@@ -297,6 +301,37 @@ RenderResult renderToCache(const QString &latexInput, const QColor &textColor, i
 
     result.ok = true;
     result.pdfFileName = cachedPdfFileName;
+    result.warning = renderer.lastWarning();
+    result.warningMessage = warningText(result.warning);
     return result;
+}
+
+QString warningText(const GuiUtils::LatexRenderWarning &warning)
+{
+    return warning.isValid() ? warning.message : QString();
+}
+
+void showRenderWarning(QWidget *parent, const QString &warningMessage)
+{
+    showRenderWarning(parent, warningMessage, QCursor::pos());
+}
+
+void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning)
+{
+    showRenderWarning(parent, warningText(warning));
+}
+
+void showRenderWarning(QWidget *parent, const QString &warningMessage, const QPoint &globalPosition)
+{
+    if (warningMessage.isEmpty()) {
+        return;
+    }
+
+    QToolTip::showText(globalPosition, warningMessage, parent, QRect(), 7000);
+}
+
+void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning, const QPoint &globalPosition)
+{
+    showRenderWarning(parent, warningText(warning), globalPosition);
 }
 }

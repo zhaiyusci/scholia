@@ -17,10 +17,22 @@ class QColor;
 
 namespace GuiUtils
 {
+enum class LatexRenderWarningType { None, ClippingRisk, LooseLayout, BackendLimitation, CompileFallback };
+
+struct LatexRenderWarning {
+    LatexRenderWarningType type = LatexRenderWarningType::None;
+    QString message;
+    double severity = 0.0;
+    bool isValid() const
+    {
+        return type != LatexRenderWarningType::None && !message.isEmpty();
+    }
+};
+
 class LatexRenderer
 {
 public:
-    enum Error { NoError, LatexNotFound, DvipngNotFound, LatexFailed, DvipngFailed, PdfToImageNotFound, PdfToImageFailed };
+    enum Error { NoError, LatexNotFound, DvipngNotFound, LatexFailed, DvipngFailed, PdfToImageNotFound, PdfToImageFailed, MicrotexFailed };
 
     LatexRenderer();
     ~LatexRenderer();
@@ -31,6 +43,9 @@ public:
     Error renderLatexInHtml(QString &html, const QColor &textColor, int fontSize, int resolution, QString &latexOutput);
     Error renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput);
     Error renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth = 0.0, const QString &sourcePreamble = QString());
+    QString lastBackendName() const;
+    LatexRenderWarning lastWarning() const;
+    QString lastWarningMessage() const;
     static bool mightContainLatex(const QString &text);
     static QString defaultSourcePreamble();
     static QString compactErrorMessage(const QString &latexOutput);
@@ -42,6 +57,8 @@ private:
     static bool securityCheck(const QString &latexFormula);
 
     QStringList m_fileList;
+    QString m_lastBackendName;
+    LatexRenderWarning m_lastWarning;
 };
 
 }

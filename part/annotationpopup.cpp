@@ -186,7 +186,7 @@ QColor textColorForLatexStampAnnotation(const Okular::StampAnnotation *annotatio
     return LatexNoteUtils::colorForLatexNote(annotation);
 }
 
-bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QColor &textColor, int fontSize, double maxWidth, QString *pdfFileName)
+bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QColor &textColor, int fontSize, double maxWidth, QString *pdfFileName, GuiUtils::LatexRenderWarning *warning = nullptr)
 {
     const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, textColor, fontSize, maxWidth);
     if (!rendered.ok) {
@@ -195,6 +195,9 @@ bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QC
     }
 
     *pdfFileName = rendered.pdfFileName;
+    if (warning) {
+        *warning = rendered.warning;
+    }
     return true;
 }
 
@@ -213,7 +216,8 @@ bool updateLatexNoteAppearance(QWidget *parent, Okular::Document *document, int 
     const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
     const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
     QString pdfFileName;
-    if (!renderLatexNoteToCache(parent, stampAnnotation->contents(), textColor, latexFontSizeForTextAnnotation(nullptr), layoutWidthPoints, &pdfFileName)) {
+    GuiUtils::LatexRenderWarning warning;
+    if (!renderLatexNoteToCache(parent, stampAnnotation->contents(), textColor, latexFontSizeForTextAnnotation(nullptr), layoutWidthPoints, &pdfFileName, &warning)) {
         return false;
     }
 
@@ -226,6 +230,7 @@ bool updateLatexNoteAppearance(QWidget *parent, Okular::Document *document, int 
     const Okular::NormalizedRect updatedRect = latexStampBoundingRect(stampAnnotation->boundingRectangle(), page, stampSizePoints, visualScale);
     const bool sameLayoutWidth = qAbs(stampAnnotation->latexNoteLayoutWidth() - layoutWidthPoints) < 1e-3;
     const bool sameScale = qAbs(stampAnnotation->latexNoteScale() - visualScale) < 1e-6;
+    LatexNoteUtils::showRenderWarning(parent, warning);
     if (pdfFileName == stampAnnotation->stampIconName() && updatedRect == stampAnnotation->boundingRectangle() && stampAnnotation->style().color() == textColor && sameLayoutWidth && sameScale) {
         return true;
     }
@@ -557,7 +562,8 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
     const double maxWidth = latexMaxWidthForTextAnnotation(textAnnotation, page);
 
     QString pdfFileName;
-    if (!renderLatexNoteToCache(mParent, latexInput, textColor, fontSize, maxWidth, &pdfFileName)) {
+    GuiUtils::LatexRenderWarning warning;
+    if (!renderLatexNoteToCache(mParent, latexInput, textColor, fontSize, maxWidth, &pdfFileName, &warning)) {
         return;
     }
 
@@ -584,6 +590,7 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
 
     mDocument->addPageAnnotation(pair.pageNumber, stampAnnotation);
     mDocument->removePageAnnotation(pair.pageNumber, pair.annotation);
+    LatexNoteUtils::showRenderWarning(mParent, warning);
 }
 
 void AnnotationPopup::doChangeLatexAnnotationColor(AnnotPagePair pair)

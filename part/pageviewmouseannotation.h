@@ -23,6 +23,7 @@
 #include <QObject>
 
 #include "core/annotations.h"
+#include "latexrenderer.h"
 #include "pageviewutils.h"
 
 class QHelpEvent;
@@ -152,6 +153,12 @@ private:
     void updateViewport(const AnnotationDescription &ad) const;
     ResizeHandle getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const;
     QRect getHandleRect(ResizeHandle handle, const AnnotationDescription &ad) const;
+    QRect getLatexWarningMarkerRect(const AnnotationDescription &ad) const;
+    QRect viewportRectForPageRect(const QRect &rect, const AnnotationDescription &ad) const;
+    bool hasLatexRenderWarning(const AnnotationDescription &ad) const;
+    void refreshLatexRenderWarning(const AnnotationDescription &ad);
+    void setLatexRenderWarning(const AnnotationDescription &ad, const GuiUtils::LatexRenderWarning &warning);
+    void clearLatexRenderWarning();
     static void handleToAdjust(const QPointF dIn, QPointF &dOut1, QPointF &dOut2, MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation);
     static QPointF rotateInRect(const QPointF rotated, Okular::Rotation rotation);
     static ResizeHandle rotateHandle(ResizeHandle handle, Okular::Rotation rotation);
@@ -167,10 +174,14 @@ private:
     AnnotationDescription m_focusedAnnotation;
     Okular::NormalizedRect m_originalBoundingRect;
     bool m_hasOriginalBoundingRect;
+    Okular::NormalizedRect m_latexResizeLayoutRect;
+    bool m_hasLatexResizeLayoutRect;
 
     /* Mouse tracking, always kept up to date with the latest mouse position and annotation under mouse cursor. */
     AnnotationDescription m_mouseOverAnnotation;
     QPoint m_mousePosition; // in page view item coordinates
+    Okular::Annotation *m_latexRenderWarningAnnotation;
+    GuiUtils::LatexRenderWarning m_latexRenderWarning;
 
     QList<ResizeHandle> m_resizeHandleList;
 };

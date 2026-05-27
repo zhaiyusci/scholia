@@ -17,6 +17,7 @@
 #include <QMenu>
 #include <QPainter>
 #include <QPen>
+#include <QWidget>
 
 // kde includes
 #include <KActionCollection>
@@ -544,6 +545,7 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote()
         KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return;
     }
+    LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
 
     slotStampToolSelected(rendered.pdfFileName, latexInput);
 }

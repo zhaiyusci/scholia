@@ -37,6 +37,19 @@ Q_GLOBAL_STATIC_WITH_ARGS(QPixmap, busyPixmap, (QIcon::fromTheme(QLatin1String("
 
 #define TEXTANNOTATION_ICONSIZE 24
 
+namespace
+{
+bool isLatexNoteAnnotation(const Okular::Annotation *annotation)
+{
+    if (!annotation || annotation->subType() != Okular::Annotation::AStamp || annotation->contents().trimmed().isEmpty()) {
+        return false;
+    }
+
+    const auto *stamp = static_cast<const Okular::StampAnnotation *>(annotation);
+    return !GuiUtils::latexNotePdfFileForStamp(stamp->stampIconName()).isEmpty();
+}
+}
+
 inline QPen buildPen(const Okular::Annotation *ann, double width, const QColor &color)
 {
     QColor c = color;
@@ -181,7 +194,11 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                     // ExternallyDrawn annots are never rendered by PagePainter.
                     // Just paint the boundingRect if the annot is moved or resized.
                     if (annFlags & (Okular::Annotation::BeingMoved | Okular::Annotation::BeingResized)) {
-                        boundingRectOnlyAnn = ann;
+                        // LaTeX notes draw their interactive layout frame in MouseAnnotation,
+                        // because only that layer knows the in-progress width during a drag.
+                        if (!isLatexNoteAnnotation(ann)) {
+                            boundingRectOnlyAnn = ann;
+                        }
                     }
                     continue;
                 }

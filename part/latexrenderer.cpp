@@ -10,6 +10,8 @@
 #include "latexrenderer.h"
 
 #include <cmath>
+#include <memory>
+#include <mutex>
 
 #include <QDebug>
 
@@ -20,15 +22,281 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QPageLayout>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
 
 #include "gui/debug_ui.h"
+#include "settings.h"
+
+#ifdef OKULAR_ENABLE_MICROTEX
+#include "latex.h"
+#include "platform/qt/graphic_qt.h"
+#include "render.h"
+#endif
 
 namespace GuiUtils
 {
+namespace
+{
+QString executableFromUserSetting()
+{
+    const QString configured = Okular::Settings::latexExecutablePath().trimmed();
+    if (configured.isEmpty()) {
+        return QString();
+    }
+
+    if (configured.contains(QLatin1Char('/')) || QFileInfo(configured).isAbsolute()) {
+        const QFileInfo info(configured);
+        if (info.exists() && info.isFile() && info.isExecutable()) {
+            return info.absoluteFilePath();
+        }
+        qCDebug(OkularUiDebug) << "Configured XeLaTeX executable is not usable:" << configured;
+        return QString();
+    }
+
+    const QString executable = QStandardPaths::findExecutable(configured);
+    if (executable.isEmpty()) {
+        qCDebug(OkularUiDebug) << "Configured XeLaTeX executable was not found in PATH:" << configured;
+    }
+    return executable;
+}
+
+QString sourceLatexExecutable()
+{
+    QString executable = executableFromUserSetting();
+    if (!executable.isEmpty()) {
+        return executable;
+    }
+
+    executable = QStandardPaths::findExecutable(QStringLiteral("xelatex"));
+    if (!executable.isEmpty()) {
+        return executable;
+    }
+
+    return QStandardPaths::findExecutable(QStringLiteral("lualatex"));
+}
+
+QString sourceLatexBackendName(const QString &executable)
+{
+    const QString baseName = QFileInfo(executable).baseName();
+    if (baseName == QLatin1String("lualatex")) {
+        return QStringLiteral("lualatex");
+    }
+    if (baseName == QLatin1String("xelatex")) {
+        return QStringLiteral("xelatex");
+    }
+    return QStringLiteral("custom-xelatex");
+}
+
+#ifdef OKULAR_ENABLE_MICROTEX
+std::mutex microtexMutex;
+bool microtexInitialized = false;
+
+QString microtexResourceRoot()
+{
+    const QString envPath = QString::fromLocal8Bit(qgetenv("OKULAR_MICROTEX_RES")).trimmed();
+    if (!envPath.isEmpty() && QFileInfo(envPath).isDir()) {
+        return envPath;
+    }
+
+    const QString installedPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/microtex/res"), QStandardPaths::LocateDirectory);
+    if (!installedPath.isEmpty()) {
+        return installedPath;
+    }
+
+    const QString buildPath = QStringLiteral(OKULAR_MICROTEX_RES_DIR);
+    if (!buildPath.isEmpty() && QFileInfo(buildPath).isDir()) {
+        return buildPath;
+    }
+
+    return QString();
+}
+
+tex::color microtexColor(const QColor &color)
+{
+    const QColor effectiveColor = color.isValid() ? color : Qt::black;
+    return effectiveColor.rgba();
+}
+
+LatexRenderWarning microtexOverflowWarning(int renderedWidth, int availableWidth)
+{
+    LatexRenderWarning warning;
+    warning.type = LatexRenderWarningType::ClippingRisk;
+    warning.severity = renderedWidth - availableWidth;
+    warning.message = i18n("LaTeX output is wider than the layout width. The note is shown fully; the blue width handle marks the requested layout width. Rendered width is %1 pt, layout width is %2 pt.",
+                           renderedWidth,
+                           availableWidth);
+    return warning;
+}
+
+LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
+{
+    std::lock_guard<std::mutex> guard(microtexMutex);
+
+    try {
+        if (!microtexInitialized) {
+            const QString resRoot = microtexResourceRoot();
+            if (resRoot.isEmpty()) {
+                latexOutput = QStringLiteral("MicroTeX resource directory was not found.");
+                return LatexRenderer::MicrotexFailed;
+            }
+            tex::LaTeX::init(resRoot.toStdString());
+            microtexInitialized = true;
+        }
+
+        const bool fixedWidth = std::isfinite(maxWidth) && maxWidth > 0.0;
+        const int requestedWidth = fixedWidth ? qMax(1, static_cast<int>(std::ceil(maxWidth))) : 0;
+        const int padding = qMax(2, static_cast<int>(std::ceil(fontSize * 0.2)));
+        const int horizontalPadding = fixedWidth ? 0 : padding;
+        const int layoutWidth = fixedWidth ? requestedWidth : 10000;
+        std::unique_ptr<tex::TeXRender> render(tex::LaTeX::parse(latexSource.toStdWString(), layoutWidth, fontSize, fontSize / 3.0f, microtexColor(textColor)));
+        if (!render) {
+            latexOutput = QStringLiteral("MicroTeX did not return a render object.");
+            return LatexRenderer::MicrotexFailed;
+        }
+
+        const int width = fixedWidth ? qMax(requestedWidth, render->getWidth()) : qMax(1, render->getWidth() + 2 * horizontalPadding);
+        const int height = qMax(1, render->getHeight() + 2 * padding);
+
+        QTemporaryFile tempFile(QDir::tempPath() + QLatin1String("/okular_microtex-XXXXXX.pdf"));
+        tempFile.setAutoRemove(false);
+        if (!tempFile.open()) {
+            latexOutput = QStringLiteral("Could not create a temporary PDF file for MicroTeX output.");
+            return LatexRenderer::MicrotexFailed;
+        }
+        const QString tempFileName = tempFile.fileName();
+        tempFile.close();
+
+        QPdfWriter writer(tempFileName);
+        writer.setCreator(QStringLiteral("Okular MicroTeX"));
+        writer.setResolution(72);
+        writer.setPageSize(QPageSize(QSizeF(width, height), QPageSize::Point));
+        writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout::Point);
+
+        QPainter painter(&writer);
+        if (!painter.isActive()) {
+            QFile::remove(tempFileName);
+            latexOutput = QStringLiteral("Could not paint MicroTeX output into a PDF file.");
+            return LatexRenderer::MicrotexFailed;
+        }
+
+        tex::Graphics2D_qt graphics(&painter);
+        render->draw(graphics, horizontalPadding, padding);
+        painter.end();
+
+        if (!QFileInfo::exists(tempFileName) || QFileInfo(tempFileName).size() <= 0) {
+            QFile::remove(tempFileName);
+            latexOutput = QStringLiteral("MicroTeX produced an empty PDF file.");
+            return LatexRenderer::MicrotexFailed;
+        }
+
+        pdfFileName = tempFileName;
+        fileList << tempFileName;
+        QStringList outputLines;
+        outputLines << QStringLiteral("Rendered with MicroTeX fallback. LaTeX preamble and external packages are not supported by MicroTeX.");
+        if (fixedWidth) {
+            const int availableWidth = requestedWidth;
+            if (render->getWidth() > availableWidth) {
+                const LatexRenderWarning overflowWarning = microtexOverflowWarning(render->getWidth(), availableWidth);
+                if (warning) {
+                    *warning = overflowWarning;
+                }
+                outputLines << overflowWarning.message;
+            }
+        }
+        latexOutput = outputLines.join(QLatin1Char('\n'));
+        return LatexRenderer::NoError;
+    } catch (const std::exception &e) {
+        latexOutput = QStringLiteral("MicroTeX fallback failed: %1").arg(QString::fromLocal8Bit(e.what()));
+        return LatexRenderer::MicrotexFailed;
+    } catch (...) {
+        latexOutput = QStringLiteral("MicroTeX fallback failed with an unknown error.");
+        return LatexRenderer::MicrotexFailed;
+    }
+}
+#endif
+
+QString compactWarningLine(const QString &line)
+{
+    QString message = line.simplified();
+    constexpr int maxLength = 180;
+    if (message.size() > maxLength) {
+        message = message.left(maxLength - 3) + QStringLiteral("...");
+    }
+    return message;
+}
+
+LatexRenderWarning latexWarningMessage(const QString &latexOutput)
+{
+    static const QRegularExpression overfullRegex(QStringLiteral("^Overfull \\\\([hv])box \\(([0-9]+(?:\\.[0-9]+)?)pt too (?:wide|high)\\)"));
+    static const QRegularExpression underfullRegex(QStringLiteral("^Underfull \\\\([hv])box .*badness ([0-9]+)"));
+    constexpr double overfullThresholdPt = 0.5;
+    constexpr int underfullThresholdBadness = 1000;
+
+    const QStringList lines = latexOutput.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const QString trimmed = line.trimmed();
+        const QRegularExpressionMatch overfullMatch = overfullRegex.match(trimmed);
+        if (overfullMatch.hasMatch()) {
+            const double overfullPoints = overfullMatch.captured(2).toDouble();
+            if (overfullPoints <= overfullThresholdPt) {
+                continue;
+            }
+
+            LatexRenderWarning warning;
+            warning.type = LatexRenderWarningType::ClippingRisk;
+            warning.severity = overfullPoints;
+            warning.message = i18n("LaTeX output is wider than the layout width. The note is shown fully; the blue width handle marks the requested layout width:\n%1", compactWarningLine(trimmed));
+            return warning;
+        }
+
+        const QRegularExpressionMatch underfullMatch = underfullRegex.match(trimmed);
+        if (underfullMatch.hasMatch()) {
+            const int badness = underfullMatch.captured(2).toInt();
+            if (badness < underfullThresholdBadness) {
+                continue;
+            }
+
+            LatexRenderWarning warning;
+            warning.type = LatexRenderWarningType::LooseLayout;
+            warning.severity = badness;
+            warning.message = i18n("LaTeX produced a loose layout:\n%1", compactWarningLine(trimmed));
+            return warning;
+        }
+    }
+
+    return {};
+}
+
+double maxHorizontalOverflowPoints(const QString &latexOutput)
+{
+    static const QRegularExpression overfullHBoxRegex(QStringLiteral("^Overfull \\\\hbox \\(([0-9]+(?:\\.[0-9]+)?)pt too wide\\)"));
+    constexpr double overfullThresholdPt = 0.5;
+
+    double maxOverflow = 0.0;
+    const QStringList lines = latexOutput.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        const QRegularExpressionMatch match = overfullHBoxRegex.match(line.trimmed());
+        if (!match.hasMatch()) {
+            continue;
+        }
+
+        const double overflow = match.captured(1).toDouble();
+        if (overflow > maxOverflow) {
+            maxOverflow = overflow;
+        }
+    }
+
+    return maxOverflow > overfullThresholdPt ? maxOverflow : 0.0;
+}
+}
+
 LatexRenderer::LatexRenderer()
 {
 }
@@ -40,8 +308,26 @@ LatexRenderer::~LatexRenderer()
     }
 }
 
+QString LatexRenderer::lastBackendName() const
+{
+    return m_lastBackendName;
+}
+
+LatexRenderWarning LatexRenderer::lastWarning() const
+{
+    return m_lastWarning;
+}
+
+QString LatexRenderer::lastWarningMessage() const
+{
+    return m_lastWarning.message;
+}
+
 LatexRenderer::Error LatexRenderer::renderLatexInHtml(QString &html, const QColor &textColor, int fontSize, int resolution, QString &latexOutput)
 {
+    m_lastBackendName.clear();
+    m_lastWarning = {};
+
     if (!html.contains(QStringLiteral("$$"))) {
         return NoError;
     }
@@ -168,6 +454,9 @@ QString LatexRenderer::compactErrorMessage(const QString &latexOutput)
 
 LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput)
 {
+    m_lastBackendName.clear();
+    m_lastWarning = {};
+
     QString formula = latexFormula.trimmed();
     if (formula.isEmpty()) {
         fileName.clear();
@@ -184,6 +473,9 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
 
 LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble)
 {
+    m_lastBackendName.clear();
+    m_lastWarning = {};
+
     QString formula = latexFormula.trimmed();
     if (formula.isEmpty()) {
         pdfFileName.clear();
@@ -201,13 +493,12 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
 
 LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth, const QString &sourcePreamble)
 {
-    KProcess latexProc;
     KProcess dvipngProc;
     KProcess pdfToImageProc;
     const bool renderSource = bodyMode == BodyMode::Source;
     const bool constrainSourceWidth = renderSource && std::isfinite(maxWidth) && maxWidth > 0.0;
     const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
-    const QString sourceVarWidth = constrainSourceWidth ? QStringLiteral("varwidth=%1").arg(sourceWidth) : QStringLiteral("varwidth");
+    const QString sourceVarWidth = QStringLiteral("varwidth");
     const QString effectiveSourcePreamble = sourcePreamble.isNull() ? defaultSourcePreamble() : sourcePreamble;
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
@@ -220,69 +511,100 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     QString tempFileNameNS = tempFileInfo->absolutePath() + QLatin1Char('/') + tempFileInfo->baseName();
     QString tempFilePath = tempFileInfo->absolutePath();
     delete tempFileInfo;
-    QTextStream tempStream(tempFile);
+    tempFile->close();
 
-    if (renderSource) {
-        tempStream << "\
-\\documentclass["
-                   << fontSize << "pt," << sourceVarWidth << ",border=0pt]{standalone}\n"
-                   << effectiveSourcePreamble << "\n"
-                   << "\\pagestyle{empty}\n"
-                      "\\begin{document}\n"
-                      "{\\color[rgb]{"
-                   << textColor.redF()
-                   << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
-        if (constrainSourceWidth) {
-            tempStream << "\\noindent\\begin{minipage}[t]{" << sourceWidth << "}%\n";
-        } else {
-            tempStream << "\\noindent ";
+    auto writeLatexSource = [&](double extraRightWidthPoints) -> bool {
+        QFile sourceFile(tempFileName);
+        if (!sourceFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+            return false;
         }
-    } else {
-        tempStream << "\
+
+        QTextStream tempStream(&sourceFile);
+        if (renderSource) {
+            tempStream << "\
 \\documentclass["
-                   << fontSize << "pt]{article} \
+                       << fontSize << "pt," << sourceVarWidth << ",border=0pt]{standalone}\n"
+                       << effectiveSourcePreamble << "\n"
+                       << "\\pagestyle{empty}\n"
+                          "\\begin{document}\n"
+                          "{\\color[rgb]{"
+                       << textColor.redF()
+                       << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
+            if (constrainSourceWidth) {
+                tempStream << "\\noindent\\begin{minipage}[t]{" << sourceWidth << "}%\n";
+            } else {
+                tempStream << "\\noindent ";
+            }
+        } else {
+            tempStream << "\
+\\documentclass["
+                       << fontSize << "pt]{article} \
 \\usepackage{color} \
 \\usepackage{amsmath,latexsym,amsfonts,amssymb,ulem} \
 \\pagestyle{empty} \
 \\begin{document} \
 {\\color[rgb]{" << textColor.redF()
-                   << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
-    }
-    if (!renderSource) {
-        tempStream << "\
+                       << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
+        }
+        if (!renderSource) {
+            tempStream << "\
 \\begin{eqnarray*} \
 " << latexSource
-                   << " \
+                       << " \
 \\end{eqnarray*}";
-    } else {
-        tempStream << latexSource;
-        if (constrainSourceWidth) {
-            tempStream << "\n\\end{minipage}";
+        } else {
+            tempStream << latexSource;
+            if (constrainSourceWidth) {
+                tempStream << "\n\\end{minipage}%\n";
+                if (std::isfinite(extraRightWidthPoints) && extraRightWidthPoints > 0.0) {
+                    tempStream << "\\hspace*{" << QString::number(extraRightWidthPoints, 'f', 3) << "bp}%\n";
+                }
+            }
         }
-    }
-    tempStream << "} \
+        tempStream << "} \
 \\end{document}";
+        return true;
+    };
 
-    tempFile->close();
-    QString latexExecutable;
-    if (renderSource) {
-        latexExecutable = QStandardPaths::findExecutable(QStringLiteral("xelatex"));
-        if (latexExecutable.isEmpty()) {
-            latexExecutable = QStandardPaths::findExecutable(QStringLiteral("lualatex"));
-        }
-    } else {
-        latexExecutable = QStandardPaths::findExecutable(QStringLiteral("latex"));
+    if (!writeLatexSource(0.0)) {
+        delete tempFile;
+        return LatexNotFound;
     }
+
+    QString latexExecutable = renderSource ? sourceLatexExecutable() : QStandardPaths::findExecutable(QStringLiteral("latex"));
     if (latexExecutable.isEmpty()) {
         qCDebug(OkularUiDebug) << "Could not find latex!";
         delete tempFile;
         fileName = QString();
+#ifdef OKULAR_ENABLE_MICROTEX
+        if (renderSource && pdfFileName && resolution <= 0) {
+            Error fallbackError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
+            if (fallbackError == NoError) {
+                m_lastBackendName = QStringLiteral("microtex");
+            }
+            return fallbackError;
+        }
+#endif
         return LatexNotFound;
     }
-    latexProc << latexExecutable << QStringLiteral("-interaction=nonstopmode") << QStringLiteral("-halt-on-error") << QStringLiteral("-output-directory=%1").arg(tempFilePath) << tempFile->fileName();
-    latexProc.setOutputChannelMode(KProcess::MergedChannels);
-    latexProc.execute();
-    latexOutput = QString::fromLocal8Bit(latexProc.readAll());
+    m_lastBackendName = renderSource ? sourceLatexBackendName(latexExecutable) : QStringLiteral("latex");
+    auto runLatex = [&]() -> QString {
+        KProcess latexProc;
+        latexProc << latexExecutable << QStringLiteral("-interaction=nonstopmode") << QStringLiteral("-halt-on-error") << QStringLiteral("-output-directory=%1").arg(tempFilePath) << tempFileName;
+        latexProc.setOutputChannelMode(KProcess::MergedChannels);
+        latexProc.execute();
+        return QString::fromLocal8Bit(latexProc.readAll());
+    };
+
+    latexOutput = runLatex();
+    m_lastWarning = latexWarningMessage(latexOutput);
+    if (renderSource && pdfFileName && resolution <= 0 && constrainSourceWidth) {
+        const double overflowPoints = maxHorizontalOverflowPoints(latexOutput);
+        if (overflowPoints > 0.0 && writeLatexSource(overflowPoints + 1.0)) {
+            latexOutput = runLatex();
+            m_lastWarning = latexWarningMessage(latexOutput);
+        }
+    }
     tempFile->remove();
 
     QFile::remove(tempFileNameNS + QStringLiteral(".log"));

@@ -616,6 +616,7 @@ void AnnotWindow::updateLatexNoteAppearance()
         qWarning() << "LaTeX note auto-update failed:" << rendered.errorMessage;
         return;
     }
+    LatexNoteUtils::showRenderWarning(this, rendered.warning);
     const QSizeF stampSizePoints = GuiUtils::pdfPageSizeInPoints(rendered.pdfFileName);
     if (!stampSizePoints.isValid() || stampSizePoints.isEmpty()) {
         qWarning() << "Could not read updated LaTeX note PDF size";

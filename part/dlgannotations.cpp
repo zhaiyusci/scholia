@@ -75,6 +75,11 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     latexTextAnnotationFontSize->setSuffix(i18nc("@item:spinbox Config dialog, annotations page, font size unit", " pt"));
     layout->addRow(i18nc("@label:spinbox Config dialog, annotations page", "Converted text font size:"), latexTextAnnotationFontSize);
 
+    QLineEdit *latexExecutablePath = new QLineEdit(this);
+    latexExecutablePath->setObjectName(QStringLiteral("kcfg_LatexExecutablePath"));
+    latexExecutablePath->setPlaceholderText(i18nc("@info:placeholder Config dialog, annotations page", "Leave empty to search PATH"));
+    layout->addRow(i18nc("@label:textbox Config dialog, annotations page", "XeLaTeX executable:"), latexExecutablePath);
+
     QPlainTextEdit *latexPreamble = new QPlainTextEdit(this);
     latexPreamble->setObjectName(QStringLiteral("kcfg_LatexPreamble"));
     latexPreamble->setMinimumHeight(latexPreamble->fontMetrics().lineSpacing() * 7);

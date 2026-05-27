@@ -180,6 +180,9 @@
    <min>1</min>
    <max>72</max>
   </entry>
+  <entry key="LatexExecutablePath" type="String">
+   <default>QString()</default>
+  </entry>
   <entry key="LatexPreamble" type="String">
    <default code="true">QStringLiteral("\\usepackage{xcolor}\n\\usepackage{amsmath,mathtools,latexsym}\n\\usepackage[version=4]{mhchem}\n\\usepackage{physics}\n\\usepackage{unicode-math}")</default>
   </entry>

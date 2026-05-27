@@ -6,10 +6,14 @@
 #define OKULAR_LATEXNOTEUTILS_H
 
 #include <QColor>
+#include <QPoint>
 #include <QSizeF>
 #include <QString>
 
+class QWidget;
+
 #include "core/area.h"
+#include "latexrenderer.h"
 
 namespace Okular
 {
@@ -24,6 +28,8 @@ struct RenderResult {
     bool ok = false;
     QString pdfFileName;
     QString errorMessage;
+    QString warningMessage;
+    GuiUtils::LatexRenderWarning warning;
 };
 
 Okular::StampAnnotation *annotationAsLatexNote(Okular::Annotation *annotation);
@@ -44,6 +50,11 @@ double scaleForLatexNote(const Okular::StampAnnotation *annotation, const Okular
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale = 1.0);
 
 RenderResult renderToCache(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints);
+QString warningText(const GuiUtils::LatexRenderWarning &warning);
+void showRenderWarning(QWidget *parent, const QString &warningMessage);
+void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning);
+void showRenderWarning(QWidget *parent, const QString &warningMessage, const QPoint &globalPosition);
+void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning, const QPoint &globalPosition);
 }
 
 #endif
