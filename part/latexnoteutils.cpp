@@ -163,9 +163,33 @@ double pageWidthInPoints(const Okular::Page *page)
     return pageSizeInPoints(page).width();
 }
 
+double pageHeightInPoints(const Okular::Page *page)
+{
+    return pageSizeInPoints(page).height();
+}
+
+double rectHeightInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page)
+{
+    const double pageHeight = pageHeightInPoints(page);
+    if (pageHeight <= 0.0 || !std::isfinite(rect.height()) || rect.height() <= 0.0) {
+        return 0.0;
+    }
+
+    return qMax(1.0, rect.height() * pageHeight);
+}
+
 double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page)
 {
     return annotation ? rectWidthInPoints(annotation->boundingRectangle(), page) : 0.0;
+}
+
+double layoutWidthForVisibleWidth(double visibleWidthPoints, double scale)
+{
+    if (!std::isfinite(visibleWidthPoints) || visibleWidthPoints <= 0.0 || !std::isfinite(scale) || scale <= 0.0) {
+        return 0.0;
+    }
+
+    return visibleWidthPoints / scale;
 }
 
 double layoutWidthForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page)
@@ -194,9 +218,16 @@ double scaleForLatexNote(const Okular::StampAnnotation *annotation, const Okular
         return storedScale;
     }
 
-    const double visibleWidth = annotationWidthInPoints(annotation, page);
-    if (pdfSizePoints.isValid() && pdfSizePoints.width() > 0.0 && std::isfinite(visibleWidth) && visibleWidth > 0.0) {
-        return qMax(0.01, visibleWidth / pdfSizePoints.width());
+    if (page && pdfSizePoints.isValid() && !pdfSizePoints.isEmpty()) {
+        const double visibleHeight = rectHeightInPoints(annotation->boundingRectangle(), page);
+        if (pdfSizePoints.height() > 0.0 && std::isfinite(visibleHeight) && visibleHeight > 0.0) {
+            return qMax(0.01, visibleHeight / pdfSizePoints.height());
+        }
+
+        const double visibleWidth = annotationWidthInPoints(annotation, page);
+        if (pdfSizePoints.width() > 0.0 && std::isfinite(visibleWidth) && visibleWidth > 0.0) {
+            return qMax(0.01, visibleWidth / pdfSizePoints.width());
+        }
     }
 
     return 1.0;

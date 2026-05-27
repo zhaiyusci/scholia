@@ -148,11 +148,7 @@ double latexMaxWidthForTextAnnotation(const Okular::TextAnnotation *annotation, 
     }
 
     const Okular::NormalizedRect rect = annotation->boundingRectangle();
-    if (!std::isfinite(rect.width()) || rect.width() <= 0.0 || page->width() <= 0.0) {
-        return 0.0;
-    }
-
-    return qMax(1.0, rect.width() * page->width());
+    return LatexNoteUtils::rectWidthInPoints(rect, page);
 }
 
 int textFontSizeForLatexStampAnnotation(const Okular::StampAnnotation *)
@@ -639,12 +635,17 @@ void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
 
     const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
     const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
+    const double visibleWidthPoints = LatexNoteUtils::pageWidthInPoints(page) * selectedPercent / 100.0;
+    const double layoutWidthPoints = LatexNoteUtils::layoutWidthForVisibleWidth(visibleWidthPoints, visualScale);
+    if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
+        return;
+    }
     updateLatexNoteAppearance(mParent,
                               mDocument,
                               pair.pageNumber,
                               stampAnnotation,
                               textColorForLatexStampAnnotation(stampAnnotation),
-                              LatexNoteUtils::pageWidthInPoints(page) * selectedPercent / 100.0 / visualScale);
+                              layoutWidthPoints);
 }
 
 void AnnotationPopup::doFitLatexAnnotationToContent(AnnotPagePair pair)

@@ -11,6 +11,8 @@
 #include "annots.h"
 
 // qt/kde includes
+#include <cmath>
+
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
@@ -438,6 +440,16 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::HighlightA
 static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page)
 {
     pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_NOTE_METADATA
+    const double scale = oStampAnnotation->latexNoteScale();
+    if (std::isfinite(scale) && scale > 0.0) {
+        pStampAnnotation->setOkularLatexNoteScale(scale);
+    }
+    const double layoutWidth = oStampAnnotation->latexNoteLayoutWidth();
+    if (std::isfinite(layoutWidth) && layoutWidth >= 0.0) {
+        pStampAnnotation->setOkularLatexNoteLayoutWidth(layoutWidth);
+    }
+#endif
     return setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
 }
 
@@ -1148,6 +1160,10 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
     Okular::StampAnnotation *oStampAnn = new Okular::StampAnnotation();
 
     oStampAnn->setStampIconName(popplerAnnotation->stampIconName());
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_NOTE_METADATA
+    oStampAnn->setLatexNoteScale(popplerAnnotation->okularLatexNoteScale());
+    oStampAnn->setLatexNoteLayoutWidth(popplerAnnotation->okularLatexNoteLayoutWidth());
+#endif
 
     return oStampAnn;
 }

@@ -13,6 +13,7 @@
 
 #include <QColor>
 #include <QFrame>
+#include <QString>
 
 namespace Okular
 {
@@ -59,6 +60,7 @@ private:
     int m_page;
     int m_prevCursorPos;
     int m_prevAnchorPos;
+    QString m_lastLatexNoteCompileSource;
 
     void updateLatexNoteAppearance();
 

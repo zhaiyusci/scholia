@@ -173,7 +173,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document, int pageNumbe
     if (isLatexNoteWidthHandle(rotatedHandle)) {
         const double visualScale = LatexNoteUtils::scaleForLatexNote(stamp, page, currentPdfSize);
         const double visibleWidthPoints = LatexNoteUtils::rectWidthInPoints(resizedRect, page);
-        const double layoutWidthPoints = visibleWidthPoints / visualScale;
+        const double layoutWidthPoints = LatexNoteUtils::layoutWidthForVisibleWidth(visibleWidthPoints, visualScale);
         if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
             return false;
         }
@@ -208,7 +208,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document, int pageNumbe
 
     double visualScale = 1.0;
     const double visibleWidthPoints = LatexNoteUtils::rectWidthInPoints(resizedRect, page);
-    const double visibleHeightPoints = page && page->height() > 0.0 ? resizedRect.height() * page->height() : 0.0;
+    const double visibleHeightPoints = LatexNoteUtils::rectHeightInPoints(resizedRect, page);
     if (rotatedHandle & (MouseAnnotation::RH_Top | MouseAnnotation::RH_Bottom)) {
         visualScale = visibleHeightPoints / currentPdfSize.height();
     } else {

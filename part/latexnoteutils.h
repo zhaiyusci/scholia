@@ -34,8 +34,11 @@ int latexFontSize();
 int convertedTextFontSize();
 
 double pageWidthInPoints(const Okular::Page *page);
+double pageHeightInPoints(const Okular::Page *page);
 double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
+double rectHeightInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page);
 double annotationWidthInPoints(const Okular::Annotation *annotation, const Okular::Page *page);
+double layoutWidthForVisibleWidth(double visibleWidthPoints, double scale);
 double layoutWidthForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page);
 double scaleForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page, const QSizeF &pdfSizePoints);
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale = 1.0);

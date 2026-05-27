@@ -335,6 +335,7 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     textEdit = new KTextEdit(this);
     textEdit->setAcceptRichText(false);
     textEdit->setPlainText(m_annot->contents());
+    m_lastLatexNoteCompileSource = m_annot->contents();
     textEdit->installEventFilter(this);
     textEdit->setUndoRedoEnabled(false);
 
@@ -407,6 +408,9 @@ Okular::Annotation *AnnotWindow::annotation() const
 void AnnotWindow::updateAnnotation(Okular::Annotation *a)
 {
     m_annot = a;
+    if (latexStampAnnotation(m_annot)) {
+        m_lastLatexNoteCompileSource = m_annot->contents();
+    }
 }
 
 void AnnotWindow::reloadInfo()
@@ -596,10 +600,16 @@ void AnnotWindow::updateLatexNoteAppearance()
         return;
     }
 
+    const QString latexSource = stampAnnotation->contents();
+    if (latexSource == m_lastLatexNoteCompileSource) {
+        return;
+    }
+    m_lastLatexNoteCompileSource = latexSource;
+
     const Okular::Page *page = m_document->page(m_page);
     const QColor textColor = LatexNoteUtils::colorForLatexNote(stampAnnotation);
     const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
-    const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
+    const double preservedScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
     const double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexNote(stampAnnotation, page);
     const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stampAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
     if (!rendered.ok) {
@@ -611,9 +621,9 @@ void AnnotWindow::updateLatexNoteAppearance()
         qWarning() << "Could not read updated LaTeX note PDF size";
         return;
     }
-    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForPdf(stampAnnotation->boundingRectangle(), page, stampSizePoints, visualScale);
+    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForPdf(stampAnnotation->boundingRectangle(), page, stampSizePoints, preservedScale);
     const bool sameLayoutWidth = qAbs(stampAnnotation->latexNoteLayoutWidth() - layoutWidthPoints) < 1e-3;
-    const bool sameScale = qAbs(stampAnnotation->latexNoteScale() - visualScale) < 1e-6;
+    const bool sameScale = qAbs(stampAnnotation->latexNoteScale() - preservedScale) < 1e-6;
     if (rendered.pdfFileName == stampAnnotation->stampIconName() && updatedRect == stampAnnotation->boundingRectangle() && sameLayoutWidth && sameScale) {
         return;
     }
@@ -621,7 +631,7 @@ void AnnotWindow::updateLatexNoteAppearance()
     m_document->prepareToModifyAnnotationProperties(stampAnnotation);
     stampAnnotation->setStampIconName(rendered.pdfFileName);
     stampAnnotation->setLatexNoteLayoutWidth(layoutWidthPoints);
-    stampAnnotation->setLatexNoteScale(visualScale);
+    stampAnnotation->setLatexNoteScale(preservedScale);
     stampAnnotation->setBoundingRectangle(updatedRect);
     stampAnnotation->setModificationDate(QDateTime::currentDateTime());
     m_document->modifyPageAnnotationProperties(m_page, stampAnnotation);
