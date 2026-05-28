@@ -251,6 +251,7 @@ protected:
         painter.fillRect(headerRect(), base.darker(105));
         painter.setPen(text);
         painter.drawText(headerTextRect(), Qt::AlignVCenter | Qt::AlignLeft, i18nc("@label Link preview page number", "Page %1", m_viewport.pageNumber + 1));
+        drawButton(&painter, goButtonRect(), i18nc("@action:button Go to the current link preview position", "Go to Preview"));
         drawButton(&painter, zoomOutButtonRect(), QStringLiteral("-"));
         drawButton(&painter, resetZoomButtonRect(), QString::number(qRound(m_zoomFactor * 100)) + QLatin1Char('%'));
         drawButton(&painter, zoomInButtonRect(), QStringLiteral("+"));
@@ -314,6 +315,11 @@ protected:
             event->accept();
             return;
         }
+        if (goButtonRect().contains(event->pos())) {
+            m_document->setViewport(currentCenterViewport(), nullptr, true);
+            event->accept();
+            return;
+        }
         const int resizeEdges = resizeEdgesAt(event->pos());
         if (resizeEdges != ResizeNone) {
             m_resizing = true;
@@ -330,6 +336,15 @@ protected:
             event->accept();
             return;
         }
+        if (pageRect().contains(event->pos())) {
+            m_panning = true;
+            m_panPressPos = event->pos();
+            m_panStartCenterX = m_centerX;
+            m_panStartCenterY = m_centerY;
+            setCursor(Qt::ClosedHandCursor);
+            event->accept();
+            return;
+        }
 
         event->accept();
     }
@@ -343,6 +358,12 @@ protected:
             return;
         }
 
+        if (m_panning) {
+            panPreviewByPixels(event->pos() - m_panPressPos);
+            event->accept();
+            return;
+        }
+
         if (m_resizing) {
             const QPoint delta = event->globalPosition().toPoint() - m_pressGlobalPos;
             resizeFromEdges(delta);
@@ -350,15 +371,23 @@ protected:
             return;
         }
 
-        setCursor(cursorForResizeEdges(resizeEdgesAt(event->pos())));
+        const int resizeEdges = resizeEdgesAt(event->pos());
+        if (resizeEdges != ResizeNone) {
+            setCursor(cursorForResizeEdges(resizeEdges));
+        } else if (pageRect().contains(event->pos())) {
+            setCursor(Qt::OpenHandCursor);
+        } else {
+            unsetCursor();
+        }
         event->accept();
     }
 
     void mouseReleaseEvent(QMouseEvent *event) override
     {
-        if (m_dragging || m_resizing) {
+        if (m_dragging || m_resizing || m_panning) {
             m_dragging = false;
             m_resizing = false;
+            m_panning = false;
             m_resizeEdges = ResizeNone;
             unsetCursor();
             event->accept();
@@ -399,9 +428,10 @@ private:
         const int maxHeight = qMax(1, parentSize.height() - 16);
         const int minWidth = qMin(320, maxWidth);
         const int minHeight = qMin(220, maxHeight);
-        const int pageWidth = qRound((m_pageCrop.right - m_pageCrop.left) * m_scaledWidth);
-        const int width = qBound(minWidth, qMax(1, pageWidth), maxWidth);
-        const int height = qBound(minHeight, qMax(1, parentSize.height() * 2 / 3), maxHeight);
+        const int widthPercent = qBound(20, static_cast<int>(Okular::Settings::linkPreviewDefaultWidthPercent()), 100);
+        const int heightPercent = qBound(20, static_cast<int>(Okular::Settings::linkPreviewDefaultHeightPercent()), 100);
+        const int width = qBound(minWidth, qMax(1, qRound(maxWidth * widthPercent / 100.0)), maxWidth);
+        const int height = qBound(minHeight, qMax(1, qRound(maxHeight * heightPercent / 100.0)), maxHeight);
         return QSize(width, height);
     }
 
@@ -412,7 +442,7 @@ private:
 
     QRect headerTextRect() const
     {
-        return headerRect().adjusted(10, 0, -150, 0);
+        return headerRect().adjusted(10, 0, -260, 0);
     }
 
     QRect pageRect() const
@@ -439,6 +469,11 @@ private:
     QRect zoomOutButtonRect() const
     {
         return resetZoomButtonRect().translated(-30, 0).adjusted(0, 0, -26, 0);
+    }
+
+    QRect goButtonRect() const
+    {
+        return QRect(zoomOutButtonRect().left() - 112, 4, 106, 24);
     }
 
     QRect resizeGripRect() const
@@ -637,6 +672,22 @@ private:
         update();
     }
 
+    void panPreviewByPixels(const QPoint &delta)
+    {
+        const Okular::Page *page = m_document->page(m_viewport.pageNumber);
+        if (!page) {
+            return;
+        }
+
+        m_centerX = m_panStartCenterX - delta.x() / qMax(1.0, static_cast<double>(renderedWidth()));
+        m_centerY = m_panStartCenterY - delta.y() / qMax(1.0, static_cast<double>(renderedHeight()));
+
+        const Okular::NormalizedRect crop = previewCrop(page);
+        clampPreviewCenter(crop.right - crop.left, crop.bottom - crop.top);
+        requestPixmap();
+        update();
+    }
+
     void clampPreviewCenter(double cropWidth, double cropHeight)
     {
         const double pageCropWidth = qBound(0.0, m_pageCrop.right - m_pageCrop.left, 1.0);
@@ -645,6 +696,16 @@ private:
         cropHeight = qBound(0.0, cropHeight, pageCropHeight);
         m_centerX = qBound(m_pageCrop.left + cropWidth / 2.0, m_centerX, m_pageCrop.right - cropWidth / 2.0);
         m_centerY = qBound(m_pageCrop.top + cropHeight / 2.0, m_centerY, m_pageCrop.bottom - cropHeight / 2.0);
+    }
+
+    Okular::DocumentViewport currentCenterViewport() const
+    {
+        Okular::DocumentViewport viewport(m_viewport.pageNumber);
+        viewport.rePos.enabled = true;
+        viewport.rePos.normalizedX = qBound(m_pageCrop.left, m_centerX, m_pageCrop.right);
+        viewport.rePos.normalizedY = qBound(m_pageCrop.top, m_centerY, m_pageCrop.bottom);
+        viewport.rePos.pos = Okular::DocumentViewport::Center;
+        return viewport;
     }
 
     void drawButton(QPainter *painter, const QRect &buttonRect, const QString &text) const
@@ -740,9 +801,13 @@ private:
     double m_centerY = 0.0;
     bool m_dragging = false;
     bool m_resizing = false;
+    bool m_panning = false;
     int m_resizeEdges = ResizeNone;
     QPoint m_pressGlobalPos;
+    QPoint m_panPressPos;
     QRect m_startGeometry;
+    double m_panStartCenterX = 0.5;
+    double m_panStartCenterY = 0.0;
     static constexpr int ResizeMargin = 8;
 };
 
