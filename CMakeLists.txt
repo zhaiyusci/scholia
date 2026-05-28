@@ -106,10 +106,20 @@ option(OKULAR_ENABLE_MICROTEX "Enable MicroTeX fallback rendering for LaTeX note
 set(MICROTEX_SRC "" CACHE PATH "Path to the MicroTeX source tree")
 if(OKULAR_ENABLE_MICROTEX)
     if(NOT MICROTEX_SRC)
-        set(_okular_default_microtex_src "${CMAKE_CURRENT_SOURCE_DIR}/../../veusz_latex/veusz/third_party/MicroTeX")
-        if(EXISTS "${_okular_default_microtex_src}/CMakeLists.txt")
-            set(MICROTEX_SRC "${_okular_default_microtex_src}" CACHE PATH "Path to the MicroTeX source tree" FORCE)
+        set(_okular_default_microtex_sources
+            "${CMAKE_CURRENT_SOURCE_DIR}/external/MicroTeX"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../veusz_latex/veusz/third_party/MicroTeX"
+        )
+        foreach(_okular_default_microtex_src IN LISTS _okular_default_microtex_sources)
+            if(EXISTS "${_okular_default_microtex_src}/CMakeLists.txt")
+                set(MICROTEX_SRC "${_okular_default_microtex_src}" CACHE PATH "Path to the MicroTeX source tree" FORCE)
+                break()
+            endif()
+        endforeach()
+        if(MICROTEX_SRC)
+            unset(_okular_default_microtex_src)
         endif()
+        unset(_okular_default_microtex_sources)
     endif()
 
     if(NOT EXISTS "${MICROTEX_SRC}/CMakeLists.txt")
