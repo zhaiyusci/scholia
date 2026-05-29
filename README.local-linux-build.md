@@ -214,3 +214,8 @@ cmake --install build-local-poppler
 
 Reconfigure from scratch if the Poppler submodule, CMake options, Qt/KF
 packages, or install prefix changed.
+
+## AppImage
+
+After installing the local build, package it as an AppImage with the workflow
+in `README.local-appimage.md`.
