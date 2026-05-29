@@ -31,31 +31,44 @@ build-appimage/Okular.AppDir
 The script copies:
 
 - `usr/bin/okular`
-- Okular core libraries and plugins from the local prefix
-- the PDF Poppler generator
+- `libOkular6Core`, the Okular KParts UI plugin, and the PDF Poppler generator
 - `usr/share/poppler`, including CMap/CID data needed by CJK PDFs
 - selected Qt 6 platform/image/icon/network/print plugins
 - selected KF6 plugins and runtime data needed for local file access
 - Breeze icons, so toolbar icons are available without relying on the host
 
-By default the AppDir is PDF-only and removes non-PDF Okular generators copied
-from the local prefix. To keep all installed generators:
+It does not copy the whole local prefix. In particular, Poppler command-line
+tools, development files, non-PDF generator metadata, and Qt translations are
+left out by default. Runtime shared libraries are discovered by recursively
+running `ldd` over the staged ELF files, copying only the libraries that are
+actually needed.
+
+By default the AppDir is PDF-only and copies only the Poppler generator. To keep
+all installed generators:
 
 ```sh
 PDF_ONLY=0 linux-build/scripts/prepare-okular-appdir.sh
 ```
 
-The default is intentionally conservative. It does not bundle Qt QML imports,
-Wayland plugins, the KDE platform theme, or the Breeze widget style because
-those can pull Plasma, WebEngine, multimedia, and other large dependency
-trees into a development AppImage. Enable them explicitly when needed:
+The default is intentionally conservative. It strips staged ELF binaries and
+does not bundle Qt translations, Qt QML imports, Wayland plugins, the KDE
+platform theme, or the Breeze widget style because those can pull Plasma,
+WebEngine, multimedia, and other large dependency trees into a development
+AppImage. Enable optional pieces explicitly when needed:
 
 ```sh
+BUNDLE_QT_TRANSLATIONS=1 \
 BUNDLE_QML=1 \
 BUNDLE_WAYLAND=1 \
 BUNDLE_PLATFORMTHEMES=1 \
 BUNDLE_BREEZE_STYLE=1 \
 linux-build/scripts/prepare-okular-appdir.sh
+```
+
+Keep debug symbols in the staged AppDir with:
+
+```sh
+STRIP_APPDIR=0 linux-build/scripts/prepare-okular-appdir.sh
 ```
 
 ## Build the AppImage
@@ -150,8 +163,11 @@ Inspect unresolved dependencies:
 
 ```sh
 LD_LIBRARY_PATH=$PWD/build-appimage/Okular.AppDir/usr/lib64 \
-ldd build-appimage/Okular.AppDir/usr/bin/okular | rg 'not found'
+ldd build-appimage/Okular.AppDir/usr/bin/okular | rg 'not found|\.local/opt/okular'
 ```
+
+The preparation script performs the same kind of check for all staged ELF files
+and fails if anything still resolves through the local build prefix.
 
 Run the AppDir directly:
 

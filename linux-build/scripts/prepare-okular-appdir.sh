@@ -12,6 +12,8 @@ bundle_breeze_icons="${BUNDLE_BREEZE_ICONS:-1}"
 bundle_wayland="${BUNDLE_WAYLAND:-0}"
 bundle_platformthemes="${BUNDLE_PLATFORMTHEMES:-0}"
 bundle_breeze_style="${BUNDLE_BREEZE_STYLE:-0}"
+bundle_qt_translations="${BUNDLE_QT_TRANSLATIONS:-0}"
+strip_appdir="${STRIP_APPDIR:-1}"
 
 if [ ! -x "$prefix/bin/okular" ]; then
     echo "Okular binary not found in prefix: $prefix/bin/okular" >&2
@@ -69,6 +71,54 @@ copy_file()
     fi
 }
 
+copy_required_file()
+{
+    src=$1
+    dst=$2
+    label=$3
+    if [ ! -f "$src" ]; then
+        echo "Missing required file for $label: $src" >&2
+        exit 1
+    fi
+    copy_file "$src" "$dst" "$label"
+}
+
+copy_prefix_file()
+{
+    rel=$1
+    label=$2
+    copy_required_file "$prefix/$rel" "$app_usr/$rel" "$label"
+}
+
+copy_prefix_dir()
+{
+    rel=$1
+    label=$2
+    copy_dir "$prefix/$rel" "$app_usr/$rel" "$label"
+}
+
+copy_optional_prefix_file()
+{
+    rel=$1
+    label=$2
+    copy_file "$prefix/$rel" "$app_usr/$rel" "$label"
+}
+
+copy_soname_library()
+{
+    src=$1
+    label=$2
+    if [ ! -f "$src" ]; then
+        echo "Missing required library for $label: $src" >&2
+        exit 1
+    fi
+    soname=$(readelf -d "$src" 2>/dev/null | awk -F'[][]' '/SONAME/ { print $2; exit }')
+    if [ -z "$soname" ]; then
+        soname=$(basename -- "$src")
+    fi
+    copy_file "$src" "$app_libdir/$soname" "$label $soname"
+}
+
 copy_qt_plugin_file()
 {
     rel=$1
@@ -79,29 +129,32 @@ echo "Preparing AppDir:"
 echo "  Prefix: $prefix"
 echo "  AppDir: $appdir"
 echo "  PDF_ONLY: $pdf_only"
+echo "  STRIP_APPDIR: $strip_appdir"
 
 rm -rf "$appdir"
-mkdir -p "$app_usr" "$work_dir"
+mkdir -p "$app_usr/bin" "$app_libdir" "$work_dir"
 
-rsync -a --no-owner --no-group --delete \
-    --exclude=/include/ \
-    --exclude=/$libdir_name/pkgconfig/ \
-    --exclude=/lib/pkgconfig/ \
-    --exclude=/share/doc/ \
-    --exclude=/share/man/ \
-    "$prefix"/ "$app_usr"/
+copy_prefix_file bin/okular "Okular executable"
+copy_soname_library "$prefix_libdir/libOkular6Core.so.4" "Okular core library"
 
+copy_prefix_file "$libdir_name/plugins/kf6/parts/okularpart.so" "Okular KParts UI plugin"
 if [ "$pdf_only" != "0" ]; then
-    if [ -d "$app_libdir/plugins/okular_generators" ]; then
-        find "$app_libdir/plugins/okular_generators" -type f ! -name okularGenerator_poppler.so -delete
-    fi
-    if [ -d "$app_usr/share/applications" ]; then
-        find "$app_usr/share/applications" -type f -name 'okularApplication_*.desktop' ! -name okularApplication_pdf.desktop -delete
-    fi
-    if [ -d "$app_usr/share/metainfo" ]; then
-        find "$app_usr/share/metainfo" -type f -name 'org.kde.okular-*.metainfo.xml' ! -name org.kde.okular-poppler.metainfo.xml -delete
-    fi
+    copy_prefix_file "$libdir_name/plugins/okular_generators/okularGenerator_poppler.so" "PDF generator"
+    copy_optional_prefix_file share/applications/okularApplication_pdf.desktop "PDF application metadata"
+    copy_optional_prefix_file share/metainfo/org.kde.okular-poppler.metainfo.xml "PDF generator metadata"
+else
+    copy_prefix_dir "$libdir_name/plugins/okular_generators" "Okular generators"
+    copy_prefix_dir share/applications "Okular application metadata"
+    copy_prefix_dir share/metainfo "Okular metainfo"
 fi
+
+copy_prefix_dir share/okular "Okular annotation tools and app data"
+copy_prefix_dir share/icons/hicolor "Okular hicolor icons"
+copy_prefix_dir share/config.kcfg "Okular configuration schemas"
+copy_prefix_dir share/qlogging-categories6 "Okular logging category metadata"
+copy_prefix_dir share/poppler "Poppler CMap/CID data"
+copy_optional_prefix_file share/applications/org.kde.okular.desktop "Okular desktop metadata"
+copy_optional_prefix_file share/metainfo/org.kde.okular.appdata.xml "Okular app metadata"
 
 qt_plugin_dir="${QT_PLUGIN_DIR:-$(qt_query QT_INSTALL_PLUGINS)}"
 qt_qml_dir="${QT_QML_DIR:-$(qt_query QT_INSTALL_QML)}"
@@ -166,8 +219,12 @@ if [ "$bundle_qml" != "0" ] && [ -n "$qt_qml_dir" ] && [ -d "$qt_qml_dir" ]; the
     copy_dir "$qt_qml_dir" "$app_libdir/qml" "Qt QML imports"
 fi
 
-if [ -n "$qt_translations_dir" ] && [ -d "$qt_translations_dir" ]; then
-    copy_dir "$qt_translations_dir" "$app_usr/share/qt6/translations" "Qt translations"
+if [ "$bundle_qt_translations" != "0" ] && [ -n "$qt_translations_dir" ] && [ -d "$qt_translations_dir" ]; then
+    mkdir -p "$app_usr/share/qt6/translations"
+    rsync -a --no-owner --no-group --delete \
+        --exclude=/qtwebengine_locales/ \
+        "$qt_translations_dir"/ "$app_usr/share/qt6/translations"/
+    echo "Copied Qt translations"
 fi
 
 for rel in kf6 knotifications6 mime; do
@@ -249,6 +306,11 @@ is_elf()
     file -Lb "$1" 2>/dev/null | grep -Eq 'ELF .* (executable|shared object|pie executable)'
 }
 
+elf_soname()
+{
+    readelf -d "$1" 2>/dev/null | awk -F'[][]' '/SONAME/ { print $2; exit }'
+}
+
 skip_library()
 {
     base=$1
@@ -266,7 +328,7 @@ skip_library()
 collect_deps()
 {
     binary=$1
-    env LD_LIBRARY_PATH="$app_libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$binary" 2>/dev/null |
+    env LD_LIBRARY_PATH="$app_libdir:$prefix_libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$binary" 2>/dev/null |
         awk '
             /=> \// {
                 for (i = 1; i <= NF; ++i) {
@@ -303,21 +365,50 @@ while [ "$copied" -gt 0 ]; do
             if skip_library "$base"; then
                 continue
             fi
-            if [ -e "$app_libdir/$base" ]; then
+            dest_name=$(elf_soname "$dep")
+            if [ -z "$dest_name" ]; then
+                dest_name=$base
+            fi
+            if [ -e "$app_libdir/$dest_name" ]; then
                 continue
             fi
-            cp -aL "$dep" "$app_libdir/$base"
-            chmod u+w "$app_libdir/$base" 2>/dev/null || true
-            echo "$base" >> "$copied_file"
-            echo "Copied dependency $base"
+            cp -aL "$dep" "$app_libdir/$dest_name"
+            chmod u+w "$app_libdir/$dest_name" 2>/dev/null || true
+            echo "$dest_name" >> "$copied_file"
+            echo "Copied dependency $dest_name"
         done
 
     copied=$(wc -l < "$copied_file" | tr -d ' ')
 done
 
-if env LD_LIBRARY_PATH="$app_libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$app_usr/bin/okular" 2>/dev/null | grep -q 'not found'; then
-    echo "Unresolved dependencies remain for okular:" >&2
-    env LD_LIBRARY_PATH="$app_libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$app_usr/bin/okular" | grep 'not found' >&2
+if [ "$strip_appdir" != "0" ] && command -v strip >/dev/null 2>&1; then
+    find "$app_usr/bin" "$app_libdir" "$app_usr/libexec" -type f 2>/dev/null |
+        while IFS= read -r candidate; do
+            if is_elf "$candidate"; then
+                strip --strip-unneeded "$candidate" 2>/dev/null || true
+            fi
+        done
+    echo "Stripped AppDir ELF binaries"
+fi
+
+final_deps_file="$work_dir/final-deps.txt"
+: > "$final_deps_file"
+find "$app_usr/bin" "$app_libdir" "$app_usr/libexec" -type f 2>/dev/null |
+    while IFS= read -r candidate; do
+        if is_elf "$candidate"; then
+            env LD_LIBRARY_PATH="$app_libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ldd "$candidate" 2>/dev/null >> "$final_deps_file" || true
+        fi
+    done
+
+if grep -q 'not found' "$final_deps_file"; then
+    echo "Unresolved dependencies remain:" >&2
+    grep 'not found' "$final_deps_file" >&2
+    exit 1
+fi
+
+if grep -F -q "$prefix/" "$final_deps_file"; then
+    echo "Staged AppDir still depends on the build prefix:" >&2
+    grep -F "$prefix/" "$final_deps_file" >&2
     exit 1
 fi
 
