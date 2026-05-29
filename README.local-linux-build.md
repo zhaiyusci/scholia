@@ -28,6 +28,7 @@ prefix.
 - Poppler build directory: `build-poppler-local`
 - Okular build directory: `build-local-poppler`
 - Install prefix: `$HOME/.local/opt/okular`
+- Poppler encoding data: `$HOME/.local/opt/okular/share/poppler`
 - Launcher: `$HOME/.local/bin/okular`
 
 ## Prepare submodules
@@ -55,6 +56,24 @@ rm -rf "$PREFIX"
 Do not remove unrelated system packages. This layout is intended to coexist
 with the system Okular and system Poppler.
 
+## Install poppler-data into the local prefix
+
+Poppler uses external CMap and Unicode mapping data for many CJK PDFs. Do not
+leave the local build dependent on the system `/usr/share/poppler` directory;
+copy `poppler-data` into the local prefix before configuring Poppler:
+
+```sh
+linux-build/scripts/install-poppler-data.sh "$PREFIX"
+```
+
+By default the script copies from `/usr/share/poppler`. If the system package
+is not installed, install the distribution `poppler-data` package first, or
+pass an extracted poppler-data directory explicitly:
+
+```sh
+linux-build/scripts/install-poppler-data.sh "$PREFIX" /path/to/poppler-data
+```
+
 ## Build and install Poppler
 
 Configure Poppler from the submodule and install it into the shared local
@@ -63,6 +82,7 @@ prefix:
 ```sh
 cmake -S external/poppler -B build-poppler-local \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DPOPPLER_DATADIR="$PREFIX/share/poppler" \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF
 
@@ -71,7 +91,9 @@ cmake --install build-poppler-local
 ```
 
 This installs the Poppler core and Qt 6 wrapper under
-`$PREFIX/lib64` on the current Linux setup.
+`$PREFIX/lib64` on the current Linux setup. `POPPLER_DATADIR` must point into
+the same local prefix so the installed Okular does not rely on the system
+`poppler-data` package.
 
 ## Build and install Okular
 
@@ -120,6 +142,7 @@ export QML2_IMPORT_PATH="\$libdir/qml\${QML2_IMPORT_PATH:+:\$QML2_IMPORT_PATH}"
 export QT_QUICK_CONTROLS_STYLE_PATH="\$libdir/qml/QtQuick/Controls.2\${QT_QUICK_CONTROLS_STYLE_PATH:+:\$QT_QUICK_CONTROLS_STYLE_PATH}"
 export MANPATH="\$prefix/share/man:\${MANPATH:-/usr/local/share/man:/usr/share/man}"
 export SASL_PATH="\$libdir/sasl2:\${SASL_PATH:-/usr/lib64/sasl2}"
+export POPPLER_DATADIR="\$prefix/share/poppler"
 
 exec "\$prefix/bin/okular" "\$@"
 EOF
@@ -129,7 +152,8 @@ chmod 755 "$HOME/.local/bin/okular"
 This wrapper keeps the install isolated while still allowing `okular` to be
 resolved from the normal user `PATH`. It intentionally does not use
 `build-local-poppler/prefix.sh`, because the source tree should be removable
-after installation.
+after installation. It also sets `POPPLER_DATADIR` so relocatable bundles such
+as AppImages can point Poppler at their bundled CMap and Unicode mapping data.
 
 ## Verify
 
@@ -167,12 +191,21 @@ rg 'Poppler_.*LIBRARY|Poppler_.*INCLUDE|PKG_Poppler' build-local-poppler/CMakeCa
 
 The libraries should resolve under `$HOME/.local/opt/okular`.
 
+Check that Poppler was compiled to use the bundled poppler-data directory:
+
+```sh
+rg 'POPPLER_DATADIR' build-poppler-local/config.h
+strings "$PREFIX/lib64/libpoppler.so.157" | rg "$PREFIX/share/poppler"
+test -d "$PREFIX/share/poppler/cMap/Adobe-GB1"
+```
+
 ## Rebuild after pulling
 
 For normal development after a source pull:
 
 ```sh
 git submodule update --init --recursive
+linux-build/scripts/install-poppler-data.sh "$PREFIX"
 cmake --build build-poppler-local -j 8
 cmake --install build-poppler-local
 cmake --build build-local-poppler -j 8
