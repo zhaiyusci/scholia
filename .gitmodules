@@ -4,5 +4,5 @@
 	branch = local-okular-vector-stamp
 [submodule "external/MicroTeX"]
 	path = external/MicroTeX
-	url = https://github.com/NanoMichael/MicroTeX.git
+	url = https://github.com/zhaiyusci/MicroTeX.git
 	branch = master
