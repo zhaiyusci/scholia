@@ -316,8 +316,7 @@ static GuiUtils::LatexRenderWarning layoutOverflowWarningForLatexNote(const Anno
     }
 
     constexpr double overflowThresholdPoints = 0.5;
-    const double controlWidthPoints = layoutWidthPoints + (stamp->latexNoteBoxed() ? latexBoxFrameWidthPoints : 0.0);
-    const double overflowPoints = pdfSize.width() - controlWidthPoints;
+    const double overflowPoints = pdfSize.width() - layoutWidthPoints;
     if (overflowPoints <= overflowThresholdPoints) {
         return {};
     }
@@ -355,7 +354,8 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
     const double visibleHeightPoints = LatexNoteUtils::rectHeightInPoints(resizedRect, page);
     double visualScale = LatexNoteUtils::scaleForLatexNote(stamp, page, currentPdfSize);
     if (adjustsVertically) {
-        visualScale = visibleHeightPoints / currentPdfSize.height();
+        const QSizeF currentVisualSize = LatexNoteUtils::visualSizeForLatexNote(currentPdfSize, LatexNoteUtils::layoutWidthForLatexNote(stamp, page), stamp->latexNoteBoxed());
+        visualScale = visibleHeightPoints / currentVisualSize.height();
     }
     if (!std::isfinite(visualScale) || visualScale <= 0.0) {
         return false;
@@ -371,7 +371,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
             return false;
         }
 
-        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stamp->contents(), LatexNoteUtils::colorForLatexNote(stamp), LatexNoteUtils::latexFontSize(), layoutWidthPoints, stamp->latexNoteBoxed());
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stamp->contents(), LatexNoteUtils::colorForLatexNote(stamp), LatexNoteUtils::latexFontSize(), layoutWidthPoints);
         if (!rendered.ok) {
             qWarning() << "LaTeX note resize reflow failed:" << rendered.errorMessage;
             return false;
@@ -386,7 +386,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         }
     }
 
-    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForPdf(resizedRect, page, pdfSize, visualScale);
+    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForLatexNote(resizedRect, page, pdfSize, layoutWidthPoints, stamp->latexNoteBoxed(), visualScale);
     if (!isUsableRect(updatedRect)) {
         qWarning() << "LaTeX note resize produced an invalid annotation rectangle";
         return false;

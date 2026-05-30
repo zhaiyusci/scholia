@@ -74,13 +74,14 @@ QString latexErrorMessage(GuiUtils::LatexRenderer::Error errorCode, const QStrin
     return QString();
 }
 
-QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &sourcePreamble, const QString &backendName, bool boxed)
+constexpr double latexBoxFrameInsetPoints = 3.0;
+
+QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &sourcePreamble, const QString &backendName)
 {
     const bool fixedWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0;
     const QString widthText = fixedWidth ? QString::number(layoutWidthPoints, 'f', 3) : QStringLiteral("0");
-    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-v4") : QStringLiteral("natural-width-v3");
-    const QString boxMode = boxed ? QStringLiteral("boxed-ap-v1") : QStringLiteral("plain-v1");
-    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5|%6|%7").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, sourcePreamble, renderMode, backendName, boxMode);
+    const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-content-v6") : QStringLiteral("natural-width-content-v6");
+    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5|%6").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, sourcePreamble, renderMode, backendName);
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
@@ -194,7 +195,7 @@ double layoutWidthForVisibleWidth(double visibleWidthPoints, double scale, bool 
         return 0.0;
     }
 
-    constexpr double boxedFrameWidthPoints = 6.0;
+    constexpr double boxedFrameWidthPoints = 2.0 * latexBoxFrameInsetPoints;
     return qMax(1.0, visibleWidthPoints / scale - (boxed ? boxedFrameWidthPoints : 0.0));
 }
 
@@ -224,19 +225,38 @@ double scaleForLatexNote(const Okular::StampAnnotation *annotation, const Okular
         return storedScale;
     }
 
-    if (page && pdfSizePoints.isValid() && !pdfSizePoints.isEmpty()) {
+    const QSizeF visualSizePoints = visualSizeForLatexNote(pdfSizePoints, layoutWidthForLatexNote(annotation, page), annotation->latexNoteBoxed());
+    if (page && visualSizePoints.isValid() && !visualSizePoints.isEmpty()) {
         const double visibleHeight = rectHeightInPoints(annotation->boundingRectangle(), page);
-        if (pdfSizePoints.height() > 0.0 && std::isfinite(visibleHeight) && visibleHeight > 0.0) {
-            return qMax(0.01, visibleHeight / pdfSizePoints.height());
+        if (visualSizePoints.height() > 0.0 && std::isfinite(visibleHeight) && visibleHeight > 0.0) {
+            return qMax(0.01, visibleHeight / visualSizePoints.height());
         }
 
         const double visibleWidth = annotationWidthInPoints(annotation, page);
-        if (pdfSizePoints.width() > 0.0 && std::isfinite(visibleWidth) && visibleWidth > 0.0) {
-            return qMax(0.01, visibleWidth / pdfSizePoints.width());
+        if (visualSizePoints.width() > 0.0 && std::isfinite(visibleWidth) && visibleWidth > 0.0) {
+            return qMax(0.01, visibleWidth / visualSizePoints.width());
         }
     }
 
     return 1.0;
+}
+
+QSizeF visualSizeForLatexNote(const QSizeF &contentPdfSizePoints, double layoutWidthPoints, bool boxed)
+{
+    if (!contentPdfSizePoints.isValid() || contentPdfSizePoints.isEmpty()) {
+        return contentPdfSizePoints;
+    }
+    if (!boxed) {
+        return contentPdfSizePoints;
+    }
+
+    const double frameWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0 ? layoutWidthPoints + 2.0 * latexBoxFrameInsetPoints : contentPdfSizePoints.width() + 2.0 * latexBoxFrameInsetPoints;
+    const double visualWidth = qMax(frameWidth, contentPdfSizePoints.width() + latexBoxFrameInsetPoints);
+    const double visualHeight = contentPdfSizePoints.height() + 2.0 * latexBoxFrameInsetPoints;
+    if (!std::isfinite(visualWidth) || !std::isfinite(visualHeight) || visualWidth <= 0.0 || visualHeight <= 0.0) {
+        return contentPdfSizePoints;
+    }
+    return QSizeF(visualWidth, visualHeight);
 }
 
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale)
@@ -265,7 +285,12 @@ Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRe
     return fitRectInsidePage(Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.left + normalizedWidth, sourceRect.top + normalizedHeight));
 }
 
-RenderResult renderToCache(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, bool boxed)
+Okular::NormalizedRect boundingRectForLatexNote(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &contentPdfSizePoints, double layoutWidthPoints, bool boxed, double scale)
+{
+    return boundingRectForPdf(sourceRect, page, visualSizeForLatexNote(contentPdfSizePoints, layoutWidthPoints, boxed), scale);
+}
+
+RenderResult renderToCache(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints)
 {
     RenderResult result;
     if (latexInput.trimmed().isEmpty()) {
@@ -277,7 +302,7 @@ RenderResult renderToCache(const QString &latexInput, const QColor &textColor, i
     QString latexOutput;
     QString temporaryPdfFile;
     const QString sourcePreamble = Okular::Settings::latexPreamble();
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, fontSize, temporaryPdfFile, latexOutput, layoutWidthPoints, sourcePreamble, boxed);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, fontSize, temporaryPdfFile, latexOutput, layoutWidthPoints, sourcePreamble);
     if (errorCode != GuiUtils::LatexRenderer::NoError) {
         result.errorMessage = latexErrorMessage(errorCode, latexOutput);
         return result;
@@ -289,7 +314,7 @@ RenderResult renderToCache(const QString &latexInput, const QColor &textColor, i
         return result;
     }
 
-    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, sourcePreamble, renderer.lastBackendName(), boxed);
+    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, sourcePreamble, renderer.lastBackendName());
     const QString cachedPdfFileName = dataDir.filePath(QStringLiteral("latex-notes/%1.pdf").arg(noteBaseName));
     if (!temporaryPdfFile.isEmpty() && !QFile::exists(cachedPdfFileName) && !QFile::copy(temporaryPdfFile, cachedPdfFileName)) {
         result.errorMessage = i18n("Could not save the rendered LaTeX note PDF.");

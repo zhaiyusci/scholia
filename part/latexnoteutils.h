@@ -47,9 +47,11 @@ double annotationWidthInPoints(const Okular::Annotation *annotation, const Okula
 double layoutWidthForVisibleWidth(double visibleWidthPoints, double scale, bool boxed = false);
 double layoutWidthForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page);
 double scaleForLatexNote(const Okular::StampAnnotation *annotation, const Okular::Page *page, const QSizeF &pdfSizePoints);
+QSizeF visualSizeForLatexNote(const QSizeF &contentPdfSizePoints, double layoutWidthPoints, bool boxed);
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale = 1.0);
+Okular::NormalizedRect boundingRectForLatexNote(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &contentPdfSizePoints, double layoutWidthPoints, bool boxed, double scale = 1.0);
 
-RenderResult renderToCache(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, bool boxed = false);
+RenderResult renderToCache(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints);
 QString warningText(const GuiUtils::LatexRenderWarning &warning);
 void showRenderWarning(QWidget *parent, const QString &warningMessage);
 void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning);

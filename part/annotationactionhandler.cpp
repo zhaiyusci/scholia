@@ -543,7 +543,7 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed)
         return;
     }
 
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0, boxed);
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0);
     if (!rendered.ok) {
         KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return;

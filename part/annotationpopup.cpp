@@ -191,9 +191,9 @@ QColor textColorForLatexStampAnnotation(const Okular::StampAnnotation *annotatio
     return LatexNoteUtils::colorForLatexNote(annotation);
 }
 
-bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QColor &textColor, int fontSize, double maxWidth, bool boxed, QString *pdfFileName, GuiUtils::LatexRenderWarning *warning = nullptr)
+bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QColor &textColor, int fontSize, double maxWidth, QString *pdfFileName, GuiUtils::LatexRenderWarning *warning = nullptr)
 {
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, textColor, fontSize, maxWidth, boxed);
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, textColor, fontSize, maxWidth);
     if (!rendered.ok) {
         KMessageBox::error(parent, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return false;
@@ -206,9 +206,9 @@ bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QC
     return true;
 }
 
-Okular::NormalizedRect latexStampBoundingRect(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &stampSizePoints, double scale = 1.0)
+Okular::NormalizedRect latexStampBoundingRect(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &stampSizePoints, double layoutWidthPoints, bool boxed, double scale = 1.0)
 {
-    return LatexNoteUtils::boundingRectForPdf(sourceRect, page, stampSizePoints, scale);
+    return LatexNoteUtils::boundingRectForLatexNote(sourceRect, page, stampSizePoints, layoutWidthPoints, boxed, scale);
 }
 
 bool updateLatexNoteAppearance(QWidget *parent, Okular::Document *document, int pageNumber, Okular::StampAnnotation *stampAnnotation, const QColor &textColor, double layoutWidthPoints, bool boxed)
@@ -222,7 +222,7 @@ bool updateLatexNoteAppearance(QWidget *parent, Okular::Document *document, int 
     const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
     QString pdfFileName;
     GuiUtils::LatexRenderWarning warning;
-    if (!renderLatexNoteToCache(parent, stampAnnotation->contents(), textColor, latexFontSizeForTextAnnotation(nullptr), layoutWidthPoints, boxed, &pdfFileName, &warning)) {
+    if (!renderLatexNoteToCache(parent, stampAnnotation->contents(), textColor, latexFontSizeForTextAnnotation(nullptr), layoutWidthPoints, &pdfFileName, &warning)) {
         return false;
     }
 
@@ -232,7 +232,7 @@ bool updateLatexNoteAppearance(QWidget *parent, Okular::Document *document, int 
         return false;
     }
 
-    const Okular::NormalizedRect updatedRect = latexStampBoundingRect(stampAnnotation->boundingRectangle(), page, stampSizePoints, visualScale);
+    const Okular::NormalizedRect updatedRect = latexStampBoundingRect(stampAnnotation->boundingRectangle(), page, stampSizePoints, layoutWidthPoints, boxed, visualScale);
     const bool sameLayoutWidth = qAbs(stampAnnotation->latexNoteLayoutWidth() - layoutWidthPoints) < 1e-3;
     const bool sameScale = qAbs(stampAnnotation->latexNoteScale() - visualScale) < 1e-6;
     const bool sameBoxed = stampAnnotation->latexNoteBoxed() == boxed;
@@ -581,7 +581,7 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
 
     QString pdfFileName;
     GuiUtils::LatexRenderWarning warning;
-    if (!renderLatexNoteToCache(mParent, latexInput, textColor, fontSize, maxWidth, boxed, &pdfFileName, &warning)) {
+    if (!renderLatexNoteToCache(mParent, latexInput, textColor, fontSize, maxWidth, &pdfFileName, &warning)) {
         return;
     }
 
@@ -597,7 +597,7 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
     stampAnnotation->setLatexNoteScale(1.0);
     stampAnnotation->setLatexNoteBoxed(boxed);
     stampAnnotation->setContents(latexInput);
-    stampAnnotation->setBoundingRectangle(rectForDocumentAdd(latexStampBoundingRect(textAnnotation->boundingRectangle(), page, stampSizePoints), page));
+    stampAnnotation->setBoundingRectangle(rectForDocumentAdd(latexStampBoundingRect(textAnnotation->boundingRectangle(), page, stampSizePoints, maxWidth, boxed), page));
     stampAnnotation->style() = textAnnotation->style();
     stampAnnotation->style().setColor(textColor);
     stampAnnotation->window().setSummary(boxed ? i18n("LaTeX Inline Note") : i18n("LaTeX Note"));
@@ -707,7 +707,7 @@ void AnnotationPopup::doResetLatexAnnotationScale(AnnotPagePair pair)
         return;
     }
 
-    const Okular::NormalizedRect updatedRect = latexStampBoundingRect(stampAnnotation->boundingRectangle(), page, stampSizePoints, 1.0);
+    const Okular::NormalizedRect updatedRect = latexStampBoundingRect(stampAnnotation->boundingRectangle(), page, stampSizePoints, LatexNoteUtils::layoutWidthForLatexNote(stampAnnotation, page), stampAnnotation->latexNoteBoxed(), 1.0);
     if (updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexNoteScale() - 1.0) < 1e-6) {
         return;
     }

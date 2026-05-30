@@ -42,7 +42,7 @@ public:
 
     Error renderLatexInHtml(QString &html, const QColor &textColor, int fontSize, int resolution, QString &latexOutput);
     Error renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput);
-    Error renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth = 0.0, const QString &sourcePreamble = QString(), bool boxed = false);
+    Error renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth = 0.0, const QString &sourcePreamble = QString());
     QString lastBackendName() const;
     LatexRenderWarning lastWarning() const;
     QString lastWarningMessage() const;
@@ -53,7 +53,7 @@ public:
 private:
     enum class BodyMode { Math, Source };
 
-    Error handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode = BodyMode::Math, double maxWidth = 0.0, const QString &sourcePreamble = QString(), bool boxed = false);
+    Error handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode = BodyMode::Math, double maxWidth = 0.0, const QString &sourcePreamble = QString());
     static bool securityCheck(const QString &latexFormula);
 
     QStringList m_fileList;

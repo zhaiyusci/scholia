@@ -19,13 +19,17 @@
 #include <KProcess>
 
 #include <QColor>
+#include <QByteArray>
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPainter>
+#include <QPainterPath>
+#include <QPainterPathStroker>
 #include <QPdfWriter>
+#include <QRectF>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -124,6 +128,525 @@ tex::color microtexColor(const QColor &color)
     return effectiveColor.rgba();
 }
 
+bool matchesAt(const QString &source, int index, const char *token)
+{
+    if (index < 0) {
+        return false;
+    }
+
+    int tokenLength = 0;
+    while (token[tokenLength] != '\0') {
+        ++tokenLength;
+    }
+
+    if (index + tokenLength > source.size()) {
+        return false;
+    }
+
+    for (int i = 0; i < tokenLength; ++i) {
+        if (source.at(index + i) != QLatin1Char(token[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int findMicrotexClosingDollar(const QString &source, int start, int delimiterLength)
+{
+    for (int i = start; i < source.size(); ++i) {
+        if (source.at(i) == QLatin1Char('\\')) {
+            ++i;
+            continue;
+        }
+        if (source.at(i) != QLatin1Char('$')) {
+            continue;
+        }
+        if (delimiterLength == 2) {
+            if (i + 1 < source.size() && source.at(i + 1) == QLatin1Char('$')) {
+                return i;
+            }
+        } else if (i + 1 >= source.size() || source.at(i + 1) != QLatin1Char('$')) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int findMicrotexClosingCommand(const QString &source, int start, const char *closingCommand)
+{
+    for (int i = start; i < source.size(); ++i) {
+        if (matchesAt(source, i, closingCommand)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+QString microtexEscapedText(const QString &text)
+{
+    QString escaped;
+    escaped.reserve(text.size());
+    bool previousWasSpace = false;
+    for (const QChar ch : text) {
+        if (ch.isSpace()) {
+            if (!previousWasSpace) {
+                escaped += QLatin1Char(' ');
+                previousWasSpace = true;
+            }
+            continue;
+        }
+        previousWasSpace = false;
+
+        switch (ch.unicode()) {
+        case '\\':
+            escaped += QStringLiteral("\\backslash{}");
+            break;
+        case '{':
+            escaped += QStringLiteral("\\{");
+            break;
+        case '}':
+            escaped += QStringLiteral("\\}");
+            break;
+        case '$':
+            escaped += QStringLiteral("\\$");
+            break;
+        case '&':
+            escaped += QStringLiteral("\\&");
+            break;
+        case '#':
+            escaped += QStringLiteral("\\#");
+            break;
+        case '_':
+            escaped += QStringLiteral("\\_");
+            break;
+        case '%':
+            escaped += QStringLiteral("\\%");
+            break;
+        case '~':
+            escaped += QLatin1Char(' ');
+            break;
+        default:
+            escaped += ch;
+            break;
+        }
+    }
+    return escaped;
+}
+
+void appendMicrotexText(QString *target, const QString &text)
+{
+    if (!target || text.isEmpty()) {
+        return;
+    }
+
+    const QString escaped = microtexEscapedText(text);
+    if (escaped.isEmpty()) {
+        return;
+    }
+    *target += QStringLiteral("\\text{");
+    *target += escaped;
+    *target += QLatin1Char('}');
+}
+
+void appendMicrotexMath(QString *target, const QString &math, bool displayStyle)
+{
+    if (!target) {
+        return;
+    }
+
+    const QString trimmed = math.trimmed();
+    if (trimmed.isEmpty()) {
+        return;
+    }
+    if (displayStyle) {
+        *target += QStringLiteral("{\\displaystyle ");
+        *target += trimmed;
+        *target += QLatin1Char('}');
+    } else {
+        *target += trimmed;
+    }
+}
+
+bool appendEscapedLatexTextCharacter(QString *text, const QString &source, int *index)
+{
+    if (!text || !index || *index < 0 || *index + 1 >= source.size() || source.at(*index) != QLatin1Char('\\')) {
+        return false;
+    }
+
+    const QChar next = source.at(*index + 1);
+    switch (next.unicode()) {
+    case '{':
+    case '}':
+    case '$':
+    case '&':
+    case '#':
+    case '_':
+    case '%':
+        *text += next;
+        *index += 2;
+        return true;
+    case '~':
+        *text += QLatin1Char(' ');
+        *index += 2;
+        return true;
+    case '\\':
+        *text += QLatin1Char(' ');
+        *index += 2;
+        return true;
+    default:
+        return false;
+    }
+}
+
+QString preprocessMicrotexSource(const QString &latexSource)
+{
+    QString result;
+    QString text;
+    result.reserve(latexSource.size() + 16);
+    text.reserve(latexSource.size());
+
+    auto flushText = [&]() {
+        appendMicrotexText(&result, text);
+        text.clear();
+    };
+
+    int i = 0;
+    while (i < latexSource.size()) {
+        if (matchesAt(latexSource, i, "\\(")) {
+            const int closing = findMicrotexClosingCommand(latexSource, i + 2, "\\)");
+            if (closing >= 0) {
+                flushText();
+                appendMicrotexMath(&result, latexSource.mid(i + 2, closing - i - 2), false);
+                i = closing + 2;
+                continue;
+            }
+        }
+
+        if (matchesAt(latexSource, i, "\\[")) {
+            const int closing = findMicrotexClosingCommand(latexSource, i + 2, "\\]");
+            if (closing >= 0) {
+                flushText();
+                appendMicrotexMath(&result, latexSource.mid(i + 2, closing - i - 2), true);
+                i = closing + 2;
+                continue;
+            }
+        }
+
+        if (latexSource.at(i) == QLatin1Char('$')) {
+            const int delimiterLength = i + 1 < latexSource.size() && latexSource.at(i + 1) == QLatin1Char('$') ? 2 : 1;
+            const int closing = findMicrotexClosingDollar(latexSource, i + delimiterLength, delimiterLength);
+            if (closing >= 0) {
+                flushText();
+                appendMicrotexMath(&result, latexSource.mid(i + delimiterLength, closing - i - delimiterLength), delimiterLength == 2);
+                i = closing + delimiterLength;
+                continue;
+            }
+        }
+
+        if (appendEscapedLatexTextCharacter(&text, latexSource, &i)) {
+            continue;
+        }
+
+        text += latexSource.at(i);
+        ++i;
+    }
+
+    flushText();
+    return result.isEmpty() ? latexSource : result;
+}
+
+struct MicrotexInkBounds {
+    QRectF rect;
+    bool valid = false;
+};
+
+void uniteMicrotexBounds(MicrotexInkBounds *bounds, const QRectF &rect)
+{
+    if (!bounds || !rect.isValid() || rect.isEmpty()) {
+        return;
+    }
+    bounds->rect = bounds->valid ? bounds->rect.united(rect) : rect;
+    bounds->valid = true;
+}
+
+class MicrotexVectorBoundsGraphics final : public tex::Graphics2D_qt
+{
+public:
+    explicit MicrotexVectorBoundsGraphics(QPainter *painter)
+        : tex::Graphics2D_qt(painter)
+    {
+    }
+
+    MicrotexInkBounds bounds() const
+    {
+        return m_bounds;
+    }
+
+    void setStroke(const tex::Stroke &stroke) override
+    {
+        m_stroke = stroke;
+        tex::Graphics2D_qt::setStroke(stroke);
+    }
+
+    void setStrokeWidth(float width) override
+    {
+        m_stroke.lineWidth = width;
+        tex::Graphics2D_qt::setStrokeWidth(width);
+    }
+
+    void setFont(const tex::Font *font) override
+    {
+        m_font = static_cast<const tex::Font_qt *>(font);
+        tex::Graphics2D_qt::setFont(font);
+    }
+
+    void translate(float dx, float dy) override
+    {
+        m_transform.translate(dx, dy);
+        tex::Graphics2D_qt::translate(dx, dy);
+    }
+
+    void scale(float sx, float sy) override
+    {
+        m_transform.scale(sx, sy);
+        tex::Graphics2D_qt::scale(sx, sy);
+    }
+
+    void rotate(float angle) override
+    {
+        m_transform.rotateRadians(angle);
+        tex::Graphics2D_qt::rotate(angle);
+    }
+
+    void rotate(float angle, float px, float py) override
+    {
+        m_transform.translate(px, py);
+        m_transform.rotateRadians(angle);
+        m_transform.translate(-px, -py);
+        tex::Graphics2D_qt::rotate(angle, px, py);
+    }
+
+    void reset() override
+    {
+        m_transform.reset();
+        tex::Graphics2D_qt::reset();
+    }
+
+    void drawText(const std::wstring &text, float x, float y) override
+    {
+        if (m_font) {
+            QPainterPath path;
+            path.addText(QPointF(x, y), m_font->getQFont(), tex::wstring_to_QString(text));
+            addPath(path);
+        }
+        tex::Graphics2D_qt::drawText(text, x, y);
+    }
+
+    void drawLine(float x1, float y1, float x2, float y2) override
+    {
+        QPainterPath path(QPointF(x1, y1));
+        path.lineTo(QPointF(x2, y2));
+        addStrokedPath(path);
+        tex::Graphics2D_qt::drawLine(x1, y1, x2, y2);
+    }
+
+    void drawRect(float x, float y, float width, float height) override
+    {
+        QPainterPath path;
+        path.addRect(QRectF(x, y, width, height));
+        addStrokedPath(path);
+        tex::Graphics2D_qt::drawRect(x, y, width, height);
+    }
+
+    void fillRect(float x, float y, float width, float height) override
+    {
+        addRect(QRectF(x, y, width, height));
+        tex::Graphics2D_qt::fillRect(x, y, width, height);
+    }
+
+    void drawRoundRect(float x, float y, float width, float height, float rx, float ry) override
+    {
+        QPainterPath path;
+        path.addRoundedRect(QRectF(x, y, width, height), rx, ry);
+        addStrokedPath(path);
+        tex::Graphics2D_qt::drawRoundRect(x, y, width, height, rx, ry);
+    }
+
+    void fillRoundRect(float x, float y, float width, float height, float rx, float ry) override
+    {
+        QPainterPath path;
+        path.addRoundedRect(QRectF(x, y, width, height), rx, ry);
+        addPath(path);
+        tex::Graphics2D_qt::fillRoundRect(x, y, width, height, rx, ry);
+    }
+
+private:
+    void addRect(const QRectF &rect)
+    {
+        uniteMicrotexBounds(&m_bounds, m_transform.mapRect(rect));
+    }
+
+    void addPath(const QPainterPath &path)
+    {
+        uniteMicrotexBounds(&m_bounds, m_transform.map(path).boundingRect());
+    }
+
+    void addStrokedPath(const QPainterPath &path)
+    {
+        QPainterPathStroker stroker;
+        stroker.setCapStyle(Qt::FlatCap);
+        stroker.setJoinStyle(Qt::MiterJoin);
+        stroker.setMiterLimit(m_stroke.miterLimit);
+        stroker.setWidth(qMax(0.0f, m_stroke.lineWidth));
+        addPath(stroker.createStroke(path));
+    }
+
+    QTransform m_transform;
+    tex::Stroke m_stroke;
+    const tex::Font_qt *m_font = nullptr;
+    MicrotexInkBounds m_bounds;
+};
+
+MicrotexInkBounds measureMicrotexVectorBounds(tex::TeXRender *render)
+{
+    if (!render) {
+        return {};
+    }
+
+    QImage dummy(1, 1, QImage::Format_ARGB32_Premultiplied);
+    dummy.fill(Qt::transparent);
+    QPainter dummyPainter(&dummy);
+    MicrotexVectorBoundsGraphics graphics(&dummyPainter);
+    render->draw(graphics, 0, 0);
+    dummyPainter.end();
+    return graphics.bounds();
+}
+
+QByteArray pdfReal(double value)
+{
+    QByteArray number = QByteArray::number(value, 'f', 6);
+    while (number.contains('.') && number.endsWith('0')) {
+        number.chop(1);
+    }
+    if (number.endsWith('.')) {
+        number.chop(1);
+    }
+    if (number.isEmpty() || number == "-0") {
+        return QByteArrayLiteral("0");
+    }
+    return number;
+}
+
+bool replaceOrInsertPdfDictionaryEntry(QString *dictionary, const QRegularExpression &entryRegex, const QString &entry)
+{
+    if (!dictionary) {
+        return false;
+    }
+
+    const QRegularExpressionMatch match = entryRegex.match(*dictionary);
+    if (match.hasMatch()) {
+        dictionary->replace(match.capturedStart(), match.capturedLength(), entry);
+        return true;
+    }
+
+    const int dictionaryEnd = dictionary->lastIndexOf(QStringLiteral(">>"));
+    if (dictionaryEnd < 0) {
+        return false;
+    }
+
+    dictionary->insert(dictionaryEnd, QLatin1Char('\n') + entry + QLatin1Char('\n'));
+    return true;
+}
+
+bool addIncrementalPdfCropBox(const QString &pdfFileName, double left, double bottom, double right, double top)
+{
+    QFile pdfFile(pdfFileName);
+    if (!pdfFile.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+    const QByteArray pdfData = pdfFile.readAll();
+    pdfFile.close();
+
+    const QString pdfText = QString::fromLatin1(pdfData);
+    static const QRegularExpression pageObjectRegex(QStringLiteral(R"((\d+)\s+0\s+obj\s*<<(?:(?!endobj).)*?\/Type\s*\/Page\b(?:(?!endobj).)*?>>\s*endobj)"), QRegularExpression::DotMatchesEverythingOption);
+    const QRegularExpressionMatch pageMatch = pageObjectRegex.match(pdfText);
+    if (!pageMatch.hasMatch()) {
+        return false;
+    }
+
+    const int pageObjectNumber = pageMatch.captured(1).toInt();
+    const QString pageObject = pageMatch.captured(0);
+    const int dictionaryStart = pageObject.indexOf(QStringLiteral("<<"));
+    const int dictionaryEnd = pageObject.lastIndexOf(QStringLiteral(">>"));
+    if (pageObjectNumber <= 0 || dictionaryStart < 0 || dictionaryEnd <= dictionaryStart) {
+        return false;
+    }
+
+    QString pageDictionary = pageObject.mid(dictionaryStart, dictionaryEnd - dictionaryStart + 2);
+    const QString cropBoxEntry = QString::fromLatin1("/CropBox [%1 %2 %3 %4]")
+                                     .arg(QString::fromLatin1(pdfReal(left)),
+                                          QString::fromLatin1(pdfReal(bottom)),
+                                          QString::fromLatin1(pdfReal(right)),
+                                          QString::fromLatin1(pdfReal(top)));
+    static const QRegularExpression cropBoxRegex(QStringLiteral(R"(\/CropBox\s*\[[^\]]*\])"));
+    if (!replaceOrInsertPdfDictionaryEntry(&pageDictionary, cropBoxRegex, cropBoxEntry)) {
+        return false;
+    }
+
+    const int startXrefIndex = pdfText.lastIndexOf(QStringLiteral("startxref"));
+    if (startXrefIndex < 0) {
+        return false;
+    }
+    const QRegularExpression startXrefRegex(QStringLiteral(R"(startxref\s+(\d+))"));
+    const QRegularExpressionMatch startXrefMatch = startXrefRegex.match(pdfText, startXrefIndex);
+    if (!startXrefMatch.hasMatch()) {
+        return false;
+    }
+    const qint64 previousXrefOffset = startXrefMatch.captured(1).toLongLong();
+
+    const int trailerIndex = pdfText.lastIndexOf(QStringLiteral("trailer"), startXrefIndex);
+    if (trailerIndex < 0) {
+        return false;
+    }
+    const int trailerDictionaryStart = pdfText.indexOf(QStringLiteral("<<"), trailerIndex);
+    const int trailerDictionaryEnd = pdfText.indexOf(QStringLiteral(">>"), trailerDictionaryStart);
+    if (trailerDictionaryStart < 0 || trailerDictionaryEnd <= trailerDictionaryStart || trailerDictionaryEnd > startXrefIndex) {
+        return false;
+    }
+
+    QString trailerDictionary = pdfText.mid(trailerDictionaryStart, trailerDictionaryEnd - trailerDictionaryStart + 2);
+    const QString prevEntry = QStringLiteral("/Prev %1").arg(previousXrefOffset);
+    static const QRegularExpression prevRegex(QStringLiteral(R"(\/Prev\s+\d+)"));
+    if (!replaceOrInsertPdfDictionaryEntry(&trailerDictionary, prevRegex, prevEntry)) {
+        return false;
+    }
+
+    const qint64 objectOffset = pdfData.size() + 1;
+    QByteArray incrementalUpdate;
+    incrementalUpdate.append('\n');
+    incrementalUpdate.append(QByteArray::number(pageObjectNumber));
+    incrementalUpdate.append(" 0 obj\n");
+    incrementalUpdate.append(pageDictionary.toLatin1());
+    incrementalUpdate.append("\nendobj\n");
+    const qint64 xrefOffset = pdfData.size() + incrementalUpdate.size();
+    incrementalUpdate.append("xref\n");
+    incrementalUpdate.append(QByteArray::number(pageObjectNumber));
+    incrementalUpdate.append(" 1\n");
+    incrementalUpdate.append(QStringLiteral("%1 00000 n \n").arg(objectOffset, 10, 10, QLatin1Char('0')).toLatin1());
+    incrementalUpdate.append("trailer\n");
+    incrementalUpdate.append(trailerDictionary.toLatin1());
+    incrementalUpdate.append("\nstartxref\n");
+    incrementalUpdate.append(QByteArray::number(xrefOffset));
+    incrementalUpdate.append("\n%%EOF\n");
+
+    if (!pdfFile.open(QIODevice::Append)) {
+        return false;
+    }
+    const bool ok = pdfFile.write(incrementalUpdate) == incrementalUpdate.size();
+    pdfFile.close();
+    return ok;
+}
+
 LatexRenderWarning microtexOverflowWarning(int renderedWidth, int availableWidth)
 {
     LatexRenderWarning warning;
@@ -135,7 +658,7 @@ LatexRenderWarning microtexOverflowWarning(int renderedWidth, int availableWidth
     return warning;
 }
 
-LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, bool boxed, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
+LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
 {
     std::lock_guard<std::mutex> guard(microtexMutex);
 
@@ -152,19 +675,29 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
 
         const bool fixedWidth = std::isfinite(maxWidth) && maxWidth > 0.0;
         const int requestedWidth = fixedWidth ? qMax(1, static_cast<int>(std::ceil(maxWidth))) : 0;
-        const int padding = qMax(2, static_cast<int>(std::ceil(fontSize * 0.2)));
-        const int horizontalPadding = fixedWidth ? 0 : padding;
-        const int frameInset = boxed ? 3 : 0;
         const int layoutWidth = fixedWidth ? requestedWidth : 10000;
-        std::unique_ptr<tex::TeXRender> render(tex::LaTeX::parse(latexSource.toStdWString(), layoutWidth, fontSize, fontSize / 3.0f, microtexColor(textColor)));
+        const QString microtexSource = preprocessMicrotexSource(latexSource);
+        std::unique_ptr<tex::TeXRender> render(tex::LaTeX::parse(microtexSource.toStdWString(), layoutWidth, fontSize, fontSize / 3.0f, microtexColor(textColor)));
         if (!render) {
             latexOutput = QStringLiteral("MicroTeX did not return a render object.");
             return LatexRenderer::MicrotexFailed;
         }
 
-        const int pageContentWidth = fixedWidth ? qMax(requestedWidth, render->getWidth()) : qMax(1, render->getWidth() + 2 * horizontalPadding);
-        const int width = pageContentWidth + 2 * frameInset;
-        const int height = qMax(1, render->getHeight() + 2 * padding + 2 * frameInset);
+        const int logicalWidth = fixedWidth ? qMax(requestedWidth, render->getWidth()) : qMax(1, render->getWidth());
+        const int logicalHeight = qMax(1, render->getHeight());
+        const MicrotexInkBounds vectorBounds = measureMicrotexVectorBounds(render.get());
+        const QRectF vectorRect = vectorBounds.valid ? vectorBounds.rect : QRectF(0.0, 0.0, logicalWidth, logicalHeight);
+        const double pageLeft = qMin(0.0, vectorRect.left());
+        const double pageTop = qMin(0.0, vectorRect.top());
+        const double pageRight = qMax(static_cast<double>(logicalWidth), vectorRect.right());
+        const double pageBottom = qMax(static_cast<double>(logicalHeight), vectorRect.bottom());
+        const double contentWidth = qMax(1.0, pageRight - pageLeft);
+        const double contentHeight = qMax(1.0, pageBottom - pageTop);
+        constexpr double cropBoxPaddingPoints = 0.125;
+        const double paddedContentWidth = contentWidth + 2.0 * cropBoxPaddingPoints;
+        const double paddedContentHeight = contentHeight + 2.0 * cropBoxPaddingPoints;
+        const double width = qMax(1.0, std::ceil(paddedContentWidth));
+        const double height = qMax(1.0, std::ceil(paddedContentHeight));
 
         QTemporaryFile tempFile(QDir::tempPath() + QLatin1String("/okular_microtex-XXXXXX.pdf"));
         tempFile.setAutoRemove(false);
@@ -188,9 +721,14 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
             return LatexRenderer::MicrotexFailed;
         }
 
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setRenderHint(QPainter::TextAntialiasing, true);
+        painter.translate(cropBoxPaddingPoints - pageLeft, cropBoxPaddingPoints - pageTop);
         tex::Graphics2D_qt graphics(&painter);
-        render->draw(graphics, frameInset + horizontalPadding, frameInset + padding);
+        render->draw(graphics, 0, 0);
         painter.end();
+
+        addIncrementalPdfCropBox(tempFileName, 0.0, qMax(0.0, height - paddedContentHeight), qMin(width, paddedContentWidth), height);
 
         if (!QFileInfo::exists(tempFileName) || QFileInfo(tempFileName).size() <= 0) {
             QFile::remove(tempFileName);
@@ -204,8 +742,9 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         outputLines << QStringLiteral("Rendered with MicroTeX fallback. LaTeX preamble and external packages are not supported by MicroTeX.");
         if (fixedWidth) {
             const int availableWidth = requestedWidth;
-            if (render->getWidth() > availableWidth) {
-                const LatexRenderWarning overflowWarning = microtexOverflowWarning(render->getWidth(), availableWidth);
+            const int renderedWidth = qCeil(qMax(static_cast<double>(render->getWidth()), vectorRect.right()));
+            if (renderedWidth > availableWidth) {
+                const LatexRenderWarning overflowWarning = microtexOverflowWarning(renderedWidth, availableWidth);
                 if (warning) {
                     *warning = overflowWarning;
                 }
@@ -473,7 +1012,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     return handleLatex(fileName, nullptr, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
 }
 
-LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble, bool boxed)
+LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble)
 {
     m_lastBackendName.clear();
     m_lastWarning = {};
@@ -490,19 +1029,17 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
     }
 
     QString imageFileName;
-    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, 0, latexOutput, BodyMode::Source, maxWidth, sourcePreamble, boxed);
+    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, 0, latexOutput, BodyMode::Source, maxWidth, sourcePreamble);
 }
 
-LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth, const QString &sourcePreamble, bool boxed)
+LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth, const QString &sourcePreamble)
 {
     KProcess dvipngProc;
     KProcess pdfToImageProc;
     const bool renderSource = bodyMode == BodyMode::Source;
-    const bool boxedSource = renderSource && boxed;
     const bool constrainSourceWidth = renderSource && std::isfinite(maxWidth) && maxWidth > 0.0;
     const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
     const QString sourceVarWidth = QStringLiteral("varwidth");
-    const QString sourceBorder = boxedSource ? QStringLiteral("3bp") : QStringLiteral("0pt");
     const QString effectiveSourcePreamble = sourcePreamble.isNull() ? defaultSourcePreamble() : sourcePreamble;
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
@@ -527,7 +1064,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         if (renderSource) {
             tempStream << "\
 \\documentclass["
-                       << fontSize << "pt," << sourceVarWidth << ",border=" << sourceBorder << "]{standalone}\n"
+                       << fontSize << "pt," << sourceVarWidth << ",border=0pt]{standalone}\n"
                        << effectiveSourcePreamble << "\n"
                        << "\\pagestyle{empty}\n"
                           "\\begin{document}\n";
@@ -582,7 +1119,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         fileName = QString();
 #ifdef OKULAR_ENABLE_MICROTEX
         if (renderSource && pdfFileName && resolution <= 0) {
-            Error fallbackError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, boxedSource, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
+            Error fallbackError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
             if (fallbackError == NoError) {
                 m_lastBackendName = QStringLiteral("microtex");
             }

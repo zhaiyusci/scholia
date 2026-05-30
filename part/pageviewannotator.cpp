@@ -47,6 +47,7 @@
 #include "editannottooldialog.h"
 #include "gui/debug_ui.h"
 #include "gui/guiutils.h"
+#include "latexnoteutils.h"
 #include "pageview.h"
 #include "settings.h"
 #include "signaturepartutils.h"
@@ -91,6 +92,11 @@ public:
             intrinsicStampSizeInPoints = GuiUtils::latexNotePdfSizeInPointsForStamp(iconName);
             hasIntrinsicStampSizeInPoints = intrinsicStampSizeInPoints.isValid() && !intrinsicStampSizeInPoints.isEmpty();
             const bool isLatexNoteStamp = QFileInfo(QFileInfo(iconName).absolutePath()).fileName() == QLatin1String("latex-notes");
+            if (hasIntrinsicStampSizeInPoints && isLatexNoteStamp) {
+                const bool boxed = m_annotElement.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0;
+                intrinsicStampSizeInPoints = LatexNoteUtils::visualSizeForLatexNote(intrinsicStampSizeInPoints, 0.0, boxed);
+                hasIntrinsicStampSizeInPoints = intrinsicStampSizeInPoints.isValid() && !intrinsicStampSizeInPoints.isEmpty();
+            }
             if (!hasIntrinsicStampSizeInPoints && !isLatexNoteStamp) {
                 QImageReader reader(iconName);
                 const QImage image = reader.read();

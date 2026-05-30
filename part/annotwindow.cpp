@@ -611,7 +611,7 @@ void AnnotWindow::updateLatexNoteAppearance()
     const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
     const double preservedScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
     const double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexNote(stampAnnotation, page);
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stampAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints, stampAnnotation->latexNoteBoxed());
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stampAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
     if (!rendered.ok) {
         qWarning() << "LaTeX note auto-update failed:" << rendered.errorMessage;
         return;
@@ -622,7 +622,7 @@ void AnnotWindow::updateLatexNoteAppearance()
         qWarning() << "Could not read updated LaTeX note PDF size";
         return;
     }
-    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForPdf(stampAnnotation->boundingRectangle(), page, stampSizePoints, preservedScale);
+    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForLatexNote(stampAnnotation->boundingRectangle(), page, stampSizePoints, layoutWidthPoints, stampAnnotation->latexNoteBoxed(), preservedScale);
     const bool sameLayoutWidth = qAbs(stampAnnotation->latexNoteLayoutWidth() - layoutWidthPoints) < 1e-3;
     const bool sameScale = qAbs(stampAnnotation->latexNoteScale() - preservedScale) < 1e-6;
     if (rendered.pdfFileName == stampAnnotation->stampIconName() && updatedRect == stampAnnotation->boundingRectangle() && sameLayoutWidth && sameScale) {
