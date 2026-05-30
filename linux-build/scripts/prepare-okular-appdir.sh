@@ -412,6 +412,9 @@ if grep -F -q "$prefix/" "$final_deps_file"; then
     exit 1
 fi
 
+find "$appdir" -type f \( -name '*.desktop' -o -name '*.xml' -o -name '*.appdata.xml' -o -name '*.metainfo.xml' \) \
+    -exec sed -i 's/\r$//' {} +
+
 for required in \
     "$app_usr/bin/okular" \
     "$app_usr/share/poppler/cMap/Adobe-GB1" \

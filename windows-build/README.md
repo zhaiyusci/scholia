@@ -304,7 +304,7 @@ where Okular PDF is installed. For unattended testing, Inno Setup also accepts a
 destination path on the command line:
 
 ```powershell
-.\Okular-PDF-26.07.70-patch20260529-Setup.exe /DIR="D:\Apps\Okular PDF"
+.\Okular-PDF-26.07.70-patch20260530-Setup.exe /DIR="D:\Apps\Okular PDF"
 ```
 
 The installer output is written to:
@@ -316,8 +316,11 @@ The installer output is written to:
 The latest updated installer is:
 
 ```text
-..\dist\Okular-PDF-26.07.70-patch20260529-Setup.exe
+..\dist\Okular-PDF-26.07.70-patch20260530-Setup.exe
 ```
+
+The `patchYYYYMMDD` suffix is generated from the build date by default. Pass
+`-Version` only when a release needs an explicit fixed name.
 
 ## LaTeX Note Sizing Fix
 

@@ -1,11 +1,13 @@
 #define AppName "Okular PDF"
+#define BuildDate GetDateTimeString("yyyymmdd", "", "")
+#define BuildFileDate GetDateTimeString("mmdd", "", "")
 #define AppVersion GetEnv("OKULAR_PDF_VERSION")
 #if AppVersion == ""
-#define AppVersion "26.07.70-patch20260529"
+#define AppVersion "26.07.70-patch" + BuildDate
 #endif
 #define FileVersion GetEnv("OKULAR_PDF_FILE_VERSION")
 #if FileVersion == ""
-#define FileVersion "26.7.70.529"
+#define FileVersion "26.7.70." + BuildFileDate
 #endif
 #define SourceDir GetEnv("OKULAR_PDF_STAGE")
 #if SourceDir == ""

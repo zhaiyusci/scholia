@@ -43,6 +43,44 @@ git submodule update --init --recursive
 metadata. `external/MicroTeX` is used as the fallback LaTeX renderer when a
 system TeX executable is unavailable.
 
+## WSL and openSUSE notes
+
+The Linux scripts are meant to run inside Linux, including openSUSE under WSL.
+When the repository is checked out on Windows, keep `linux-build/scripts/*.sh`
+with LF line endings. The repository `.gitattributes` pins those scripts to LF;
+after adding that rule to an existing checkout, refresh the files if WSL reports
+`/bin/sh^M`:
+
+```sh
+git add --renormalize linux-build/scripts
+```
+
+On openSUSE Tumbleweed, install the development packages before configuring the
+local build:
+
+```sh
+sudo zypper install \
+  cmake ninja gcc-c++ git pkgconf-pkg-config rsync patchelf binutils curl wget file which \
+  kf6-extra-cmake-modules qt6-base-devel qt6-base-private-devel qt6-tools-devel \
+  qt6-svg-devel qt6-declarative-devel qt6-texttospeech-devel qt6-multimedia-devel \
+  qt6-imageformats \
+  kf6-karchive-devel kf6-kbookmarks-devel kf6-kcompletion-devel kf6-kconfig-devel \
+  kf6-kconfigwidgets-devel kf6-kcoreaddons-devel kf6-ki18n-devel kf6-kio-devel \
+  kf6-threadweaver-devel kf6-kwindowsystem-devel kf6-kxmlgui-devel \
+  kf6-kiconthemes-devel kf6-kparts-devel kf6-kcolorscheme-devel kf6-kcrash-devel \
+  kf6-ktextwidgets-devel kf6-kwidgetsaddons-devel kf6-kdoctools-devel \
+  kf6-purpose-devel kf6-kdbusaddons-devel kf6-kwallet-devel \
+  phonon-qt6-devel libkexiv2-qt6-devel \
+  poppler-data freetype2-devel fontconfig-devel cairo-devel libtiff-devel zlib-devel \
+  libspectre-devel libdjvulibre-devel libepub-devel libmarkdown-devel \
+  libjpeg8-devel libpng16-devel openjpeg2-devel liblcms2-devel libcurl-devel \
+  mozilla-nss-devel gpgme-devel gpgmepp-devel boost-devel tinyxml2-devel
+```
+
+If `qt6-base-private-devel` conflicts with `libressl-devel`, let zypper switch
+the development SSL stack to the OpenSSL packages. The Qt private headers are
+required by Okular's current CMake configuration.
+
 ## Clean local build directories
 
 For a full local rebuild, remove the two build directories and the install
@@ -94,6 +132,11 @@ This installs the Poppler core and Qt 6 wrapper under
 `$PREFIX/lib64` on the current Linux setup. `POPPLER_DATADIR` must point into
 the same local prefix so the installed Okular does not rely on the system
 `poppler-data` package.
+
+The Poppler build may regenerate files under `external/poppler`, such as
+`poppler/*Widths.pregenerated.c` and `utils/po/pdfsig.pot`, especially when
+`clang-format` is not installed. Treat those as build byproducts unless the
+submodule update itself was intentional.
 
 ## Build and install Okular
 

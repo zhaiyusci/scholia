@@ -80,11 +80,41 @@ APPIMAGETOOL=/path/to/appimagetool \
 linux-build/scripts/build-okular-appimage.sh
 ```
 
+By default the build script refreshes `build-appimage/Okular.AppDir` before
+running `appimagetool`. If `prepare-okular-appdir.sh` already completed and
+only the final AppImage step failed, reuse the existing AppDir:
+
+```sh
+SKIP_PREPARE_APPDIR=1 \
+APPIMAGETOOL=/path/to/appimagetool \
+linux-build/scripts/build-okular-appimage.sh
+```
+
+This is useful after a network failure while downloading AppImage tooling or
+after fixing only AppImage metadata. The script still normalizes `.desktop` and
+XML metadata line endings before invoking `appimagetool`; disable that safety
+check with `NORMALIZE_APPDIR_METADATA=0` only for debugging.
+
 If `appimagetool` is not on `PATH`, the script can download the continuous
 `appimagetool` AppImage:
 
 ```sh
 DOWNLOAD_APPIMAGETOOL=1 linux-build/scripts/build-okular-appimage.sh
+```
+
+`appimagetool` may also need the type2 AppImage runtime. The script looks for a
+runtime file first at `build-appimage/tools/runtime-x86_64` and then at
+`$HOME/.local/opt/appimagetool/runtime-x86_64`. To let the script download it:
+
+```sh
+DOWNLOAD_APPIMAGE_RUNTIME=1 linux-build/scripts/build-okular-appimage.sh
+```
+
+To use an already downloaded runtime:
+
+```sh
+APPIMAGE_RUNTIME_FILE=/path/to/runtime-x86_64 \
+linux-build/scripts/build-okular-appimage.sh
 ```
 
 For a persistent local install of `appimagetool`, keep the AppImage under
@@ -117,11 +147,27 @@ When `$HOME/.local/opt/appimagetool/runtime-x86_64` exists, the build script
 passes it to `appimagetool` with `--runtime-file` so AppImage generation does
 not need to download the runtime every time.
 
-The output defaults to:
+For WSL builds where the Windows host downloads the tools, place them here and
+run the Linux packaging step without network access:
 
 ```sh
-build-appimage/Okular-dev-<git-sha>-x86_64.AppImage
+build-appimage/tools/appimagetool-x86_64.AppImage
+build-appimage/tools/runtime-x86_64
+
+SKIP_PREPARE_APPDIR=1 \
+APPIMAGETOOL="$PWD/build-appimage/tools/appimagetool-x86_64.AppImage" \
+APPIMAGE_RUNTIME_FILE="$PWD/build-appimage/tools/runtime-x86_64" \
+linux-build/scripts/build-okular-appimage.sh
 ```
+
+The output defaults to the build date:
+
+```sh
+build-appimage/Okular-dev-<yyyymmdd>-x86_64.AppImage
+```
+
+Override `VERSION` only when a reproducible or release-specific filename is
+needed.
 
 The build script passes `-n` to `appimagetool` by default. This skips
 AppStream URL validation, which is not useful for a local development AppImage

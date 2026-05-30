@@ -3,8 +3,8 @@ param(
     [string] $CraftRoot = "C:\CraftRoot",
     [string] $StageRoot = "",
     [string] $OutputDir = "",
-    [string] $Version = "26.07.70-patch20260529",
-    [string] $FileVersion = "26.7.70.529",
+    [string] $Version = "",
+    [string] $FileVersion = "",
     [string] $ISCC = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     [switch] $SkipStage
 )
@@ -21,6 +21,15 @@ if (!$OutputDir) {
 }
 $StageRoot = [System.IO.Path]::GetFullPath($StageRoot)
 $OutputDir = [System.IO.Path]::GetFullPath($OutputDir)
+
+$buildDate = Get-Date -Format "yyyyMMdd"
+if (!$Version) {
+    $Version = "26.07.70-patch$buildDate"
+}
+if (!$FileVersion) {
+    $fileDate = Get-Date -Format "MMdd"
+    $FileVersion = "26.7.70.$([int]$fileDate)"
+}
 
 if (!$SkipStage) {
     & (Join-Path $PSScriptRoot "prepare-okular-pdf-only-stage.ps1") -CraftRoot $CraftRoot -StageRoot $StageRoot

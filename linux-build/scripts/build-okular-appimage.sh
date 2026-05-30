@@ -7,13 +7,51 @@ repo_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 appdir="${APPDIR:-$repo_dir/build-appimage/Okular.AppDir}"
 output_dir="${APPIMAGE_OUTPUT_DIR:-$repo_dir/build-appimage}"
 tool_dir="${APPIMAGE_TOOL_DIR:-$repo_dir/build-appimage/tools}"
-version="${VERSION:-$(git -C "$repo_dir" rev-parse --short HEAD 2>/dev/null || date +%Y%m%d)}"
+version="${VERSION:-$(date +%Y%m%d)}"
 arch="${ARCH:-x86_64}"
 output="${APPIMAGE_OUTPUT:-$output_dir/Okular-dev-$version-$arch.AppImage}"
 appimagetool_flags="${APPIMAGETOOL_FLAGS:--n}"
-runtime_file="${APPIMAGE_RUNTIME_FILE:-$HOME/.local/opt/appimagetool/runtime-$arch}"
+default_runtime_file="$HOME/.local/opt/appimagetool/runtime-$arch"
+if [ -f "$tool_dir/runtime-$arch" ]; then
+    default_runtime_file="$tool_dir/runtime-$arch"
+fi
+runtime_file="${APPIMAGE_RUNTIME_FILE:-$default_runtime_file}"
 
-"$script_dir/prepare-okular-appdir.sh"
+download_file()
+{
+    url=$1
+    dst=$2
+    mkdir -p "$(dirname -- "$dst")"
+    if command -v curl >/dev/null 2>&1; then
+        curl -L --fail "$url" -o "$dst"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$dst" "$url"
+    else
+        echo "Neither curl nor wget is available to download $url." >&2
+        exit 1
+    fi
+    chmod 755 "$dst"
+}
+
+normalize_appdir_metadata()
+{
+    find "$appdir" -type f \( -name '*.desktop' -o -name '*.xml' -o -name '*.appdata.xml' -o -name '*.metainfo.xml' \) \
+        -exec sed -i 's/\r$//' {} +
+}
+
+if [ "${SKIP_PREPARE_APPDIR:-0}" != "1" ]; then
+    "$script_dir/prepare-okular-appdir.sh"
+else
+    if [ ! -x "$appdir/AppRun" ]; then
+        echo "Existing AppDir is missing or incomplete: $appdir" >&2
+        echo "Rerun without SKIP_PREPARE_APPDIR=1 first." >&2
+        exit 1
+    fi
+fi
+
+if [ "${NORMALIZE_APPDIR_METADATA:-1}" != "0" ]; then
+    normalize_appdir_metadata
+fi
 
 appimagetool="${APPIMAGETOOL:-}"
 if [ -z "$appimagetool" ]; then
@@ -30,16 +68,13 @@ if [ -z "$appimagetool" ]; then
             exit 1
         fi
         url="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$arch.AppImage"
-        if command -v curl >/dev/null 2>&1; then
-            curl -L "$url" -o "$appimagetool"
-        elif command -v wget >/dev/null 2>&1; then
-            wget -O "$appimagetool" "$url"
-        else
-            echo "Neither curl nor wget is available to download appimagetool." >&2
-            exit 1
-        fi
-        chmod 755 "$appimagetool"
+        download_file "$url" "$appimagetool"
     fi
+fi
+
+if [ ! -f "$runtime_file" ] && [ "${DOWNLOAD_APPIMAGE_RUNTIME:-0}" = "1" ]; then
+    url="https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-$arch"
+    download_file "$url" "$runtime_file"
 fi
 
 mkdir -p "$output_dir"
