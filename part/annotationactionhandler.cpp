@@ -59,6 +59,7 @@ public:
         , aStamp(nullptr)
         , aSelectCustomStamp(nullptr)
         , aAddLatexNote(nullptr)
+        , aAddLatexInlineNote(nullptr)
         , aAddToQuickTools(nullptr)
         , aContinuousMode(nullptr)
         , aConstrainRatioAndAngle(nullptr)
@@ -104,9 +105,9 @@ public:
     const QIcon stampIcon(const QString &stampIconName);
 
     void selectTool(int toolId);
-    void slotStampToolSelected(const QString &stamp, const QString &contents = QString());
+    void slotStampToolSelected(const QString &stamp, const QString &contents = QString(), bool latexNoteBoxed = false);
     void slotSelectCustomStamp();
-    void slotAddLatexNote();
+    void slotAddLatexNote(bool boxed = false);
     void slotQuickToolSelected(int favToolId);
     void slotSetColor(AnnotationColor colorType, const QColor &color = QColor());
     void slotSelectAnnotationFont();
@@ -130,6 +131,7 @@ public:
     ToggleActionMenu *aStamp;
     QAction *aSelectCustomStamp;
     QAction *aAddLatexNote;
+    QAction *aAddLatexInlineNote;
     QAction *aAddToQuickTools;
     KToggleAction *aContinuousMode;
     KToggleAction *aConstrainRatioAndAngle;
@@ -505,10 +507,10 @@ void AnnotationActionHandlerPrivate::selectTool(int toolId)
     parseTool(toolId);
 }
 
-void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp, const QString &contents)
+void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp, const QString &contents, bool latexNoteBoxed)
 {
     selectedBuiltinTool = PageViewAnnotator::STAMP_TOOL_ID;
-    annotator->selectStampTool(stamp, contents);
+    annotator->selectStampTool(stamp, contents, latexNoteBoxed);
     maybeUpdateCustomStampAction(stamp);
     updateConfigActions(QStringLiteral("stamp"));
 }
@@ -532,22 +534,23 @@ void AnnotationActionHandlerPrivate::slotSelectCustomStamp()
     slotStampToolSelected(customStampFile);
 }
 
-void AnnotationActionHandlerPrivate::slotAddLatexNote()
+void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed)
 {
     bool ok = false;
-    const QString latexInput = QInputDialog::getMultiLineText(nullptr, i18nc("@title:window", "Add LaTeX Note"), i18nc("@label:textbox", "LaTeX source:"), QString(), &ok).trimmed();
+    const QString title = boxed ? i18nc("@title:window", "Add LaTeX Inline Note") : i18nc("@title:window", "Add LaTeX Note");
+    const QString latexInput = QInputDialog::getMultiLineText(nullptr, title, i18nc("@label:textbox", "LaTeX source:"), QString(), &ok).trimmed();
     if (!ok || latexInput.isEmpty()) {
         return;
     }
 
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0);
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0, boxed);
     if (!rendered.ok) {
         KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return;
     }
     LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
 
-    slotStampToolSelected(rendered.pdfFileName, latexInput);
+    slotStampToolSelected(rendered.pdfFileName, latexInput, boxed);
 }
 
 void AnnotationActionHandlerPrivate::slotQuickToolSelected(int favToolId)
@@ -709,6 +712,9 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aAddLatexNote = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Note…"), this);
     d->aAddLatexNote->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX as a movable annotation"));
     connect(d->aAddLatexNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(); });
+    d->aAddLatexInlineNote = new QAction(QIcon::fromTheme(QStringLiteral("note")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Inline Note…"), this);
+    d->aAddLatexInlineNote->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX with an inline-note background and border"));
+    connect(d->aAddLatexInlineNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true); });
     connect(d->aStamp->menu(), &QMenu::triggered, this, [this](QAction *action) {
         if (action->isCheckable()) {
             d->aStamp->setDefaultAction(action);
@@ -821,6 +827,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_stamp"), d->aStamp);
     ac->addAction(QStringLiteral("annotation_add_image_note"), d->aSelectCustomStamp);
     ac->addAction(QStringLiteral("annotation_add_latex_note"), d->aAddLatexNote);
+    ac->addAction(QStringLiteral("annotation_add_latex_inline_note"), d->aAddLatexInlineNote);
     ac->addAction(QStringLiteral("annotation_favorites"), d->aQuickTools);
     ac->addAction(QStringLiteral("annotation_bookmark"), d->aAddToQuickTools);
     ac->addAction(QStringLiteral("annotation_settings_pin"), d->aContinuousMode);
@@ -907,6 +914,7 @@ void AnnotationActionHandler::setToolsEnabled(bool on)
     d->aStamp->setEnabled(on);
     d->aSelectCustomStamp->setEnabled(on);
     d->aAddLatexNote->setEnabled(on);
+    d->aAddLatexInlineNote->setEnabled(on);
     d->aContinuousMode->setEnabled(on);
 }
 

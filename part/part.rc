@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="56">
+<gui name="okular_part" version="57">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -135,6 +135,7 @@
   <Action name="annotation_stamp"/>
   <Action name="annotation_add_image_note"/>
   <Action name="annotation_add_latex_note"/>
+  <Action name="annotation_add_latex_inline_note"/>
   <Separator/>
   <Action name="annotation_settings_width"/>
   <Action name="annotation_settings_color"/>
@@ -152,5 +153,6 @@
     <Action name="quick_annotation_action_bar"/>
     <Action name="annotation_add_image_note"/>
     <Action name="annotation_add_latex_note"/>
+    <Action name="annotation_add_latex_inline_note"/>
 </ToolBar>
 </gui>

@@ -89,6 +89,7 @@ private:
     void doSetLatexAnnotationWidth(AnnotPagePair pair);
     void doFitLatexAnnotationToContent(AnnotPagePair pair);
     void doResetLatexAnnotationScale(AnnotPagePair pair);
+    void doToggleLatexAnnotationFrame(AnnotPagePair pair);
     void doConvertLatexAnnotationToText(AnnotPagePair pair);
     void doRemovePageAnnotation(AnnotPagePair pair);
     void doOpenAnnotationWindow(AnnotPagePair pair);

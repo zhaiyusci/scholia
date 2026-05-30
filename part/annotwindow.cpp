@@ -611,7 +611,7 @@ void AnnotWindow::updateLatexNoteAppearance()
     const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
     const double preservedScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
     const double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexNote(stampAnnotation, page);
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stampAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stampAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints, stampAnnotation->latexNoteBoxed());
     if (!rendered.ok) {
         qWarning() << "LaTeX note auto-update failed:" << rendered.errorMessage;
         return;

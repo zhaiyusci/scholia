@@ -449,6 +449,7 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
     if (std::isfinite(layoutWidth) && layoutWidth >= 0.0) {
         pStampAnnotation->setOkularLatexNoteLayoutWidth(layoutWidth);
     }
+    pStampAnnotation->setOkularLatexNoteBoxed(oStampAnnotation->latexNoteBoxed());
 #endif
     return setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
 }
@@ -1163,6 +1164,7 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
 #ifdef POPPLER_QT6_HAS_OKULAR_LATEX_NOTE_METADATA
     oStampAnn->setLatexNoteScale(popplerAnnotation->okularLatexNoteScale());
     oStampAnn->setLatexNoteLayoutWidth(popplerAnnotation->okularLatexNoteLayoutWidth());
+    oStampAnn->setLatexNoteBoxed(popplerAnnotation->okularLatexNoteBoxed());
 #endif
 
     return oStampAnn;

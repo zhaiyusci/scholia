@@ -109,7 +109,7 @@ public:
     // selects the active tool
     void selectBuiltinTool(int toolId, ShowTip showTip);
     // selects a stamp tool and sets the stamp symbol
-    void selectStampTool(const QString &stampSymbol, const QString &contents = QString());
+    void selectStampTool(const QString &stampSymbol, const QString &contents = QString(), bool latexNoteBoxed = false);
     // selects the active quick tool
     void selectQuickTool(int toolId);
     // selects the last used tool

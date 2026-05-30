@@ -135,7 +135,7 @@ LatexRenderWarning microtexOverflowWarning(int renderedWidth, int availableWidth
     return warning;
 }
 
-LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
+LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, bool boxed, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
 {
     std::lock_guard<std::mutex> guard(microtexMutex);
 
@@ -154,6 +154,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         const int requestedWidth = fixedWidth ? qMax(1, static_cast<int>(std::ceil(maxWidth))) : 0;
         const int padding = qMax(2, static_cast<int>(std::ceil(fontSize * 0.2)));
         const int horizontalPadding = fixedWidth ? 0 : padding;
+        const int frameInset = boxed ? 3 : 0;
         const int layoutWidth = fixedWidth ? requestedWidth : 10000;
         std::unique_ptr<tex::TeXRender> render(tex::LaTeX::parse(latexSource.toStdWString(), layoutWidth, fontSize, fontSize / 3.0f, microtexColor(textColor)));
         if (!render) {
@@ -161,8 +162,9 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
             return LatexRenderer::MicrotexFailed;
         }
 
-        const int width = fixedWidth ? qMax(requestedWidth, render->getWidth()) : qMax(1, render->getWidth() + 2 * horizontalPadding);
-        const int height = qMax(1, render->getHeight() + 2 * padding);
+        const int pageContentWidth = fixedWidth ? qMax(requestedWidth, render->getWidth()) : qMax(1, render->getWidth() + 2 * horizontalPadding);
+        const int width = pageContentWidth + 2 * frameInset;
+        const int height = qMax(1, render->getHeight() + 2 * padding + 2 * frameInset);
 
         QTemporaryFile tempFile(QDir::tempPath() + QLatin1String("/okular_microtex-XXXXXX.pdf"));
         tempFile.setAutoRemove(false);
@@ -187,7 +189,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         }
 
         tex::Graphics2D_qt graphics(&painter);
-        render->draw(graphics, horizontalPadding, padding);
+        render->draw(graphics, frameInset + horizontalPadding, frameInset + padding);
         painter.end();
 
         if (!QFileInfo::exists(tempFileName) || QFileInfo(tempFileName).size() <= 0) {
@@ -471,7 +473,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     return handleLatex(fileName, nullptr, formula, textColor, fontSize, resolution, latexOutput, BodyMode::Source);
 }
 
-LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble)
+LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth, const QString &sourcePreamble, bool boxed)
 {
     m_lastBackendName.clear();
     m_lastWarning = {};
@@ -488,17 +490,19 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
     }
 
     QString imageFileName;
-    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, 0, latexOutput, BodyMode::Source, maxWidth, sourcePreamble);
+    return handleLatex(imageFileName, &pdfFileName, formula, textColor, fontSize, 0, latexOutput, BodyMode::Source, maxWidth, sourcePreamble, boxed);
 }
 
-LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth, const QString &sourcePreamble)
+LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfFileName, const QString &latexSource, const QColor &textColor, int fontSize, int resolution, QString &latexOutput, BodyMode bodyMode, double maxWidth, const QString &sourcePreamble, bool boxed)
 {
     KProcess dvipngProc;
     KProcess pdfToImageProc;
     const bool renderSource = bodyMode == BodyMode::Source;
+    const bool boxedSource = renderSource && boxed;
     const bool constrainSourceWidth = renderSource && std::isfinite(maxWidth) && maxWidth > 0.0;
     const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
     const QString sourceVarWidth = QStringLiteral("varwidth");
+    const QString sourceBorder = boxedSource ? QStringLiteral("3bp") : QStringLiteral("0pt");
     const QString effectiveSourcePreamble = sourcePreamble.isNull() ? defaultSourcePreamble() : sourcePreamble;
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
@@ -523,11 +527,11 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         if (renderSource) {
             tempStream << "\
 \\documentclass["
-                       << fontSize << "pt," << sourceVarWidth << ",border=0pt]{standalone}\n"
+                       << fontSize << "pt," << sourceVarWidth << ",border=" << sourceBorder << "]{standalone}\n"
                        << effectiveSourcePreamble << "\n"
                        << "\\pagestyle{empty}\n"
-                          "\\begin{document}\n"
-                          "{\\color[rgb]{"
+                          "\\begin{document}\n";
+            tempStream << "{\\color[rgb]{"
                        << textColor.redF()
                        << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
             if (constrainSourceWidth) {
@@ -578,7 +582,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         fileName = QString();
 #ifdef OKULAR_ENABLE_MICROTEX
         if (renderSource && pdfFileName && resolution <= 0) {
-            Error fallbackError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
+            Error fallbackError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, boxedSource, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
             if (fallbackError == NoError) {
                 m_lastBackendName = QStringLiteral("microtex");
             }

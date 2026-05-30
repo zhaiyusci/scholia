@@ -2283,6 +2283,7 @@ public:
         , m_stampIconName(QStringLiteral("Draft"))
         , m_latexNoteLayoutWidth(0.0)
         , m_latexNoteScale(1.0)
+        , m_latexNoteBoxed(false)
     {
     }
     void setAnnotationProperties(const QDomNode &node) override;
@@ -2292,6 +2293,7 @@ public:
     QString m_stampIconName;
     double m_latexNoteLayoutWidth;
     double m_latexNoteScale;
+    bool m_latexNoteBoxed;
 };
 
 StampAnnotation::StampAnnotation()
@@ -2344,6 +2346,18 @@ double StampAnnotation::latexNoteScale() const
     return d->m_latexNoteScale;
 }
 
+void StampAnnotation::setLatexNoteBoxed(bool boxed)
+{
+    Q_D(StampAnnotation);
+    d->m_latexNoteBoxed = boxed;
+}
+
+bool StampAnnotation::latexNoteBoxed() const
+{
+    Q_D(const StampAnnotation);
+    return d->m_latexNoteBoxed;
+}
+
 Annotation::SubType StampAnnotation::subType() const
 {
     return AStamp;
@@ -2368,6 +2382,9 @@ void StampAnnotation::store(QDomNode &node, QDomDocument &document) const
     }
     if (d->m_latexNoteScale > 0.0 && d->m_latexNoteScale != 1.0) {
         stampElement.setAttribute(QStringLiteral("latexNoteScale"), QString::number(d->m_latexNoteScale, 'f', 6));
+    }
+    if (d->m_latexNoteBoxed) {
+        stampElement.setAttribute(QStringLiteral("latexNoteBoxed"), QStringLiteral("1"));
     }
 }
 
@@ -2401,6 +2418,9 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
             if (ok && scale > 0.0) {
                 m_latexNoteScale = scale;
             }
+        }
+        if (e.hasAttribute(QStringLiteral("latexNoteBoxed"))) {
+            m_latexNoteBoxed = e.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0;
         }
 
         // loading complete

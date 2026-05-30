@@ -1365,6 +1365,18 @@ public:
     double latexNoteScale() const;
 
     /**
+     * Sets whether this LaTeX note should render with an inline-note style
+     * background and border.
+     */
+    void setLatexNoteBoxed(bool boxed);
+
+    /**
+     * Returns whether this LaTeX note renders with an inline-note style
+     * background and border.
+     */
+    bool latexNoteBoxed() const;
+
+    /**
      * Returns the sub type of the stamp annotation.
      */
     SubType subType() const override;

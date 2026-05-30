@@ -44,6 +44,7 @@ static const int handleSizeHalf = handleSize / 2;
 static const int latexWidthHandleLength = 18;
 static const int latexWidthHandleHalf = latexWidthHandleLength / 2;
 static const int latexWarningMarkerSize = 14;
+static constexpr double latexBoxFrameWidthPoints = 6.0;
 
 static bool isStampAnnotation(const Okular::Annotation *annotation)
 {
@@ -251,7 +252,8 @@ static double latexLayoutWidthFraction(const Okular::StampAnnotation *stamp, con
         return 0.0;
     }
 
-    return layoutWidthPoints * visualScale / pageWidthPoints;
+    const double controlWidthPoints = layoutWidthPoints + (stamp->latexNoteBoxed() ? latexBoxFrameWidthPoints : 0.0);
+    return controlWidthPoints * visualScale / pageWidthPoints;
 }
 
 static Okular::NormalizedRect latexLayoutBoundingRect(const AnnotationDescription &ad, const Okular::NormalizedRect &visualRect)
@@ -314,7 +316,8 @@ static GuiUtils::LatexRenderWarning layoutOverflowWarningForLatexNote(const Anno
     }
 
     constexpr double overflowThresholdPoints = 0.5;
-    const double overflowPoints = pdfSize.width() - layoutWidthPoints;
+    const double controlWidthPoints = layoutWidthPoints + (stamp->latexNoteBoxed() ? latexBoxFrameWidthPoints : 0.0);
+    const double overflowPoints = pdfSize.width() - controlWidthPoints;
     if (overflowPoints <= overflowThresholdPoints) {
         return {};
     }
@@ -363,12 +366,12 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
     double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexNote(stamp, page);
     GuiUtils::LatexRenderWarning renderWarning;
     if (adjustsLayoutWidth) {
-        layoutWidthPoints = LatexNoteUtils::layoutWidthForVisibleWidth(visibleWidthPoints, visualScale);
+        layoutWidthPoints = LatexNoteUtils::layoutWidthForVisibleWidth(visibleWidthPoints, visualScale, stamp->latexNoteBoxed());
         if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
             return false;
         }
 
-        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stamp->contents(), LatexNoteUtils::colorForLatexNote(stamp), LatexNoteUtils::latexFontSize(), layoutWidthPoints);
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(stamp->contents(), LatexNoteUtils::colorForLatexNote(stamp), LatexNoteUtils::latexFontSize(), layoutWidthPoints, stamp->latexNoteBoxed());
         if (!rendered.ok) {
             qWarning() << "LaTeX note resize reflow failed:" << rendered.errorMessage;
             return false;

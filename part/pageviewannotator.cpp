@@ -342,6 +342,9 @@ public:
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
                 sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
             }
+            if (m_annotElement.hasAttribute(QStringLiteral("latexNoteBoxed"))) {
+                sa->setLatexNoteBoxed(m_annotElement.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0);
+            }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
             rect.top = qMin(startpoint.y, point.y);
@@ -1555,7 +1558,7 @@ void PageViewAnnotator::selectLastTool()
     selectTool(m_lastToolsDefinition, m_lastToolId, ShowTip::No);
 }
 
-void PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString &contents)
+void PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString &contents, bool latexNoteBoxed)
 {
     QDomElement toolElement = builtinTool(STAMP_TOOL_ID);
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
@@ -1566,6 +1569,11 @@ void PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QStrin
         annotationElement.removeAttribute(QStringLiteral("contents"));
     } else {
         annotationElement.setAttribute(QStringLiteral("contents"), contents);
+    }
+    if (latexNoteBoxed) {
+        annotationElement.setAttribute(QStringLiteral("latexNoteBoxed"), QStringLiteral("1"));
+    } else {
+        annotationElement.removeAttribute(QStringLiteral("latexNoteBoxed"));
     }
     saveBuiltinAnnotationTools();
     selectBuiltinTool(STAMP_TOOL_ID, ShowTip::Yes);
