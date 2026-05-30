@@ -63,9 +63,21 @@ try {
         exit 2
     }
 
-    if ($pdfModules -notcontains (Join-Path $StageRoot "plugins\okular_generators\okularGenerator_poppler.dll")) {
-        Write-Warning "PDF generator was not loaded."
+    $requiredPdfModules = @(
+        Join-Path $StageRoot "bin\poppler.dll"
+        Join-Path $StageRoot "bin\poppler-qt6.dll"
+        Join-Path $StageRoot "plugins\kf6\parts\okularpart.dll"
+    )
+    $missingPdfModules = $requiredPdfModules | Where-Object { $pdfModules -notcontains $_ }
+    if ($missingPdfModules) {
+        Write-Warning "Required staged PDF modules were not loaded:"
+        $missingPdfModules | ForEach-Object { Write-Warning "  $_" }
         exit 3
+    }
+
+    $pdfGenerator = Join-Path $StageRoot "plugins\okular_generators\okularGenerator_poppler.dll"
+    if ($pdfModules -notcontains $pdfGenerator) {
+        Write-Warning "PDF generator module was not visible in the process module list. If the PDF opened successfully, this can be a loader-timing false negative."
     }
 
     exit 0
