@@ -33,6 +33,13 @@ research-note workflows. The main differences are:
   * adds `OKULAR_PDF_ONLY=ON` to build only the PDF generator plugin;
   * this is used by the Windows package to keep the distributed build focused
     on PDF support.
+* Annotation performance note:
+  * a small FreeText/Callout annotation can become an outlier when its PDF
+    appearance references a large embedded CJK font resource. For example, a
+    callout containing only ASCII text may still carry a multi-megabyte
+    Microsoft YaHei UI `FontFile2` after repeated incremental saves or viewer
+    rewrites. Treat those files as malformed/heavy samples when measuring
+    normal annotation repaint performance.
 * Local component pinning:
   * adds submodules for `external/poppler` and `external/MicroTeX`;
   * see `README.local-components.md` for initialization and local build notes.

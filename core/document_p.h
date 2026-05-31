@@ -126,7 +126,6 @@ public:
         , m_archiveData(nullptr)
         , m_fontsCached(false)
         , m_annotationEditingEnabled(true)
-        , m_annotationBeingModified(false)
         , m_undoStack(nullptr)
         , m_docdataMigrationNeeded(false)
         , m_synctex_scanner(nullptr)
@@ -336,7 +335,6 @@ public:
     QSet<View *> m_views;
 
     bool m_annotationEditingEnabled;
-    bool m_annotationBeingModified; // is an annotation currently being moved or resized?
 
     QUndoStack *m_undoStack;
     QDomNode m_prevPropsOfAnnotBeingModified;
