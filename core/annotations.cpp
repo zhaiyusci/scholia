@@ -95,6 +95,41 @@ static double strokeDistance(double distance, double penWidth)
     return fmax(distance - pow(penWidth, 2), 0);
 }
 
+static NormalizedPoint calloutPointOnAdjustedBoxEdge(const NormalizedPoint &point, const NormalizedRect &oldBox, const NormalizedRect &newBox)
+{
+    const double oldWidth = oldBox.width();
+    const double oldHeight = oldBox.height();
+    const double newWidth = newBox.width();
+    const double newHeight = newBox.height();
+    if (oldWidth <= 0.0 || oldHeight <= 0.0 || newWidth <= 0.0 || newHeight <= 0.0) {
+        return NormalizedPoint(qBound(newBox.left, point.x, newBox.right), qBound(newBox.top, point.y, newBox.bottom));
+    }
+
+    const double x = qBound(oldBox.left, point.x, oldBox.right);
+    const double y = qBound(oldBox.top, point.y, oldBox.bottom);
+    const double leftDistance = qAbs(x - oldBox.left);
+    const double rightDistance = qAbs(oldBox.right - x);
+    const double topDistance = qAbs(y - oldBox.top);
+    const double bottomDistance = qAbs(oldBox.bottom - y);
+    const double edgeDistance = qMin(qMin(leftDistance, rightDistance), qMin(topDistance, bottomDistance));
+
+    if (edgeDistance == leftDistance) {
+        const double ratio = qBound(0.0, (y - oldBox.top) / oldHeight, 1.0);
+        return NormalizedPoint(newBox.left, newBox.top + ratio * newHeight);
+    }
+    if (edgeDistance == rightDistance) {
+        const double ratio = qBound(0.0, (y - oldBox.top) / oldHeight, 1.0);
+        return NormalizedPoint(newBox.right, newBox.top + ratio * newHeight);
+    }
+    if (edgeDistance == topDistance) {
+        const double ratio = qBound(0.0, (x - oldBox.left) / oldWidth, 1.0);
+        return NormalizedPoint(newBox.left + ratio * newWidth, newBox.top);
+    }
+
+    const double ratio = qBound(0.0, (x - oldBox.left) / oldWidth, 1.0);
+    return NormalizedPoint(newBox.left + ratio * newWidth, newBox.bottom);
+}
+
 // BEGIN AnnotationUtils implementation
 Annotation *AnnotationUtils::createAnnotation(const QDomElement &annElement)
 {
@@ -1119,6 +1154,7 @@ public:
     void baseTransform(const QTransform &matrix) override;
     void resetTransformation() override;
     void translate(const NormalizedPoint &coord) override;
+    void adjust(const NormalizedPoint &deltaCoord1, const NormalizedPoint &deltaCoord2) override;
     bool openDialogAfterCreation() const override;
     void setAnnotationProperties(const QDomNode &node) override;
     bool canBeResized() const override;
@@ -1363,6 +1399,16 @@ void TextAnnotationPrivate::translate(const NormalizedPoint &coord)
     ADD_COORD(m_inplaceCallout[1], coord)
     ADD_COORD(m_inplaceCallout[2], coord)
 #undef ADD_COORD
+}
+
+void TextAnnotationPrivate::adjust(const NormalizedPoint &deltaCoord1, const NormalizedPoint &deltaCoord2)
+{
+    const NormalizedRect oldBoundary = m_boundary;
+    AnnotationPrivate::adjust(deltaCoord1, deltaCoord2);
+
+    if (m_textType == TextAnnotation::InPlace && m_inplaceIntent == TextAnnotation::Callout) {
+        m_inplaceCallout[2] = calloutPointOnAdjustedBoxEdge(m_inplaceCallout[2], oldBoundary, m_boundary);
+    }
 }
 
 bool TextAnnotationPrivate::openDialogAfterCreation() const

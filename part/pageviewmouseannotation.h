@@ -140,6 +140,10 @@ public:
         RH_TopRight = RH_Top | RH_Right,
         RH_BottomRight = RH_Bottom | RH_Right,
         RH_Content = 16,
+        RH_CalloutTip = 32,
+        RH_CalloutKnee = 64,
+        RH_CalloutAnchor = 128,
+        RH_CalloutHandles = RH_CalloutTip | RH_CalloutKnee | RH_CalloutAnchor,
         RH_AllHandles = RH_Top | RH_Right | RH_Bottom | RH_Left
     };
     Q_DECLARE_FLAGS(ResizeHandle, ResizeHandleFlag)
@@ -153,12 +157,15 @@ private:
     void updateViewport(const AnnotationDescription &ad) const;
     ResizeHandle getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const;
     QRect getHandleRect(ResizeHandle handle, const AnnotationDescription &ad) const;
+    QRect getCalloutLineRect(const AnnotationDescription &ad) const;
     QRect getLatexWarningMarkerRect(const AnnotationDescription &ad) const;
     QRect viewportRectForPageRect(const QRect &rect, const AnnotationDescription &ad) const;
     bool hasLatexRenderWarning(const AnnotationDescription &ad) const;
     void refreshLatexRenderWarning(const AnnotationDescription &ad);
     void setLatexRenderWarning(const AnnotationDescription &ad, const GuiUtils::LatexRenderWarning &warning);
     void clearLatexRenderWarning();
+    void rememberOriginalCalloutGeometry(const AnnotationDescription &ad);
+    void restoreOriginalCalloutGeometry(const AnnotationDescription &ad);
     static void handleToAdjust(const QPointF dIn, QPointF &dOut1, QPointF &dOut2, MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation);
     static QPointF rotateInRect(const QPointF rotated, Okular::Rotation rotation);
     static ResizeHandle rotateHandle(ResizeHandle handle, Okular::Rotation rotation);
@@ -174,6 +181,9 @@ private:
     AnnotationDescription m_focusedAnnotation;
     Okular::NormalizedRect m_originalBoundingRect;
     bool m_hasOriginalBoundingRect;
+    Okular::NormalizedPoint m_originalCalloutPoints[3];
+    Okular::NormalizedRect m_originalCalloutBoundingRect;
+    bool m_hasOriginalCalloutGeometry;
     Okular::NormalizedRect m_latexResizeLayoutRect;
     bool m_hasLatexResizeLayoutRect;
 
