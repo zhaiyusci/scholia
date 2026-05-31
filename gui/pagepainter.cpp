@@ -48,6 +48,30 @@ bool isLatexNoteAnnotation(const Okular::Annotation *annotation)
     const auto *stamp = static_cast<const Okular::StampAnnotation *>(annotation);
     return !GuiUtils::latexNotePdfFileForStamp(stamp->stampIconName()).isEmpty();
 }
+
+QColor textBorderColor(const Okular::TextAnnotation *annotation)
+{
+    QColor color = annotation ? annotation->inplaceBorderColor() : QColor();
+    if (!color.isValid()) {
+        color = annotation ? annotation->textColor() : Qt::black;
+    }
+    return color;
+}
+
+QColor latexNoteFillColor(const Okular::StampAnnotation *annotation)
+{
+    QColor color = annotation ? annotation->latexNoteFillColor() : QColor();
+    return color.isValid() ? color : QColor(255, 255, 0);
+}
+
+QColor latexNoteBorderColor(const Okular::StampAnnotation *annotation)
+{
+    QColor color = annotation ? annotation->latexNoteBorderColor() : QColor();
+    if (!color.isValid()) {
+        color = annotation ? annotation->style().color() : Qt::black;
+    }
+    return color.isValid() ? color : Qt::black;
+}
 }
 
 inline QPen buildPen(const Okular::Annotation *ann, double width, const QColor &color)
@@ -561,12 +585,25 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                 // Required as asking for a zero width pen results
                 // in a default width pen (1.0) being created
                 if (borderWidth != 0) {
-                    QPen pen(Qt::black, borderWidth);
+                    QPen pen(textBorderColor(text), borderWidth);
                     painter.setPen(pen);
                     painter.drawRect(0, 0, image.width() - 1, image.height() - 1);
                 }
                 painter.end();
 
+                if (text->inplaceIntent() == Okular::TextAnnotation::Callout) {
+                    const auto calloutPoint = [scaledWidth, scaledHeight, &scaledCrop](const Okular::NormalizedPoint &point) {
+                        return QPointF(point.x * scaledWidth - scaledCrop.left(), point.y * scaledHeight - scaledCrop.top());
+                    };
+                    const Okular::NormalizedPoint p0 = text->transformedInplaceCallout(0);
+                    const Okular::NormalizedPoint p1 = text->transformedInplaceCallout(1);
+                    const Okular::NormalizedPoint p2 = text->transformedInplaceCallout(2);
+                    mixedPainter->save();
+                    mixedPainter->setPen(QPen(textBorderColor(text), borderWidth > 0 ? borderWidth : 1.0));
+                    mixedPainter->drawLine(calloutPoint(p0), calloutPoint(p1));
+                    mixedPainter->drawLine(calloutPoint(p1), calloutPoint(p2));
+                    mixedPainter->restore();
+                }
                 mixedPainter->drawImage(annotBoundary.topLeft(), image);
             } else if (text->textType() == Okular::TextAnnotation::Linked) {
                 // get pixmap, colorize and alpha-blend it
@@ -594,14 +631,22 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
             Okular::StampAnnotation *stamp = static_cast<Okular::StampAnnotation *>(a);
 
             // get pixmap and alpha blend it if needed
-            const QPixmap stampPixmap = GuiUtils::stampPixmap(stamp->stampIconName(), annotBoundary.size() * dpr);
+            const bool boxedLatexNote = stamp->latexNoteBoxed() && isLatexNoteAnnotation(stamp);
+            const QRect stampTargetRect = boxedLatexNote ? annotBoundary.adjusted(3, 3, -3, -3) : annotBoundary;
+            const QPixmap stampPixmap = GuiUtils::stampPixmap(stamp->stampIconName(), stampTargetRect.size() * dpr);
             if (!stampPixmap.isNull()) // should never happen but can happen on huge sizes
             {
                 // Draw pixmap with opacity:
                 mixedPainter->save();
                 mixedPainter->setOpacity(mixedPainter->opacity() * opacity / 255.0);
 
-                mixedPainter->drawPixmap(annotRect.topLeft(), stampPixmap.scaled(annotBoundary.width() * dpr, annotBoundary.height() * dpr), dInnerRect.toAlignedRect());
+                if (boxedLatexNote) {
+                    mixedPainter->setPen(QPen(latexNoteBorderColor(stamp), qMax(1.0, stamp->style().width())));
+                    mixedPainter->setBrush(latexNoteFillColor(stamp));
+                    mixedPainter->drawRect(annotBoundary.adjusted(0, 0, -1, -1));
+                }
+
+                mixedPainter->drawPixmap(stampTargetRect.topLeft(), stampPixmap.scaled(stampTargetRect.width() * dpr, stampTargetRect.height() * dpr));
 
                 mixedPainter->restore();
             }

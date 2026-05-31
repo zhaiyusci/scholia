@@ -1128,6 +1128,7 @@ public:
     QString m_textIcon;
     QFont m_textFont;
     QColor m_textColor;
+    QColor m_inplaceBorderColor;
     int m_inplaceAlign;
     NormalizedPoint m_inplaceCallout[3];
     NormalizedPoint m_transformedInplaceCallout[3];
@@ -1199,6 +1200,18 @@ QColor TextAnnotation::textColor() const
     return d->m_textColor;
 }
 
+void TextAnnotation::setInplaceBorderColor(const QColor &color)
+{
+    Q_D(TextAnnotation);
+    d->m_inplaceBorderColor = color;
+}
+
+QColor TextAnnotation::inplaceBorderColor() const
+{
+    Q_D(const TextAnnotation);
+    return d->m_inplaceBorderColor;
+}
+
 void TextAnnotation::setInplaceAlignment(int alignment)
 {
     Q_D(TextAnnotation);
@@ -1219,6 +1232,10 @@ void TextAnnotation::setInplaceCallout(const NormalizedPoint &point, int index)
 
     Q_D(TextAnnotation);
     d->m_inplaceCallout[index] = point;
+    d->resetTransformation();
+    if (d->m_page) {
+        d->transform(d->m_page->rotationMatrix());
+    }
 }
 
 NormalizedPoint TextAnnotation::inplaceCallout(int index) const
@@ -1281,6 +1298,9 @@ void TextAnnotation::store(QDomNode &node, QDomDocument &document) const
     if (d->m_textColor.isValid()) {
         textElement.setAttribute(QStringLiteral("fontColor"), d->m_textColor.name());
     }
+    if (d->m_inplaceBorderColor.isValid()) {
+        textElement.setAttribute(QStringLiteral("borderColor"), d->m_inplaceBorderColor.name(QColor::HexArgb));
+    }
     if (d->m_inplaceAlign) {
         textElement.setAttribute(QStringLiteral("align"), d->m_inplaceAlign);
     }
@@ -1289,7 +1309,9 @@ void TextAnnotation::store(QDomNode &node, QDomDocument &document) const
     }
 
     // Sub-Node - callout
-    if (d->m_inplaceCallout[0].x != 0.0) {
+    const bool hasCallout = d->m_inplaceIntent == Callout || d->m_inplaceCallout[0].x != 0.0 || d->m_inplaceCallout[0].y != 0.0
+        || d->m_inplaceCallout[1].x != 0.0 || d->m_inplaceCallout[1].y != 0.0 || d->m_inplaceCallout[2].x != 0.0 || d->m_inplaceCallout[2].y != 0.0;
+    if (hasCallout) {
         QDomElement calloutElement = document.createElement(QStringLiteral("callout"));
         textElement.appendChild(calloutElement);
         calloutElement.setAttribute(QStringLiteral("ax"), QString::number(d->m_inplaceCallout[0].x));
@@ -1373,6 +1395,9 @@ void TextAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         }
         if (e.hasAttribute(QStringLiteral("fontColor"))) {
             m_textColor = QColor(e.attribute(QStringLiteral("fontColor")));
+        }
+        if (e.hasAttribute(QStringLiteral("borderColor"))) {
+            m_inplaceBorderColor = QColor(e.attribute(QStringLiteral("borderColor")));
         }
         if (e.hasAttribute(QStringLiteral("align"))) {
             m_inplaceAlign = e.attribute(QStringLiteral("align")).toInt();
@@ -2294,6 +2319,8 @@ public:
     double m_latexNoteLayoutWidth;
     double m_latexNoteScale;
     bool m_latexNoteBoxed;
+    QColor m_latexNoteFillColor;
+    QColor m_latexNoteBorderColor;
 };
 
 StampAnnotation::StampAnnotation()
@@ -2358,6 +2385,30 @@ bool StampAnnotation::latexNoteBoxed() const
     return d->m_latexNoteBoxed;
 }
 
+void StampAnnotation::setLatexNoteFillColor(const QColor &color)
+{
+    Q_D(StampAnnotation);
+    d->m_latexNoteFillColor = color;
+}
+
+QColor StampAnnotation::latexNoteFillColor() const
+{
+    Q_D(const StampAnnotation);
+    return d->m_latexNoteFillColor;
+}
+
+void StampAnnotation::setLatexNoteBorderColor(const QColor &color)
+{
+    Q_D(StampAnnotation);
+    d->m_latexNoteBorderColor = color;
+}
+
+QColor StampAnnotation::latexNoteBorderColor() const
+{
+    Q_D(const StampAnnotation);
+    return d->m_latexNoteBorderColor;
+}
+
 Annotation::SubType StampAnnotation::subType() const
 {
     return AStamp;
@@ -2385,6 +2436,12 @@ void StampAnnotation::store(QDomNode &node, QDomDocument &document) const
     }
     if (d->m_latexNoteBoxed) {
         stampElement.setAttribute(QStringLiteral("latexNoteBoxed"), QStringLiteral("1"));
+    }
+    if (d->m_latexNoteFillColor.isValid()) {
+        stampElement.setAttribute(QStringLiteral("latexNoteFillColor"), d->m_latexNoteFillColor.name(QColor::HexArgb));
+    }
+    if (d->m_latexNoteBorderColor.isValid()) {
+        stampElement.setAttribute(QStringLiteral("latexNoteBorderColor"), d->m_latexNoteBorderColor.name(QColor::HexArgb));
     }
 }
 
@@ -2421,6 +2478,12 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         }
         if (e.hasAttribute(QStringLiteral("latexNoteBoxed"))) {
             m_latexNoteBoxed = e.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0;
+        }
+        if (e.hasAttribute(QStringLiteral("latexNoteFillColor"))) {
+            m_latexNoteFillColor = QColor(e.attribute(QStringLiteral("latexNoteFillColor")));
+        }
+        if (e.hasAttribute(QStringLiteral("latexNoteBorderColor"))) {
+            m_latexNoteBorderColor = QColor(e.attribute(QStringLiteral("latexNoteBorderColor")));
         }
 
         // loading complete

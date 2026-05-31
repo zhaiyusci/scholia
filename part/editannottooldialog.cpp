@@ -87,6 +87,7 @@ EditAnnotToolDialog::EditAnnotToolDialog(QWidget *parent, const QDomElement &ini
     // Populate combobox with annotation types
     m_type->addItem(i18n("Pop-up Note"), QVariant::fromValue(ToolNoteLinked));
     m_type->addItem(i18n("Inline Note"), QVariant::fromValue(ToolNoteInline));
+    m_type->addItem(i18n("Callout"), QVariant::fromValue(ToolCallout));
     m_type->addItem(i18n("Freehand Line"), QVariant::fromValue(ToolInk));
     m_type->addItem(i18n("Straight Line"), QVariant::fromValue(ToolStraightLine));
     m_type->addItem(i18n("Polygon"), QVariant::fromValue(ToolPolygon));
@@ -146,13 +147,34 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         annotationElement.setAttribute(QStringLiteral("icon"), ta->textIcon());
     } else if (toolType == ToolNoteInline) {
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(m_stubann);
+        const QColor borderColor = ta->inplaceBorderColor().isValid() ? ta->inplaceBorderColor() : ta->textColor();
         toolElement.setAttribute(QStringLiteral("type"), QStringLiteral("note-inline"));
         engineElement.setAttribute(QStringLiteral("type"), QStringLiteral("PickPoint"));
-        engineElement.setAttribute(QStringLiteral("color"), color);
+        engineElement.setAttribute(QStringLiteral("color"), borderColor.name(QColor::HexArgb));
         engineElement.setAttribute(QStringLiteral("hoverIcon"), QStringLiteral("tool-note-inline"));
         engineElement.setAttribute(QStringLiteral("block"), QStringLiteral("true"));
         annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("FreeText"));
         annotationElement.setAttribute(QStringLiteral("color"), color);
+        annotationElement.setAttribute(QStringLiteral("borderColor"), borderColor.name(QColor::HexArgb));
+        annotationElement.setAttribute(QStringLiteral("textColor"), ta->textColor().name(QColor::HexArgb));
+        annotationElement.setAttribute(QStringLiteral("width"), width);
+        if (ta->inplaceAlignment() != 0) {
+            annotationElement.setAttribute(QStringLiteral("align"), ta->inplaceAlignment());
+        }
+        if (ta->textFont() != QApplication::font()) {
+            annotationElement.setAttribute(QStringLiteral("font"), ta->textFont().toString());
+        }
+    } else if (toolType == ToolCallout) {
+        Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(m_stubann);
+        const QString textColor = ta->textColor().name(QColor::HexArgb);
+        const QString borderColor = (ta->inplaceBorderColor().isValid() ? ta->inplaceBorderColor() : ta->textColor()).name(QColor::HexArgb);
+        toolElement.setAttribute(QStringLiteral("type"), QStringLiteral("note-callout"));
+        engineElement.setAttribute(QStringLiteral("type"), QStringLiteral("PickPoint"));
+        engineElement.setAttribute(QStringLiteral("color"), borderColor);
+        annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("Callout"));
+        annotationElement.setAttribute(QStringLiteral("color"), color);
+        annotationElement.setAttribute(QStringLiteral("borderColor"), borderColor);
+        annotationElement.setAttribute(QStringLiteral("textColor"), textColor);
         annotationElement.setAttribute(QStringLiteral("width"), width);
         if (ta->inplaceAlignment() != 0) {
             annotationElement.setAttribute(QStringLiteral("align"), ta->inplaceAlignment());
@@ -289,6 +311,17 @@ void EditAnnotToolDialog::createStubAnnotation()
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->style().setWidth(1.0);
         ta->style().setColor(Qt::yellow);
+        ta->setInplaceBorderColor(Qt::red);
+        ta->setTextColor(Qt::black);
+        m_stubann = ta;
+    } else if (toolType == ToolCallout) {
+        Okular::TextAnnotation *ta = new Okular::TextAnnotation();
+        ta->setTextType(Okular::TextAnnotation::InPlace);
+        ta->setInplaceIntent(Okular::TextAnnotation::Callout);
+        ta->style().setWidth(1.0);
+        ta->style().setColor(Qt::white);
+        ta->setInplaceBorderColor(Qt::black);
+        ta->setTextColor(Qt::black);
         m_stubann = ta;
     } else if (toolType == ToolInk) {
         m_stubann = new Okular::InkAnnotation();
@@ -400,6 +433,33 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
         setToolType(ToolNoteLinked);
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(m_stubann);
         ta->setTextIcon(annotationElement.attribute(QStringLiteral("icon")));
+    } else if (annotType == QLatin1String("note-callout")) {
+        setToolType(ToolCallout);
+        Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(m_stubann);
+        if (annotationElement.hasAttribute(QStringLiteral("align"))) {
+            ta->setInplaceAlignment(annotationElement.attribute(QStringLiteral("align")).toInt());
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("font"))) {
+            QFont f;
+            f.fromString(annotationElement.attribute(QStringLiteral("font")));
+            ta->setTextFont(f);
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("borderColor"))) {
+            ta->setInplaceBorderColor(QColor(annotationElement.attribute(QStringLiteral("borderColor"))));
+        } else if (engineElement.hasAttribute(QStringLiteral("color"))) {
+            ta->setInplaceBorderColor(QColor(engineElement.attribute(QStringLiteral("color"))));
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("textColor"))) {
+            ta->setTextColor(QColor(annotationElement.attribute(QStringLiteral("textColor"))));
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("textColor"))) {
+            ta->setTextColor(QColor(annotationElement.attribute(QStringLiteral("textColor"))));
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("borderColor"))) {
+            ta->setInplaceBorderColor(QColor(annotationElement.attribute(QStringLiteral("borderColor"))));
+        } else if (engineElement.hasAttribute(QStringLiteral("color"))) {
+            ta->setInplaceBorderColor(QColor(engineElement.attribute(QStringLiteral("color"))));
+        }
     } else if (annotType == QLatin1String("polygon")) {
         setToolType(ToolPolygon);
         Okular::LineAnnotation *la = static_cast<Okular::LineAnnotation *>(m_stubann);

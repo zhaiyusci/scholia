@@ -23,6 +23,7 @@
 #include "core/annotations.h"
 #include "core/document.h"
 #include "core/page.h"
+#include "latexnoteutils.h"
 
 AnnotsPropertiesDialog::AnnotsPropertiesDialog(QWidget *parent, Okular::Document *document, int docpage, Okular::Annotation *ann)
     : KPageDialog(parent)
@@ -128,7 +129,11 @@ void AnnotsPropertiesDialog::setCaptionTextbyAnnotType()
         captiontext = i18n("Text Markup Properties");
         break;
     case Okular::Annotation::AStamp:
-        captiontext = i18n("Stamp Properties");
+        if (Okular::StampAnnotation *stampAnnotation = LatexNoteUtils::annotationAsLatexNote(m_annot)) {
+            captiontext = stampAnnotation->latexNoteBoxed() ? i18n("LaTeX Inline Note Properties") : i18n("LaTeX Note Properties");
+        } else {
+            captiontext = i18n("Stamp Properties");
+        }
         break;
     case Okular::Annotation::AInk:
         captiontext = i18n("Freehand Line Properties");

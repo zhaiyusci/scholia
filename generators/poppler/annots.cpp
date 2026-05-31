@@ -388,9 +388,26 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
     pTextAnnotation->setTextIcon(oTextAnnotation->textIcon());
     pTextAnnotation->setTextFont(oTextAnnotation->textFont());
     pTextAnnotation->setTextColor(oTextAnnotation->textColor());
+    pTextAnnotation->setOkularBorderColor(oTextAnnotation->inplaceBorderColor());
     pTextAnnotation->setInplaceAlign(static_cast<Poppler::TextAnnotation::InplaceAlignPosition>(oTextAnnotation->inplaceAlignment()));
     pTextAnnotation->setInplaceIntent(okularToPoppler(oTextAnnotation->inplaceIntent()));
-    pTextAnnotation->setCalloutPoints(QList<QPointF>());
+    QList<QPointF> calloutPoints;
+    if (oTextAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout) {
+        bool hasCalloutPoints = false;
+        for (int i = 0; i < 3 && !hasCalloutPoints; ++i) {
+            const Okular::NormalizedPoint point = oTextAnnotation->inplaceCallout(i);
+            hasCalloutPoints = point.x != 0.0 || point.y != 0.0;
+        }
+        if (hasCalloutPoints) {
+            for (int i = 0; i < 3; ++i) {
+                const Okular::NormalizedPoint point = oTextAnnotation->inplaceCallout(i);
+                if (std::isfinite(point.x) && std::isfinite(point.y)) {
+                    calloutPoints.append(normPointToPointF(point));
+                }
+            }
+        }
+    }
+    pTextAnnotation->setCalloutPoints(calloutPoints);
 }
 
 static void updatePopplerAnnotationFromOkularAnnotation(const Okular::LineAnnotation *oLineAnnotation, Poppler::LineAnnotation *pLineAnnotation)
@@ -450,6 +467,8 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
         pStampAnnotation->setOkularLatexNoteLayoutWidth(layoutWidth);
     }
     pStampAnnotation->setOkularLatexNoteBoxed(oStampAnnotation->latexNoteBoxed());
+    pStampAnnotation->setOkularLatexNoteFillColor(oStampAnnotation->latexNoteFillColor());
+    pStampAnnotation->setOkularLatexNoteBorderColor(oStampAnnotation->latexNoteBorderColor());
 #endif
     return setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
 }
@@ -1057,6 +1076,7 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::TextAn
     oTextAnn->setTextIcon(popplerAnnotation->textIcon());
     oTextAnn->setTextFont(popplerAnnotation->textFont());
     oTextAnn->setTextColor(popplerAnnotation->textColor());
+    oTextAnn->setInplaceBorderColor(popplerAnnotation->okularBorderColor());
     // this works because we use the same 0:left, 1:center, 2:right meaning both in poppler and okular
     oTextAnn->setInplaceAlignment(popplerAnnotation->inplaceAlign());
     oTextAnn->setInplaceIntent(popplerToOkular(popplerAnnotation->inplaceIntent()));
@@ -1165,6 +1185,8 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
     oStampAnn->setLatexNoteScale(popplerAnnotation->okularLatexNoteScale());
     oStampAnn->setLatexNoteLayoutWidth(popplerAnnotation->okularLatexNoteLayoutWidth());
     oStampAnn->setLatexNoteBoxed(popplerAnnotation->okularLatexNoteBoxed());
+    oStampAnn->setLatexNoteFillColor(popplerAnnotation->okularLatexNoteFillColor());
+    oStampAnn->setLatexNoteBorderColor(popplerAnnotation->okularLatexNoteBorderColor());
 #endif
 
     return oStampAnn;

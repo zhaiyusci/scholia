@@ -13,6 +13,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDialog>
+#include <QHash>
 #include <QInputDialog>
 #include <QMenu>
 #include <QPainter>
@@ -43,7 +44,11 @@
 class AnnotationActionHandlerPrivate
 {
 public:
-    enum class AnnotationColor { Color, InnerColor };
+    enum class AnnotationColor { Color, InnerColor, TextColor };
+    struct BuiltinToolSpec {
+        QString type;
+        QString name;
+    };
     static const QList<QPair<KLocalizedString, QColor>> defaultColors;
     static const QList<double> widthStandardValues;
     static const QList<double> opacityStandardValues;
@@ -66,6 +71,7 @@ public:
         , aWidth(nullptr)
         , aColor(nullptr)
         , aInnerColor(nullptr)
+        , aTextColor(nullptr)
         , aOpacity(nullptr)
         , aFont(nullptr)
         , aAdvancedSettings(nullptr)
@@ -77,6 +83,7 @@ public:
         , aCustomOpacity(nullptr)
         , currentColor(QColor())
         , currentInnerColor(QColor())
+        , currentTextColor(QColor())
         , currentFont(QFont())
         , currentWidth(-1)
         , selectedBuiltinTool(-1)
@@ -104,7 +111,9 @@ public:
     const QIcon widthIcon(double width);
     const QIcon stampIcon(const QString &stampIconName);
 
+    void addBuiltinToolAction(QAction *action, const QString &type, const QString &name = QString());
     void selectTool(int toolId);
+    void selectTool(const BuiltinToolSpec &toolSpec);
     void slotStampToolSelected(const QString &stamp, const QString &contents = QString(), bool latexNoteBoxed = false);
     void slotSelectCustomStamp();
     void slotAddLatexNote(bool boxed = false);
@@ -123,6 +132,7 @@ public:
     QList<QAction *> textTools;
     QList<QAction *> textQuickTools;
     QActionGroup *agTools;
+    QHash<QAction *, BuiltinToolSpec> builtinToolForAction;
     QAction *agLastAction;
 
     ToggleActionMenu *aQuickTools;
@@ -138,6 +148,7 @@ public:
     KSelectAction *aWidth;
     KSelectAction *aColor;
     KSelectAction *aInnerColor;
+    KSelectAction *aTextColor;
     KSelectAction *aOpacity;
     QAction *aFont;
     QAction *aAdvancedSettings;
@@ -151,6 +162,7 @@ public:
 
     QColor currentColor;
     QColor currentInnerColor;
+    QColor currentTextColor;
     QFont currentFont;
     int currentWidth;
 
@@ -248,7 +260,10 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annElement = engineElement.firstChildElement(QStringLiteral("annotation"));
 
-    QColor color, innerColor, textColor;
+    QColor color, innerColor, textColor, borderColor, engineColor;
+    if (engineElement.hasAttribute(QStringLiteral("color"))) {
+        engineColor = QColor(engineElement.attribute(QStringLiteral("color")));
+    }
     if (annElement.hasAttribute(QStringLiteral("color"))) {
         color = QColor(annElement.attribute(QStringLiteral("color")));
     }
@@ -258,12 +273,21 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
     if (annElement.hasAttribute(QStringLiteral("textColor"))) {
         textColor = QColor(annElement.attribute(QStringLiteral("textColor")));
     }
-    if (textColor.isValid()) {
-        currentColor = textColor;
+    if (annElement.hasAttribute(QStringLiteral("borderColor"))) {
+        borderColor = QColor(annElement.attribute(QStringLiteral("borderColor")));
+    }
+    if (annotType == QStringLiteral("note-inline") || annotType == QStringLiteral("note-callout")) {
+        currentColor = borderColor.isValid() ? borderColor : (textColor.isValid() ? textColor : engineColor);
         currentInnerColor = color;
+        currentTextColor = textColor.isValid() ? textColor : Qt::black;
+    } else if (annotType == QStringLiteral("typewriter")) {
+        currentColor = textColor;
+        currentInnerColor = QColor();
+        currentTextColor = textColor;
     } else {
         currentColor = color;
         currentInnerColor = innerColor;
+        currentTextColor = QColor();
     }
 
     if (annElement.hasAttribute(QStringLiteral("font"))) {
@@ -298,24 +322,24 @@ void AnnotationActionHandlerPrivate::updateConfigActions(const QString &annotTyp
     const bool isAnnotationSelected = !annotType.isEmpty();
     const bool isTypewriter = annotType == QStringLiteral("typewriter");
     const bool isInlineNote = annotType == QStringLiteral("note-inline");
-    const bool isText = isInlineNote || isTypewriter;
+    const bool isCallout = annotType == QStringLiteral("note-callout");
+    const bool isBoxedText = isInlineNote || isCallout;
+    const bool isText = isBoxedText || isTypewriter;
     const bool isPolygon = annotType == QStringLiteral("polygon");
     const bool isShape = annotType == QStringLiteral("rectangle") || annotType == QStringLiteral("ellipse") || isPolygon;
     const bool isStraightLine = annotType == QStringLiteral("straight-line");
     const bool isLine = annotType == QStringLiteral("ink") || isStraightLine;
     const bool isStamp = annotType == QStringLiteral("stamp");
 
-    if (isTypewriter) {
-        aColor->setIcon(GuiUtils::createColorIcon({currentColor}, QIcon::fromTheme(QStringLiteral("format-text-color"))));
-    } else {
-        aColor->setIcon(GuiUtils::createColorIcon({currentColor}, QIcon::fromTheme(QStringLiteral("format-stroke-color"))));
-    }
+    aColor->setIcon(GuiUtils::createColorIcon({currentColor}, QIcon::fromTheme(isTypewriter ? QStringLiteral("format-text-color") : QStringLiteral("format-stroke-color"))));
     aInnerColor->setIcon(GuiUtils::createColorIcon({currentInnerColor}, QIcon::fromTheme(QStringLiteral("format-fill-color"))));
+    aTextColor->setIcon(GuiUtils::createColorIcon({currentTextColor}, QIcon::fromTheme(QStringLiteral("format-text-color"))));
 
     aAddToQuickTools->setEnabled(isAnnotationSelected);
-    aWidth->setEnabled(isLine || isShape);
+    aWidth->setEnabled(isLine || isShape || isBoxedText);
     aColor->setEnabled(isAnnotationSelected && !isStamp);
-    aInnerColor->setEnabled(isShape);
+    aInnerColor->setEnabled(isShape || isBoxedText);
+    aTextColor->setEnabled(isText);
     aOpacity->setEnabled(isAnnotationSelected);
     aFont->setEnabled(isText);
     aConstrainRatioAndAngle->setEnabled(isStraightLine || isShape);
@@ -326,6 +350,7 @@ void AnnotationActionHandlerPrivate::updateConfigActions(const QString &annotTyp
         aWidth->setToolTip(i18nc("@info:tooltip", "Annotation line width (No annotation selected)"));
         aColor->setToolTip(i18nc("@info:tooltip", "Annotation color (No annotation selected)"));
         aInnerColor->setToolTip(i18nc("@info:tooltip", "Annotation fill color (No annotation selected)"));
+        aTextColor->setToolTip(i18nc("@info:tooltip", "Annotation text color (No annotation selected)"));
         aOpacity->setToolTip(i18nc("@info:tooltip", "Annotation opacity (No annotation selected)"));
         aFont->setToolTip(i18nc("@info:tooltip", "Annotation font (No annotation selected)"));
         aAddToQuickTools->setToolTip(i18nc("@info:tooltip", "Add the current annotation to the quick annotations menu (No annotation selected)"));
@@ -334,7 +359,7 @@ void AnnotationActionHandlerPrivate::updateConfigActions(const QString &annotTyp
         return;
     }
 
-    if (isLine || isShape) {
+    if (isLine || isShape || isBoxedText) {
         aWidth->setToolTip(i18nc("@info:tooltip", "Annotation line width"));
     } else {
         aWidth->setToolTip(i18nc("@info:tooltip", "Annotation line width (Current annotation has no line width)"));
@@ -342,16 +367,22 @@ void AnnotationActionHandlerPrivate::updateConfigActions(const QString &annotTyp
 
     if (isTypewriter) {
         aColor->setToolTip(i18nc("@info:tooltip", "Annotation text color"));
-    } else if (isShape) {
+    } else if (isShape || isBoxedText) {
         aColor->setToolTip(i18nc("@info:tooltip", "Annotation border color"));
     } else {
         aColor->setToolTip(i18nc("@info:tooltip", "Annotation color"));
     }
 
-    if (isShape) {
+    if (isShape || isBoxedText) {
         aInnerColor->setToolTip(i18nc("@info:tooltip", "Annotation fill color"));
     } else {
         aInnerColor->setToolTip(i18nc("@info:tooltip", "Annotation fill color (Current annotation has no fill color)"));
+    }
+
+    if (isText) {
+        aTextColor->setToolTip(i18nc("@info:tooltip", "Annotation text color"));
+    } else {
+        aTextColor->setToolTip(i18nc("@info:tooltip", "Annotation text color (Current annotation has no text color)"));
     }
 
     if (isText) {
@@ -463,6 +494,8 @@ KSelectAction *AnnotationActionHandlerPrivate::colorPickerAction(AnnotationColor
     if (colorType == AnnotationColor::InnerColor) {
         aText = i18nc("@action:intoolbar Current annotation config option", "Fill Color");
         colorList.append(QPair<KLocalizedString, Qt::GlobalColor>(ki18nc("@item:inlistbox Color name", "Transparent"), Qt::transparent));
+    } else if (colorType == AnnotationColor::TextColor) {
+        aText = i18nc("@action:intoolbar Current annotation config option", "Text Color");
     }
     KSelectAction *aColorPicker = new KSelectAction(QIcon(), aText, q);
     aColorPicker->setToolBarMode(KSelectAction::MenuMode);
@@ -500,6 +533,17 @@ const QIcon AnnotationActionHandlerPrivate::stampIcon(const QString &stampIconNa
     }
 }
 
+void AnnotationActionHandlerPrivate::addBuiltinToolAction(QAction *action, const QString &type, const QString &name)
+{
+    agTools->addAction(action);
+    builtinToolForAction.insert(action, {type, name});
+    QObject::connect(action, &QAction::toggled, q, [this, action](bool checked) {
+        if (checked) {
+            selectTool(builtinToolForAction.value(action));
+        }
+    });
+}
+
 void AnnotationActionHandlerPrivate::selectTool(int toolId)
 {
     selectedBuiltinTool = toolId;
@@ -507,10 +551,18 @@ void AnnotationActionHandlerPrivate::selectTool(int toolId)
     parseTool(toolId);
 }
 
+void AnnotationActionHandlerPrivate::selectTool(const BuiltinToolSpec &toolSpec)
+{
+    selectedBuiltinTool = annotator->selectBuiltinToolByType(toolSpec.type, toolSpec.name, PageViewAnnotator::ShowTip::Yes);
+    parseTool(selectedBuiltinTool);
+}
+
 void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp, const QString &contents, bool latexNoteBoxed)
 {
-    selectedBuiltinTool = PageViewAnnotator::STAMP_TOOL_ID;
-    annotator->selectStampTool(stamp, contents, latexNoteBoxed);
+    selectedBuiltinTool = annotator->selectStampTool(stamp, contents, latexNoteBoxed);
+    if (selectedBuiltinTool == -1) {
+        return;
+    }
     maybeUpdateCustomStampAction(stamp);
     updateConfigActions(QStringLiteral("stamp"));
 }
@@ -566,7 +618,8 @@ void AnnotationActionHandlerPrivate::slotSetColor(AnnotationColor colorType, con
 {
     QColor selectedColor(color);
     if (!selectedColor.isValid()) {
-        selectedColor = QColorDialog::getColor(currentColor, nullptr, i18nc("@title:window", "Select color"));
+        const QColor initialColor = colorType == AnnotationColor::InnerColor ? currentInnerColor : (colorType == AnnotationColor::TextColor ? currentTextColor : currentColor);
+        selectedColor = QColorDialog::getColor(initialColor, nullptr, i18nc("@title:window", "Select color"));
         if (!selectedColor.isValid()) {
             return;
         }
@@ -577,6 +630,9 @@ void AnnotationActionHandlerPrivate::slotSetColor(AnnotationColor colorType, con
     } else if (colorType == AnnotationColor::InnerColor) {
         currentInnerColor = selectedColor;
         annotator->setAnnotationInnerColor(selectedColor);
+    } else if (colorType == AnnotationColor::TextColor) {
+        currentTextColor = selectedColor;
+        annotator->setAnnotationTextColor(selectedColor);
     }
 }
 
@@ -632,6 +688,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     KToggleAction *aTypewriter = new KToggleAction(QIcon::fromTheme(QStringLiteral("tool-text")), i18nc("@action:intoolbar Annotation tool", "Typewriter"), this);
     KToggleAction *aInlineNote = new KToggleAction(QIcon::fromTheme(QStringLiteral("note")), i18nc("@action:intoolbar Annotation tool", "Inline Note"), this);
     KToggleAction *aPopupNote = new KToggleAction(QIcon::fromTheme(QStringLiteral("edit-comment")), i18nc("@action:intoolbar Annotation tool", "Popup Note"), this);
+    KToggleAction *aCallout = new KToggleAction(QIcon::fromTheme(QStringLiteral("draw-arrow")), i18nc("@action:intoolbar Annotation tool", "Callout"), this);
     KToggleAction *aFreehandLine = new KToggleAction(QIcon::fromTheme(QStringLiteral("draw-freehand")), i18nc("@action:intoolbar Annotation tool", "Freehand Line"), this);
     // Geometrical shapes actions
     KToggleAction *aStraightLine = new KToggleAction(QIcon::fromTheme(QStringLiteral("draw-line")), i18nc("@action:intoolbar Annotation tool", "Straight line"), this);
@@ -650,39 +707,26 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aGeomShapes->setDefaultAction(aArrow);
     connect(d->aGeomShapes->menu(), &QMenu::triggered, d->aGeomShapes, &ToggleActionMenu::setDefaultAction);
 
-    // The order in which the actions are added is relevant to connect
-    // them to the correct toolId defined in tools.xml
     d->agTools = new QActionGroup(this);
-    d->agTools->addAction(aHighlighter);
-    d->agTools->addAction(aUnderline);
-    d->agTools->addAction(aSquiggle);
-    d->agTools->addAction(aStrikeout);
-    d->agTools->addAction(aTypewriter);
-    d->agTools->addAction(aInlineNote);
-    d->agTools->addAction(aPopupNote);
-    d->agTools->addAction(aFreehandLine);
-    d->agTools->addAction(aArrow);
-    d->agTools->addAction(aStraightLine);
-    d->agTools->addAction(aRectangle);
-    d->agTools->addAction(aEllipse);
-    d->agTools->addAction(aPolygon);
+    d->addBuiltinToolAction(aHighlighter, QStringLiteral("highlight"));
+    d->addBuiltinToolAction(aUnderline, QStringLiteral("underline"));
+    d->addBuiltinToolAction(aSquiggle, QStringLiteral("squiggly"));
+    d->addBuiltinToolAction(aStrikeout, QStringLiteral("strikeout"));
+    d->addBuiltinToolAction(aTypewriter, QStringLiteral("typewriter"));
+    d->addBuiltinToolAction(aInlineNote, QStringLiteral("note-inline"));
+    d->addBuiltinToolAction(aPopupNote, QStringLiteral("note-linked"));
+    d->addBuiltinToolAction(aFreehandLine, QStringLiteral("ink"));
+    d->addBuiltinToolAction(aArrow, QStringLiteral("straight-line"), QStringLiteral("Arrow"));
+    d->addBuiltinToolAction(aStraightLine, QStringLiteral("straight-line"));
+    d->addBuiltinToolAction(aRectangle, QStringLiteral("rectangle"));
+    d->addBuiltinToolAction(aEllipse, QStringLiteral("ellipse"));
+    d->addBuiltinToolAction(aPolygon, QStringLiteral("polygon"));
+    d->addBuiltinToolAction(aCallout, QStringLiteral("note-callout"));
 
     d->textTools.append(aHighlighter);
     d->textTools.append(aUnderline);
     d->textTools.append(aSquiggle);
     d->textTools.append(aStrikeout);
-
-    int toolId = 1;
-    const QList<QAction *> tools = d->agTools->actions();
-    for (const auto &ann : tools) {
-        // action group workaround: connecting to toggled instead of triggered
-        connect(ann, &QAction::toggled, this, [this, toolId](bool checked) {
-            if (checked) {
-                d->selectTool(toolId);
-            }
-        });
-        toolId++;
-    }
 
     // Stamp action
     d->aStamp = new ToggleActionMenu(QIcon::fromTheme(QStringLiteral("tag")), i18nc("@action", "Stamp"), this);
@@ -764,6 +808,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     // Annotation settings actions
     d->aColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::Color);
     d->aInnerColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::InnerColor);
+    d->aTextColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::TextColor);
     d->aFont = new QAction(QIcon::fromTheme(QStringLiteral("font-face")), i18nc("@action:intoolbar Current annotation config option", "Font"), this);
     d->aAdvancedSettings = new QAction(QIcon::fromTheme(QStringLiteral("settings-configure")), i18nc("@action:intoolbar Current annotation advanced settings", "Annotation Settings"), this);
 
@@ -817,6 +862,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_typewriter"), aTypewriter);
     ac->addAction(QStringLiteral("annotation_inline_note"), aInlineNote);
     ac->addAction(QStringLiteral("annotation_popup_note"), aPopupNote);
+    ac->addAction(QStringLiteral("annotation_callout"), aCallout);
     ac->addAction(QStringLiteral("annotation_freehand_line"), aFreehandLine);
     ac->addAction(QStringLiteral("annotation_arrow"), aArrow);
     ac->addAction(QStringLiteral("annotation_straight_line"), aStraightLine);
@@ -835,6 +881,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_settings_width"), d->aWidth);
     ac->addAction(QStringLiteral("annotation_settings_color"), d->aColor);
     ac->addAction(QStringLiteral("annotation_settings_inner_color"), d->aInnerColor);
+    ac->addAction(QStringLiteral("annotation_settings_text_color"), d->aTextColor);
     ac->addAction(QStringLiteral("annotation_settings_opacity"), d->aOpacity);
     ac->addAction(QStringLiteral("annotation_settings_font"), d->aFont);
     ac->addAction(QStringLiteral("annotation_settings_advanced"), d->aAdvancedSettings);

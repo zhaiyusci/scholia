@@ -187,6 +187,9 @@ public:
         if (m_block) {
             const Okular::NormalizedRect tmprect(qMin(startpoint.x, point.x), qMin(startpoint.y, point.y), qMax(startpoint.x, point.x), qMax(startpoint.y, point.y));
             boundrect |= tmprect.geometry((int)xScale, (int)yScale).adjusted(0, 0, 1, 1);
+        } else if (isCallout()) {
+            const Okular::NormalizedRect tmprect(qMin(startpoint.x, point.x), qMin(startpoint.y, point.y), qMax(startpoint.x, point.x), qMax(startpoint.y, point.y));
+            boundrect |= tmprect.geometry((int)xScale, (int)yScale).adjusted(-4, -4, 4, 4);
         }
         return boundrect;
     }
@@ -252,6 +255,20 @@ public:
                 } else {
                     painter->drawPixmap(QPointF(rect.left * xScale, rect.top * yScale), pixmap);
                 }
+            } else if (isCallout()) {
+                const QPen origpen = painter->pen();
+                QPen pen = painter->pen();
+                pen.setColor(m_annotElement.hasAttribute(QStringLiteral("borderColor")) ? QColor(m_annotElement.attribute(QStringLiteral("borderColor"))) : m_engineColor);
+                painter->setPen(pen);
+                painter->drawLine(QPointF(startpoint.x * xScale, startpoint.y * yScale), QPointF(point.x * xScale, point.y * yScale));
+
+                const Okular::NormalizedRect previewRect = calloutBoxRect(QString());
+                if (m_annotElement.hasAttribute(QStringLiteral("color"))) {
+                    painter->setBrush(QColor(m_annotElement.attribute(QStringLiteral("color"))));
+                }
+                painter->drawRect(previewRect.geometry((int)xScale, (int)yScale));
+                painter->setBrush(Qt::NoBrush);
+                painter->setPen(origpen);
             }
         }
     }
@@ -281,11 +298,14 @@ public:
         }
         // set font color
         if (m_annotElement.hasAttribute(QStringLiteral("textColor"))) {
-            if (inplaceIntent == Okular::TextAnnotation::TypeWriter) {
-                ta->setTextColor(m_annotElement.attribute(QStringLiteral("textColor")));
-            } else {
-                ta->setTextColor(Qt::black);
-            }
+            ta->setTextColor(QColor(m_annotElement.attribute(QStringLiteral("textColor"))));
+        } else if (inplaceIntent != Okular::TextAnnotation::TypeWriter) {
+            ta->setTextColor(Qt::black);
+        }
+        if (m_annotElement.hasAttribute(QStringLiteral("borderColor"))) {
+            ta->setInplaceBorderColor(QColor(m_annotElement.attribute(QStringLiteral("borderColor"))));
+        } else if (m_engineColor.isValid()) {
+            ta->setInplaceBorderColor(m_engineColor);
         }
         // set width
         if (m_annotElement.hasAttribute(QStringLiteral("width"))) {
@@ -306,6 +326,24 @@ public:
         ta->window().setSummary(summary);
     }
 
+    void addCalloutAnnotation(Okular::Annotation *&ann, const QString &content)
+    {
+        addInPlaceTextAnnotation(ann, i18n("Callout"), content, Okular::TextAnnotation::Callout);
+
+        Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(ann);
+        rect = calloutBoxRect(content);
+
+        const Okular::NormalizedPoint connection = calloutConnectionPoint(rect);
+        Okular::NormalizedPoint elbow((startpoint.x + connection.x) / 2.0, connection.y);
+        if (qAbs(startpoint.x - connection.x) < 0.02) {
+            elbow.x = connection.x;
+            elbow.y = (startpoint.y + connection.y) / 2.0;
+        }
+        ta->setInplaceCallout(startpoint, 0);
+        ta->setInplaceCallout(elbow, 1);
+        ta->setInplaceCallout(connection, 2);
+    }
+
     QList<Okular::Annotation *> end() override
     {
         // find out annotation's description node
@@ -321,6 +359,12 @@ public:
         // create InPlace TextAnnotation from path
         if (typeString == QLatin1String("FreeText")) {
             addInPlaceTextAnnotation(ann, i18n("Inline Note"), QString(), Okular::TextAnnotation::Unknown);
+        } else if (typeString == QLatin1String("Callout")) {
+            bool resok;
+            const QString content = QInputDialog::getMultiLineText(pageView, i18n("New Callout Note"), i18n("Text of the new note:"), QString(), &resok);
+            if (resok) {
+                addCalloutAnnotation(ann, content);
+            }
         } else if (typeString == QLatin1String("Typewriter")) {
             bool resok;
             const QString content = QInputDialog::getMultiLineText(pageView, i18n("New Text Note"), i18n("Text of the new note:"), QString(), &resok);
@@ -350,6 +394,12 @@ public:
             }
             if (m_annotElement.hasAttribute(QStringLiteral("latexNoteBoxed"))) {
                 sa->setLatexNoteBoxed(m_annotElement.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0);
+            }
+            if (m_annotElement.hasAttribute(QStringLiteral("latexNoteFillColor"))) {
+                sa->setLatexNoteFillColor(QColor(m_annotElement.attribute(QStringLiteral("latexNoteFillColor"))));
+            }
+            if (m_annotElement.hasAttribute(QStringLiteral("latexNoteBorderColor"))) {
+                sa->setLatexNoteBorderColor(QColor(m_annotElement.attribute(QStringLiteral("latexNoteBorderColor"))));
             }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
@@ -476,6 +526,44 @@ private:
     double pagewidth, pageheight;
     bool center;
     PageView *pageView = nullptr;
+
+    bool isCallout() const
+    {
+        return m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Callout");
+    }
+
+    Okular::NormalizedRect calloutBoxRect(const QString &content) const
+    {
+        double boxWidth = 0.24;
+        double boxHeight = 0.10;
+
+        if (!content.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
+            QFont font;
+            if (m_annotElement.hasAttribute(QStringLiteral("font"))) {
+                font.fromString(m_annotElement.attribute(QStringLiteral("font")));
+            }
+            const QFontMetricsF fm(font);
+            constexpr int padding = 6;
+            const QRectF textRect = fm.boundingRect(QRectF(0, 0, pagewidth * boxWidth - padding * 2, pageheight), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, content);
+            boxHeight = qMax(boxHeight, (textRect.height() + padding * 2) / pageheight);
+        }
+
+        double left = point.x;
+        if (point.x < startpoint.x) {
+            left -= boxWidth;
+        }
+        double top = point.y - boxHeight / 2.0;
+
+        left = qBound(0.0, left, qMax(0.0, 1.0 - boxWidth));
+        top = qBound(0.0, top, qMax(0.0, 1.0 - boxHeight));
+        return Okular::NormalizedRect(left, top, left + boxWidth, top + boxHeight);
+    }
+
+    Okular::NormalizedPoint calloutConnectionPoint(const Okular::NormalizedRect &boxRect) const
+    {
+        const double connectX = startpoint.x < (boxRect.left + boxRect.right) / 2.0 ? boxRect.left : boxRect.right;
+        return Okular::NormalizedPoint(connectX, qBound(boxRect.top, startpoint.y, boxRect.bottom));
+    }
 };
 
 class PickPointEngineSignature : public PickPointEngine
@@ -1044,9 +1132,83 @@ public:
 
     void appendTool(QDomElement toolElement)
     {
-        toolElement = toolElement.cloneNode().toElement();
-        toolElement.setAttribute(QStringLiteral("id"), ++m_toolsCount);
+        toolElement = m_toolsDefinition.importNode(toolElement, true).toElement();
+        toolElement.setAttribute(QStringLiteral("id"), nextToolId());
         m_toolsDefinition.documentElement().appendChild(toolElement);
+        ++m_toolsCount;
+    }
+
+    bool ensureToolXml(const QString &type, const QString &name, const QString &toolXml)
+    {
+        if (findToolId(type, name) != -1) {
+            return false;
+        }
+
+        QDomDocument entryParser;
+        if (!entryParser.setContent(toolXml)) {
+            qCWarning(OkularUiDebug) << "Skipping malformed default tool XML";
+            return false;
+        }
+
+        QDomElement toolElement = entryParser.documentElement();
+        if (toolElement.tagName() != QLatin1String("tool")) {
+            qCWarning(OkularUiDebug) << "Skipping default annotation tool XML without a tool root";
+            return false;
+        }
+
+        appendTool(toolElement);
+        return true;
+    }
+
+    bool normalizeCalloutTool()
+    {
+        bool changed = false;
+        QDomElement toolElement = m_toolsDefinition.documentElement().firstChildElement();
+        while (!toolElement.isNull()) {
+            if (toolElement.attribute(QStringLiteral("type")) == QLatin1String("note-callout")) {
+                QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
+                QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+                if (!engineElement.isNull() && engineElement.attribute(QStringLiteral("color")) != QLatin1String("#000000")) {
+                    engineElement.setAttribute(QStringLiteral("color"), QStringLiteral("#000000"));
+                    changed = true;
+                }
+                if (!annotationElement.isNull()) {
+                    const QColor fillColor(annotationElement.attribute(QStringLiteral("color")));
+                    const QColor textColor(annotationElement.attribute(QStringLiteral("textColor")));
+                    if (!annotationElement.hasAttribute(QStringLiteral("color")) || (fillColor == Qt::black && (!textColor.isValid() || textColor == Qt::black))) {
+                        annotationElement.setAttribute(QStringLiteral("color"), QStringLiteral("#ffffffff"));
+                        changed = true;
+                    }
+                    if (!annotationElement.hasAttribute(QStringLiteral("textColor"))) {
+                        annotationElement.setAttribute(QStringLiteral("textColor"), QStringLiteral("#ff000000"));
+                        changed = true;
+                    }
+                    if (!annotationElement.hasAttribute(QStringLiteral("borderColor"))) {
+                        annotationElement.setAttribute(QStringLiteral("borderColor"), QStringLiteral("#ff000000"));
+                        changed = true;
+                    }
+                    if (!annotationElement.hasAttribute(QStringLiteral("width"))) {
+                        annotationElement.setAttribute(QStringLiteral("width"), QStringLiteral("1"));
+                        changed = true;
+                    }
+                }
+            } else if (toolElement.attribute(QStringLiteral("type")) == QLatin1String("note-inline")) {
+                QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
+                QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+                if (!annotationElement.isNull()) {
+                    if (!annotationElement.hasAttribute(QStringLiteral("borderColor"))) {
+                        annotationElement.setAttribute(QStringLiteral("borderColor"), engineElement.attribute(QStringLiteral("color"), QStringLiteral("#ffff0000")));
+                        changed = true;
+                    }
+                    if (!annotationElement.hasAttribute(QStringLiteral("textColor"))) {
+                        annotationElement.setAttribute(QStringLiteral("textColor"), QStringLiteral("#ff000000"));
+                        changed = true;
+                    }
+                }
+            }
+            toolElement = toolElement.nextSiblingElement();
+        }
+        return changed;
     }
 
     bool updateTool(QDomElement newToolElement, int toolId)
@@ -1055,41 +1217,72 @@ public:
         if (toolElement.isNull()) {
             return false;
         }
-        newToolElement = newToolElement.cloneNode().toElement();
+        newToolElement = m_toolsDefinition.importNode(newToolElement, true).toElement();
         newToolElement.setAttribute(QStringLiteral("id"), toolId);
         QDomNode oldTool = m_toolsDefinition.documentElement().replaceChild(newToolElement, toolElement);
         return !oldTool.isNull();
     }
 
-    int findToolId(const QString &type)
+    int findToolId(const QString &type, const QString &name = QString())
     {
-        int toolId = -1;
         if (type.isEmpty()) {
             return -1;
         }
-        // FIXME: search from left. currently searching from right side as a workaround to avoid matching
-        // straight line tools to the arrow tool, which is also of type straight-line
-        QDomElement toolElement = m_toolsDefinition.documentElement().lastChildElement();
-        while (!toolElement.isNull() && toolElement.attribute(QStringLiteral("type")) != type) {
-            toolElement = toolElement.previousSiblingElement();
-        }
-        if (!toolElement.isNull() && toolElement.hasAttribute(QStringLiteral("id"))) {
-            bool ok;
-            toolId = toolElement.attribute(QStringLiteral("id")).toInt(&ok);
-            if (!ok) {
-                return -1;
+
+        const auto idForTool = [](const QDomElement &toolElement) {
+            bool ok = false;
+            const int toolId = toolElement.attribute(QStringLiteral("id")).toInt(&ok);
+            return ok ? toolId : -1;
+        };
+        QDomElement fallbackToolElement;
+        QDomElement toolElement = m_toolsDefinition.documentElement().firstChildElement();
+        while (!toolElement.isNull()) {
+            if (toolElement.attribute(QStringLiteral("type")) == type) {
+                if (toolElement.attribute(QStringLiteral("name")) == name) {
+                    return idForTool(toolElement);
+                }
+                if (fallbackToolElement.isNull() && (name.isEmpty() || !toolElement.hasAttribute(QStringLiteral("name")))) {
+                    fallbackToolElement = toolElement;
+                }
             }
+            toolElement = toolElement.nextSiblingElement();
         }
-        return toolId;
+
+        if (!fallbackToolElement.isNull()) {
+            return idForTool(fallbackToolElement);
+        }
+        return -1;
     }
 
 private:
+    int nextToolId() const
+    {
+        int highestId = 0;
+        QDomElement toolElement = m_toolsDefinition.documentElement().firstChildElement();
+        while (!toolElement.isNull()) {
+            bool ok = false;
+            const int toolId = toolElement.attribute(QStringLiteral("id")).toInt(&ok);
+            if (ok) {
+                highestId = qMax(highestId, toolId);
+            }
+            toolElement = toolElement.nextSiblingElement();
+        }
+        return highestId + 1;
+    }
+
     QDomDocument m_toolsDefinition;
     int m_toolsCount;
 };
 
-/** PageViewAnnotator **/
-const int PageViewAnnotator::STAMP_TOOL_ID = 14;
+static QString defaultCalloutToolXml()
+{
+    return QStringLiteral("<tool id=\"15\" type=\"note-callout\" name=\"Callout\">"
+                          "<engine type=\"PickPoint\" color=\"#000000\">"
+                          "<annotation type=\"Callout\" color=\"#ffffffff\" borderColor=\"#ff000000\" textColor=\"#ff000000\" width=\"1\" "
+                          "font=\"Noto Sans,10,-1,5,50,0,0,0,0,0,Regular\"/>"
+                          "</engine>"
+                          "</tool>");
+}
 
 PageViewAnnotator::PageViewAnnotator(PageView *parent, Okular::Document *storage)
     : QObject(parent)
@@ -1129,6 +1322,11 @@ void PageViewAnnotator::reparseBuiltinToolsConfig()
         m_builtinToolsDefinition = new AnnotationTools();
     }
     m_builtinToolsDefinition->setTools(Okular::Settings::builtinAnnotationTools());
+    const bool addedCalloutTool = m_builtinToolsDefinition->ensureToolXml(QStringLiteral("note-callout"), QString(), defaultCalloutToolXml());
+    const bool normalizedCalloutTool = m_builtinToolsDefinition->normalizeCalloutTool();
+    if (addedCalloutTool || normalizedCalloutTool) {
+        saveBuiltinAnnotationTools();
+    }
 
     if (m_actionHandler) {
         m_actionHandler->reparseBuiltinToolsConfig();
@@ -1439,6 +1637,18 @@ void PageViewAnnotator::selectBuiltinTool(int toolId, ShowTip showTip)
     selectTool(m_builtinToolsDefinition, toolId, showTip);
 }
 
+int PageViewAnnotator::selectBuiltinToolByType(const QString &toolType, const QString &toolName, ShowTip showTip)
+{
+    const int toolId = m_builtinToolsDefinition->findToolId(toolType, toolName);
+    if (toolId == -1) {
+        selectBuiltinTool(-1, ShowTip::No);
+        m_pageView->displayMessage(i18nc("Annotation tool", "Annotation tool is not available"), QString(), PageViewMessage::Annotation);
+        return -1;
+    }
+    selectBuiltinTool(toolId, showTip);
+    return toolId;
+}
+
 void PageViewAnnotator::selectQuickTool(int toolId)
 {
     selectTool(m_quickToolsDefinition, toolId, ShowTip::Yes);
@@ -1524,6 +1734,8 @@ void PageViewAnnotator::selectTool(AnnotationTools *toolsDefinition, int toolId,
                     tip = i18nc("Annotation tool", "Inline Text Annotation (drag to select a zone)");
                 } else if (annotType == QLatin1String("note-linked")) {
                     tip = i18nc("Annotation tool", "Put a pop-up note");
+                } else if (annotType == QLatin1String("note-callout")) {
+                    tip = i18nc("Annotation tool", "Callout Annotation (drag from the target to the text box)");
                 } else if (annotType == QLatin1String("polygon")) {
                     tip = i18nc("Annotation tool", "Draw a polygon (click on the first point to close it)");
                 } else if (annotType == QLatin1String("rectangle")) {
@@ -1564,9 +1776,13 @@ void PageViewAnnotator::selectLastTool()
     selectTool(m_lastToolsDefinition, m_lastToolId, ShowTip::No);
 }
 
-void PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString &contents, bool latexNoteBoxed)
+int PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString &contents, bool latexNoteBoxed)
 {
-    QDomElement toolElement = builtinTool(STAMP_TOOL_ID);
+    const int stampToolId = m_builtinToolsDefinition->findToolId(QStringLiteral("stamp"));
+    QDomElement toolElement = builtinTool(stampToolId);
+    if (toolElement.isNull()) {
+        return -1;
+    }
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
     engineElement.setAttribute(QStringLiteral("hoverIcon"), stampSymbol);
@@ -1578,11 +1794,18 @@ void PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QStrin
     }
     if (latexNoteBoxed) {
         annotationElement.setAttribute(QStringLiteral("latexNoteBoxed"), QStringLiteral("1"));
+        if (!annotationElement.hasAttribute(QStringLiteral("latexNoteFillColor"))) {
+            annotationElement.setAttribute(QStringLiteral("latexNoteFillColor"), QStringLiteral("#ffffff00"));
+        }
+        if (!annotationElement.hasAttribute(QStringLiteral("latexNoteBorderColor"))) {
+            annotationElement.setAttribute(QStringLiteral("latexNoteBorderColor"), QStringLiteral("#ff000000"));
+        }
     } else {
         annotationElement.removeAttribute(QStringLiteral("latexNoteBoxed"));
     }
     saveBuiltinAnnotationTools();
-    selectBuiltinTool(STAMP_TOOL_ID, ShowTip::Yes);
+    selectBuiltinTool(stampToolId, ShowTip::Yes);
+    return stampToolId;
 }
 
 void PageViewAnnotator::detachAnnotation()
@@ -1615,6 +1838,8 @@ QString PageViewAnnotator::defaultToolName(const QDomElement &toolElement)
         return i18n("Inline Note");
     } else if (annotType == QLatin1String("note-linked")) {
         return i18n("Pop-up Note");
+    } else if (annotType == QLatin1String("note-callout")) {
+        return i18n("Callout");
     } else if (annotType == QLatin1String("polygon")) {
         return i18n("Polygon");
     } else if (annotType == QLatin1String("rectangle")) {
@@ -1674,6 +1899,9 @@ QPixmap PageViewAnnotator::makeToolPixmap(const QDomElement &toolElement)
             if (annotationEl.hasAttribute(QStringLiteral("textColor"))) {
                 textColor = QColor(annotationEl.attribute(QStringLiteral("textColor")));
             }
+            if (annotationEl.hasAttribute(QStringLiteral("borderColor"))) {
+                engineColor = QColor(annotationEl.attribute(QStringLiteral("borderColor")));
+            }
             if (annotationEl.hasAttribute(QStringLiteral("icon"))) {
                 icon = annotationEl.attribute(QStringLiteral("icon"));
             }
@@ -1713,6 +1941,15 @@ QPixmap PageViewAnnotator::makeToolPixmap(const QDomElement &toolElement)
         QImage overlay(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics/tool-note-okular-colorizable") + imageVariant + QStringLiteral(".png")));
         GuiUtils::colorizeImage(overlay, engineColor);
         p.drawImage(QPoint(0, 0), overlay);
+    } else if (annotType == QLatin1String("note-callout")) {
+        p.setRenderHint(QPainter::Antialiasing);
+        if (annotColor.isValid()) {
+            p.setBrush(annotColor);
+        }
+        p.setPen(QPen(engineColor, 2));
+        p.drawLine(QPointF(4, 24), QPointF(12, 16));
+        p.drawLine(QPointF(12, 16), QPointF(19, 16));
+        p.drawRect(QRectF(18, 9, 11, 12));
     } else if (annotType == QLatin1String("polygon")) {
         QPainterPath path;
         path.moveTo(0, 7);
@@ -1863,6 +2100,8 @@ void PageViewAnnotator::setAnnotationColor(const QColor &color)
     QString annotType = annotationElement.attribute(QStringLiteral("type"));
     if (annotType == QLatin1String("Typewriter")) {
         annotationElement.setAttribute(QStringLiteral("textColor"), color.name(QColor::HexRgb));
+    } else if (annotType == QLatin1String("FreeText") || annotType == QLatin1String("Callout")) {
+        annotationElement.setAttribute(QStringLiteral("borderColor"), color.name(QColor::HexRgb));
     } else {
         annotationElement.setAttribute(QStringLiteral("color"), color.name(QColor::HexRgb));
     }
@@ -1873,11 +2112,25 @@ void PageViewAnnotator::setAnnotationColor(const QColor &color)
 void PageViewAnnotator::setAnnotationInnerColor(const QColor &color)
 {
     QDomElement annotationElement = currentAnnotationElement();
+    const QString annotType = annotationElement.attribute(QStringLiteral("type"));
+    if (annotType == QLatin1String("FreeText") || annotType == QLatin1String("Callout")) {
+        annotationElement.setAttribute(QStringLiteral("color"), color.name(QColor::HexArgb));
+        saveBuiltinAnnotationTools();
+        selectLastTool();
+        return;
+    }
     if (color == Qt::transparent) {
         annotationElement.removeAttribute(QStringLiteral("innerColor"));
     } else {
         annotationElement.setAttribute(QStringLiteral("innerColor"), color.name(QColor::HexRgb));
     }
+    saveBuiltinAnnotationTools();
+    selectLastTool();
+}
+
+void PageViewAnnotator::setAnnotationTextColor(const QColor &color)
+{
+    currentAnnotationElement().setAttribute(QStringLiteral("textColor"), color.name(QColor::HexRgb));
     saveBuiltinAnnotationTools();
     selectLastTool();
 }

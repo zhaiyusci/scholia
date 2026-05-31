@@ -38,6 +38,7 @@
 #include "core/page_p.h"
 #include "gui/guiutils.h"
 #include "gui/pagepainter.h"
+#include "latexnoteutils.h"
 
 #define FILEATTACH_ICONSIZE 48
 
@@ -317,9 +318,11 @@ void TextAnnotationWidget::applyChanges()
         Q_ASSERT(m_fontReq);
         m_textAnn->setTextFont(m_fontReq->font());
         if (!isTypewriter()) {
-            Q_ASSERT(m_textAlign && m_spinWidth);
+            Q_ASSERT(m_textAlign && m_spinWidth && m_textColorBn && m_borderColorBn);
             m_textAnn->setInplaceAlignment(m_textAlign->currentIndex());
             m_textAnn->style().setWidth(m_spinWidth->value());
+            m_textAnn->setTextColor(m_textColorBn->color());
+            m_textAnn->setInplaceBorderColor(m_borderColorBn->color());
         } else {
             Q_ASSERT(m_textColorBn);
             m_textAnn->setTextColor(m_textColorBn->color());
@@ -346,6 +349,8 @@ void TextAnnotationWidget::createInlineNoteStyleUi(QWidget *widget, QFormLayout 
     addOpacitySpinBox(widget, formlayout);
     addVerticalSpacer(formlayout);
     addFontRequester(widget, formlayout);
+    addTextColorButton(widget, formlayout);
+    addBorderColorButton(widget, formlayout);
     addTextAlignComboBox(widget, formlayout);
     addVerticalSpacer(formlayout);
     addWidthSpinBox(widget, formlayout);
@@ -386,6 +391,18 @@ void TextAnnotationWidget::addTextColorButton(QWidget *widget, QFormLayout *form
     m_textColorBn->setColor(m_textAnn->textColor());
     formlayout->addRow(i18n("Text &color:"), m_textColorBn);
     connect(m_textColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+}
+
+void TextAnnotationWidget::addBorderColorButton(QWidget *widget, QFormLayout *formlayout)
+{
+    m_borderColorBn = new KColorButton(widget);
+    QColor borderColor = m_textAnn->inplaceBorderColor();
+    if (!borderColor.isValid()) {
+        borderColor = m_textAnn->textColor().isValid() ? m_textAnn->textColor() : Qt::black;
+    }
+    m_borderColorBn->setColor(borderColor);
+    formlayout->addRow(i18n("Border &color:"), m_borderColorBn);
+    connect(m_borderColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
 }
 
 void TextAnnotationWidget::addTextAlignComboBox(QWidget *widget, QFormLayout *formlayout)
@@ -440,12 +457,63 @@ StampAnnotationWidget::StampAnnotationWidget(Okular::Annotation *ann)
     m_stampAnn = static_cast<Okular::StampAnnotation *>(ann);
 }
 
+bool StampAnnotationWidget::isLatexNote() const
+{
+    return LatexNoteUtils::annotationAsLatexNote(m_stampAnn);
+}
+
+QColor StampAnnotationWidget::latexNoteTextColor() const
+{
+    return LatexNoteUtils::colorForLatexNote(m_stampAnn);
+}
+
+QColor StampAnnotationWidget::latexNoteFillColor() const
+{
+    QColor color = m_stampAnn->latexNoteFillColor();
+    return color.isValid() ? color : Qt::yellow;
+}
+
+QColor StampAnnotationWidget::latexNoteBorderColor() const
+{
+    QColor color = m_stampAnn->latexNoteBorderColor();
+    if (!color.isValid()) {
+        color = latexNoteTextColor();
+    }
+    return color.isValid() ? color : Qt::black;
+}
+
+void StampAnnotationWidget::createLatexNoteStyleWidget(QWidget *widget, QFormLayout *formlayout)
+{
+    m_latexTextColorBn = new KColorButton(latexNoteTextColor(), widget);
+    formlayout->addRow(i18n("Text &color:"), m_latexTextColorBn);
+    connect(m_latexTextColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+
+    if (!m_stampAnn->latexNoteBoxed()) {
+        return;
+    }
+
+    m_latexFillColorBn = new KColorButton(latexNoteFillColor(), widget);
+    m_latexFillColorBn->setAlphaChannelEnabled(true);
+    formlayout->addRow(i18n("Fill &color:"), m_latexFillColorBn);
+    connect(m_latexFillColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+
+    m_latexBorderColorBn = new KColorButton(latexNoteBorderColor(), widget);
+    m_latexBorderColorBn->setAlphaChannelEnabled(true);
+    formlayout->addRow(i18n("Border &color:"), m_latexBorderColorBn);
+    connect(m_latexBorderColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+}
+
 void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
 {
     QWidget *widget = qobject_cast<QWidget *>(formlayout->parent());
 
     addOpacitySpinBox(widget, formlayout);
     addVerticalSpacer(formlayout);
+
+    if (isLatexNote()) {
+        createLatexNoteStyleWidget(widget, formlayout);
+        return;
+    }
 
     m_pixmapSelector = new PixmapPreviewSelector(widget, PixmapPreviewSelector::Below);
     formlayout->addRow(i18n("Stamp symbol:"), m_pixmapSelector);
@@ -464,6 +532,30 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
 void StampAnnotationWidget::applyChanges()
 {
     AnnotationWidget::applyChanges();
+
+    if (isLatexNote()) {
+        if (m_latexTextColorBn) {
+            const QColor textColor = m_latexTextColorBn->color();
+            if (textColor != latexNoteTextColor()) {
+                const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(m_stampAnn->contents(), textColor, LatexNoteUtils::latexFontSize(), m_stampAnn->latexNoteLayoutWidth());
+                if (rendered.ok) {
+                    m_stampAnn->setStampIconName(rendered.pdfFileName);
+                    m_stampAnn->style().setColor(textColor);
+                    LatexNoteUtils::showRenderWarning(nullptr, rendered.warning);
+                } else {
+                    KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
+                }
+            }
+        }
+        if (m_latexFillColorBn) {
+            m_stampAnn->setLatexNoteFillColor(m_latexFillColorBn->color());
+        }
+        if (m_latexBorderColorBn) {
+            m_stampAnn->setLatexNoteBorderColor(m_latexBorderColorBn->color());
+        }
+        return;
+    }
+
     m_stampAnn->setStampIconName(m_pixmapSelector->icon());
 }
 

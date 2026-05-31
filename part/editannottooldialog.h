@@ -26,7 +26,7 @@ class EditAnnotToolDialog : public QDialog
     Q_OBJECT
 
 public:
-    enum ToolType { ToolNoteLinked, ToolNoteInline, ToolInk, ToolStraightLine, ToolPolygon, ToolTextMarkup, ToolGeometricalShape, ToolStamp, ToolTypewriter };
+    enum ToolType { ToolNoteLinked, ToolNoteInline, ToolCallout, ToolInk, ToolStraightLine, ToolPolygon, ToolTextMarkup, ToolGeometricalShape, ToolStamp, ToolTypewriter };
 
     explicit EditAnnotToolDialog(QWidget *parent = nullptr, const QDomElement &initialState = QDomElement(), bool builtinTool = false);
     ~EditAnnotToolDialog() override;

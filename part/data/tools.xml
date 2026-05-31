@@ -3,7 +3,7 @@
 Tool
   [id]              {int = unique id identifying the built-in tool}
   [name]            {string = name of the tool displayed when configuring it}
-  [type]            {highlight, underline, squiggly, strikeout, typewriter, note-inline, note-linked, ink, straight-line, rectangle, ellipse, polygon, stamp}
+  [type]            {highlight, underline, squiggly, strikeout, typewriter, note-inline, note-linked, note-callout, ink, straight-line, rectangle, ellipse, polygon, stamp}
 
 Engine
   TextSelector
@@ -27,6 +27,13 @@ Annotation
     [font]          {string as returned by QFont::toString()}
   FreeText
     [textColor]     {RGB HEX}
+    [borderColor]   {RGB HEX}
+    [color]         {RGB HEX}
+    [opacity]       {decimal in range [0, 1]}
+    [font]          {string as returned by QFont::toString()}
+  Callout
+    [textColor]     {RGB HEX}
+    [borderColor]   {RGB HEX}
     [color]         {RGB HEX}
     [opacity]       {decimal in range [0, 1]}
     [font]          {string as returned by QFont::toString()}
@@ -86,7 +93,7 @@ Annotation
     </tool>
     <tool id="6" type="note-inline">
         <engine type="PickPoint" color="#ffff00" hoverIcon="tool-note-inline" block="true">
-            <annotation type="FreeText" color="#ffffff00"
+            <annotation type="FreeText" color="#ffffff00" borderColor="#ffff0000" textColor="#ff000000"
                         font="Noto Sans,10,-1,5,50,0,0,0,0,0,Regular"/>
         </engine>
     </tool>
@@ -128,6 +135,12 @@ Annotation
     <tool id="14" type="stamp">
         <engine type="PickPoint" size="64" block="true">
             <annotation type="Stamp"/>
+        </engine>
+    </tool>
+    <tool id="15" type="note-callout" name="Callout">
+        <engine type="PickPoint" color="#000000">
+            <annotation type="Callout" color="#ffffffff" borderColor="#ff000000" textColor="#ff000000" width="1"
+                        font="Noto Sans,10,-1,5,50,0,0,0,0,0,Regular"/>
         </engine>
     </tool>
 </annotatingTools>

@@ -7,6 +7,7 @@
 #ifndef _ANNOTATIONWIDGETS_H_
 #define _ANNOTATIONWIDGETS_H_
 
+#include <QColor>
 #include <qwidget.h>
 
 #include "core/annotations.h"
@@ -130,6 +131,7 @@ private:
     void addPixmapSelector(QWidget *widget, QFormLayout *formlayout);
     void addFontRequester(QWidget *widget, QFormLayout *formlayout);
     void addTextColorButton(QWidget *widget, QFormLayout *formlayout);
+    void addBorderColorButton(QWidget *widget, QFormLayout *formlayout);
     void addTextAlignComboBox(QWidget *widget, QFormLayout *formlayout);
     void addWidthSpinBox(QWidget *widget, QFormLayout *formlayout);
 
@@ -142,6 +144,7 @@ private:
     PixmapPreviewSelector *m_pixmapSelector {nullptr};
     KFontRequester *m_fontReq {nullptr};
     KColorButton *m_textColorBn {nullptr};
+    KColorButton *m_borderColorBn {nullptr};
     QComboBox *m_textAlign {nullptr};
     QDoubleSpinBox *m_spinWidth {nullptr};
 };
@@ -161,8 +164,17 @@ protected:
     void createStyleWidget(QFormLayout *formlayout) override;
 
 private:
+    bool isLatexNote() const;
+    void createLatexNoteStyleWidget(QWidget *widget, QFormLayout *formlayout);
+    QColor latexNoteTextColor() const;
+    QColor latexNoteFillColor() const;
+    QColor latexNoteBorderColor() const;
+
     Okular::StampAnnotation *m_stampAnn;
     PixmapPreviewSelector *m_pixmapSelector;
+    KColorButton *m_latexTextColorBn {nullptr};
+    KColorButton *m_latexFillColorBn {nullptr};
+    KColorButton *m_latexBorderColorBn {nullptr};
 };
 
 class LineAnnotationWidget : public AnnotationWidget

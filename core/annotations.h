@@ -868,6 +868,16 @@ public:
     QColor textColor() const;
 
     /**
+     * Sets the @p color of the inplace text border and callout line.
+     */
+    void setInplaceBorderColor(const QColor &color);
+
+    /**
+     * Returns the color of the inplace text border and callout line.
+     */
+    QColor inplaceBorderColor() const;
+
+    /**
      * Sets the inplace @p alignment of the text annotation.
      * 0:left, 1:center, 2:right
      */
@@ -1375,6 +1385,26 @@ public:
      * background and border.
      */
     bool latexNoteBoxed() const;
+
+    /**
+     * Sets the fill color used by boxed LaTeX notes.
+     */
+    void setLatexNoteFillColor(const QColor &color);
+
+    /**
+     * Returns the fill color used by boxed LaTeX notes.
+     */
+    QColor latexNoteFillColor() const;
+
+    /**
+     * Sets the border color used by boxed LaTeX notes.
+     */
+    void setLatexNoteBorderColor(const QColor &color);
+
+    /**
+     * Returns the border color used by boxed LaTeX notes.
+     */
+    QColor latexNoteBorderColor() const;
 
     /**
      * Returns the sub type of the stamp annotation.

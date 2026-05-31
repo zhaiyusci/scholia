@@ -57,8 +57,6 @@ class PageViewAnnotator : public QObject
 {
     Q_OBJECT
 public:
-    static const int STAMP_TOOL_ID;
-
     PageViewAnnotator(PageView *parent, Okular::Document *storage);
     ~PageViewAnnotator() override;
 
@@ -108,8 +106,10 @@ public:
     enum class ShowTip { Yes, No };
     // selects the active tool
     void selectBuiltinTool(int toolId, ShowTip showTip);
+    // selects a builtin tool by its semantic XML type/name instead of a numeric id
+    int selectBuiltinToolByType(const QString &toolType, const QString &toolName, ShowTip showTip);
     // selects a stamp tool and sets the stamp symbol
-    void selectStampTool(const QString &stampSymbol, const QString &contents = QString(), bool latexNoteBoxed = false);
+    int selectStampTool(const QString &stampSymbol, const QString &contents = QString(), bool latexNoteBoxed = false);
     // selects the active quick tool
     void selectQuickTool(int toolId);
     // selects the last used tool
@@ -126,6 +126,7 @@ public:
     void setAnnotationWidth(double width);
     void setAnnotationColor(const QColor &color);
     void setAnnotationInnerColor(const QColor &color);
+    void setAnnotationTextColor(const QColor &color);
     void setAnnotationOpacity(double opacity);
     void setAnnotationFont(const QFont &font);
 
