@@ -393,6 +393,7 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
     pTextAnnotation->setInplaceIntent(okularToPoppler(oTextAnnotation->inplaceIntent()));
     QList<QPointF> calloutPoints;
     if (oTextAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout) {
+        pTextAnnotation->setOkularInplaceBoundary(normRectToRectF(oTextAnnotation->boundingRectangle()));
         bool hasCalloutPoints = false;
         for (int i = 0; i < 3 && !hasCalloutPoints; ++i) {
             const Okular::NormalizedPoint point = oTextAnnotation->inplaceCallout(i);
@@ -1088,6 +1089,18 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::TextAn
     return oTextAnn;
 }
 
+static QRectF okularBoundaryForPopplerAnnotation(const Poppler::Annotation *popplerAnnotation)
+{
+    if (popplerAnnotation->subType() == Poppler::Annotation::AText) {
+        const auto *textAnnotation = static_cast<const Poppler::TextAnnotation *>(popplerAnnotation);
+        if (textAnnotation->textType() == Poppler::TextAnnotation::InPlace && textAnnotation->inplaceIntent() == Poppler::TextAnnotation::Callout) {
+            return textAnnotation->okularInplaceBoundary();
+        }
+    }
+
+    return popplerAnnotation->boundary();
+}
+
 static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::LineAnnotation *popplerAnnotation)
 {
     Okular::LineAnnotation *oLineAnn = new Okular::LineAnnotation();
@@ -1322,7 +1335,7 @@ Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::Annotation *p
         okularAnnotation->setModificationDate(popplerAnnotation->modificationDate());
         okularAnnotation->setCreationDate(popplerAnnotation->creationDate());
         okularAnnotation->setFlags(popplerAnnotation->flags() | Okular::Annotation::External);
-        okularAnnotation->setBoundingRectangle(Okular::NormalizedRect::fromQRectF(popplerAnnotation->boundary()));
+        okularAnnotation->setBoundingRectangle(Okular::NormalizedRect::fromQRectF(okularBoundaryForPopplerAnnotation(popplerAnnotation)));
 
         if (externallyDrawn) {
             okularAnnotation->setFlags(okularAnnotation->flags() | Okular::Annotation::ExternallyDrawn);
