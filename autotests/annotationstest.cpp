@@ -29,6 +29,7 @@ private Q_SLOTS:
     //     void testHighlight();
     //     void testGeom();
     void testTypewriter();
+    void testCalloutTranslateKeepsLeaderPoints();
     void cleanupTestCase();
 
 private:
@@ -154,6 +155,30 @@ void AnnotationTest::testTypewriter()
     QCOMPARE(annotEl.attribute(QStringLiteral("color")), QStringLiteral("#00ffffff"));
     QCOMPARE(annotEl.attribute(QStringLiteral("flags")), QStringLiteral("4"));
     QCOMPARE(annotEl.attribute(QStringLiteral("contents")), QStringLiteral("annot contents"));
+}
+
+void AnnotationTest::testCalloutTranslateKeepsLeaderPoints()
+{
+    Okular::TextAnnotation ta;
+    ta.setTextType(Okular::TextAnnotation::InPlace);
+    ta.setInplaceIntent(Okular::TextAnnotation::Callout);
+    ta.setBoundingRectangle(Okular::NormalizedRect(0.4, 0.4, 0.6, 0.6));
+    ta.setInplaceCallout(Okular::NormalizedPoint(0.1, 0.1), 0);
+    ta.setInplaceCallout(Okular::NormalizedPoint(0.2, 0.2), 1);
+    ta.setInplaceCallout(Okular::NormalizedPoint(0.5, 0.4), 2);
+
+    ta.translate(Okular::NormalizedPoint(0.1, 0.2));
+
+    QCOMPARE(ta.boundingRectangle().left, 0.5);
+    QCOMPARE(ta.boundingRectangle().top, 0.6);
+    QCOMPARE(ta.boundingRectangle().right, 0.7);
+    QCOMPARE(ta.boundingRectangle().bottom, 0.8);
+    QCOMPARE(ta.inplaceCallout(0).x, 0.1);
+    QCOMPARE(ta.inplaceCallout(0).y, 0.1);
+    QCOMPARE(ta.inplaceCallout(1).x, 0.2);
+    QCOMPARE(ta.inplaceCallout(1).y, 0.2);
+    QCOMPARE(ta.inplaceCallout(2).x, 0.6);
+    QCOMPARE(ta.inplaceCallout(2).y, 0.6);
 }
 
 QTEST_MAIN(AnnotationTest)

@@ -1469,7 +1469,13 @@ void TextAnnotationPrivate::resetTransformation()
 
 void TextAnnotationPrivate::translate(const NormalizedPoint &coord)
 {
+    const NormalizedRect oldBoundary = m_boundary;
     AnnotationPrivate::translate(coord);
+
+    if (m_textType == TextAnnotation::InPlace && m_inplaceIntent == TextAnnotation::Callout) {
+        m_inplaceCallout[2] = calloutPointOnAdjustedBoxEdge(m_inplaceCallout[2], oldBoundary, m_boundary);
+        return;
+    }
 
 #define ADD_COORD(c1, c2)                                                                                                                                                                                                                      \
     {                                                                                                                                                                                                                                          \
