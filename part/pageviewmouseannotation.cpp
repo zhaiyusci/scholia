@@ -330,7 +330,7 @@ static double stampImageAspectRatio(const Okular::Annotation *annotation)
     }
 
     const auto *stamp = static_cast<const Okular::StampAnnotation *>(annotation);
-    const QString iconName = stamp->stampIconName();
+    const QString iconName = stamp->stampImagePath().isEmpty() ? stamp->stampIconName() : stamp->stampImagePath();
     if (QFile::exists(iconName)) {
         QImageReader reader(iconName);
         QSize imageSize = reader.size();

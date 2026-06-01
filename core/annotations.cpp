@@ -2450,6 +2450,7 @@ public:
     AnnotationPrivate *getNewAnnotationPrivate() override;
 
     QString m_stampIconName;
+    QString m_stampImagePath;
 };
 
 StampAnnotation::StampAnnotation()
@@ -2478,6 +2479,18 @@ QString StampAnnotation::stampIconName() const
     return d->m_stampIconName;
 }
 
+void StampAnnotation::setStampImagePath(const QString &path)
+{
+    Q_D(StampAnnotation);
+    d->m_stampImagePath = path;
+}
+
+QString StampAnnotation::stampImagePath() const
+{
+    Q_D(const StampAnnotation);
+    return d->m_stampImagePath;
+}
+
 Annotation::SubType StampAnnotation::subType() const
 {
     return AStamp;
@@ -2497,6 +2510,9 @@ void StampAnnotation::store(QDomNode &node, QDomDocument &document) const
     if (d->m_stampIconName != QLatin1String("Draft")) {
         stampElement.setAttribute(QStringLiteral("icon"), d->m_stampIconName);
     }
+    if (!d->m_stampImagePath.isEmpty()) {
+        stampElement.setAttribute(QStringLiteral("imagePath"), d->m_stampImagePath);
+    }
 }
 
 void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
@@ -2515,6 +2531,12 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         // parse the attributes
         if (e.hasAttribute(QStringLiteral("icon"))) {
             m_stampIconName = e.attribute(QStringLiteral("icon"));
+        }
+        if (e.hasAttribute(QStringLiteral("imagePath"))) {
+            m_stampImagePath = e.attribute(QStringLiteral("imagePath"));
+        } else if (QFile::exists(m_stampIconName)) {
+            m_stampImagePath = m_stampIconName;
+            m_stampIconName = QStringLiteral("Image");
         }
         m_okularLatex = false;
         m_latexLayoutWidth = 0.0;

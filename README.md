@@ -174,6 +174,31 @@ and /OkularLatex is true
 and /Contents is non-empty
 ```
 
+## Image Note PDF Structure
+
+Image notes use standard PDF stamp annotations. The semantic PDF shape is:
+
+```pdf
+<<
+  /Type /Annot
+  /Subtype /Stamp
+  /Name /Image
+  /Rect [100 500 220 580]
+  /AP << /N 41 0 R >>
+>>
+```
+
+`/AP /N` contains the rendered image appearance, so conforming PDF viewers can
+display the note without access to the original image file. The original file
+path is an Okular editing/tool source only. In Okular's tool XML it is stored as
+`imagePath`, while the stamp `icon` remains a normal PDF stamp name such as
+`Image`. The local path must not be written as the PDF stamp `/Name`.
+
+Poppler should expose this as generic stamp appearance support, not as an
+Okular-specific image-note feature. Okular decides when a local file should
+become a stamp appearance and passes the resulting image through Poppler's
+stamp appearance API.
+
 For the Windows packaging workflow used by this fork, see the scripts and notes
 under `windows-build`.
 

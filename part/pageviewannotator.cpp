@@ -14,6 +14,7 @@
 #include <QEvent>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QImageReader>
 #include <QList>
@@ -62,6 +63,7 @@ public:
         , yscale(1.0)
         , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
         , iconName {m_annotElement.attribute(QStringLiteral("icon"))}
+        , stampImagePath {m_annotElement.attribute(QStringLiteral("imagePath"))}
         , fixedAspectRatio(0.0)
         , hasIntrinsicStampSizeInPoints(false)
         , hasIntrinsicStampSize(false)
@@ -71,9 +73,10 @@ public:
         , pageheight(1.0)
         , pageView(pageView)
     {
+        const QString stampAppearanceSource = stampImagePath.isEmpty() ? iconName : stampImagePath;
         // parse engine specific attributes
-        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !iconName.simplified().isEmpty()) {
-            hoverIconName = iconName;
+        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !stampAppearanceSource.simplified().isEmpty()) {
+            hoverIconName = stampAppearanceSource;
         }
         center = QVariant(engineElement.attribute(QStringLiteral("center"))).toBool();
         bool ok = true;
@@ -87,8 +90,8 @@ public:
         if (!hoverIconName.simplified().isEmpty()) {
             pixmap = GuiUtils::stampPixmap(hoverIconName, QSize(size, size));
         }
-        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && QFile::exists(iconName)) {
-            QImageReader reader(iconName);
+        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && QFile::exists(stampAppearanceSource)) {
+            QImageReader reader(stampAppearanceSource);
             const QImage image = reader.read();
             if (!image.isNull()) {
                 intrinsicStampSize = image.size();
@@ -409,6 +412,9 @@ public:
             Okular::StampAnnotation *sa = new Okular::StampAnnotation();
             ann = sa;
             sa->setStampIconName(iconName);
+            if (!stampImagePath.isEmpty()) {
+                sa->setStampImagePath(stampImagePath);
+            }
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
                 sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
             }
@@ -525,7 +531,7 @@ protected:
 
 private:
     QPixmap pixmap;
-    QString hoverIconName, iconName;
+    QString hoverIconName, iconName, stampImagePath;
     int size;
     double fixedAspectRatio;
     bool hasIntrinsicStampSizeInPoints;
@@ -1796,8 +1802,14 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     }
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+    const bool imageNote = QFileInfo(stampSymbol).exists() && QFileInfo(stampSymbol).isFile();
     engineElement.setAttribute(QStringLiteral("hoverIcon"), stampSymbol);
-    annotationElement.setAttribute(QStringLiteral("icon"), stampSymbol);
+    annotationElement.setAttribute(QStringLiteral("icon"), imageNote ? QStringLiteral("Image") : stampSymbol);
+    if (imageNote) {
+        annotationElement.setAttribute(QStringLiteral("imagePath"), stampSymbol);
+    } else {
+        annotationElement.removeAttribute(QStringLiteral("imagePath"));
+    }
     annotationElement.removeAttribute(QStringLiteral("contents"));
     saveBuiltinAnnotationTools();
     selectBuiltinTool(stampToolId, ShowTip::Yes);

@@ -310,8 +310,8 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
 
     // if the tool is a custom stamp, insert a new action in the stamp list
     if (annotType == QStringLiteral("stamp")) {
-        QString stampIconName = annElement.attribute(QStringLiteral("icon"));
-        maybeUpdateCustomStampAction(stampIconName);
+        const QString stampImagePath = annElement.attribute(QStringLiteral("imagePath"));
+        maybeUpdateCustomStampAction(stampImagePath.isEmpty() ? annElement.attribute(QStringLiteral("icon")) : stampImagePath);
     }
 
     updateConfigActions(annotType);

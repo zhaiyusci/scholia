@@ -1405,6 +1405,16 @@ public:
     QString stampIconName() const;
 
     /**
+     * Sets the local image source path used to generate this stamp's appearance.
+     */
+    void setStampImagePath(const QString &path);
+
+    /**
+     * Returns the local image source path used to generate this stamp's appearance.
+     */
+    QString stampImagePath() const;
+
+    /**
      * Returns the sub type of the stamp annotation.
      */
     SubType subType() const override;

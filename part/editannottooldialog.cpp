@@ -263,13 +263,18 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         }
     } else if (toolType == ToolStamp) {
         Okular::StampAnnotation *sa = static_cast<Okular::StampAnnotation *>(m_stubann);
+        const QString stampImagePath = sa->stampImagePath();
+        const QString stampIconName = stampImagePath.isEmpty() ? sa->stampIconName() : QStringLiteral("Image");
         toolElement.setAttribute(QStringLiteral("type"), QStringLiteral("stamp"));
         engineElement.setAttribute(QStringLiteral("type"), QStringLiteral("PickPoint"));
-        engineElement.setAttribute(QStringLiteral("hoverIcon"), sa->stampIconName());
+        engineElement.setAttribute(QStringLiteral("hoverIcon"), stampImagePath.isEmpty() ? stampIconName : stampImagePath);
         engineElement.setAttribute(QStringLiteral("size"), QStringLiteral("64"));
         engineElement.setAttribute(QStringLiteral("block"), QStringLiteral("true"));
         annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("Stamp"));
-        annotationElement.setAttribute(QStringLiteral("icon"), sa->stampIconName());
+        annotationElement.setAttribute(QStringLiteral("icon"), stampIconName);
+        if (!stampImagePath.isEmpty()) {
+            annotationElement.setAttribute(QStringLiteral("imagePath"), stampImagePath);
+        }
     } else if (toolType == ToolTypewriter) {
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(m_stubann);
         const QString textColor = ta->textColor().name();
@@ -481,6 +486,7 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
         setToolType(ToolStamp);
         Okular::StampAnnotation *sa = static_cast<Okular::StampAnnotation *>(m_stubann);
         sa->setStampIconName(annotationElement.attribute(QStringLiteral("icon")));
+        sa->setStampImagePath(annotationElement.attribute(QStringLiteral("imagePath")));
     } else if (annotType == QLatin1String("straight-line")) {
         setToolType(ToolStraightLine);
         Okular::LineAnnotation *la = static_cast<Okular::LineAnnotation *>(m_stubann);

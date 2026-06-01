@@ -18,6 +18,7 @@
 #include <QCheckBox>
 #include <QDebug>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QGuiApplication>
@@ -471,7 +472,7 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
         m_pixmapSelector->addItem(pair.first, pair.second);
     }
 
-    m_pixmapSelector->setIcon(m_stampAnn->stampIconName());
+    m_pixmapSelector->setIcon(m_stampAnn->stampImagePath().isEmpty() ? m_stampAnn->stampIconName() : m_stampAnn->stampImagePath());
     m_pixmapSelector->setPreviewSize(64);
 
     connect(m_pixmapSelector, &PixmapPreviewSelector::iconChanged, this, &AnnotationWidget::dataChanged);
@@ -481,7 +482,15 @@ void StampAnnotationWidget::applyChanges()
 {
     AnnotationWidget::applyChanges();
 
-    m_stampAnn->setStampIconName(m_pixmapSelector->icon());
+    const QString selectedIcon = m_pixmapSelector->icon();
+    const QFileInfo selectedFile(selectedIcon);
+    if (selectedFile.exists() && selectedFile.isFile()) {
+        m_stampAnn->setStampIconName(QStringLiteral("Image"));
+        m_stampAnn->setStampImagePath(selectedIcon);
+    } else {
+        m_stampAnn->setStampIconName(selectedIcon);
+        m_stampAnn->setStampImagePath(QString());
+    }
 }
 
 LineAnnotationWidget::LineAnnotationWidget(Okular::Annotation *ann)

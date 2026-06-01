@@ -299,19 +299,19 @@ static void setSharedAnnotationPropertiesToPopplerAnnotation(const Okular::Annot
 
 static bool setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Poppler::StampAnnotation *pStampAnnotation, const Okular::StampAnnotation *oStampAnnotation)
 {
-    const QString iconName = oStampAnnotation->stampIconName();
-    if (iconName.isEmpty()) {
+    const QString imagePath = oStampAnnotation->stampImagePath();
+    if (imagePath.isEmpty()) {
         return false;
     }
 
-    const QFileInfo stampFileInfo(iconName);
+    const QFileInfo stampFileInfo(imagePath);
     if (!stampFileInfo.exists() || !stampFileInfo.isFile()) {
         return false;
     }
     QSize targetSize;
 
     // Try to detect the native resolution of the image file.
-    QImageReader reader(iconName);
+    QImageReader reader(imagePath);
     if (reader.canRead()) {
         const QByteArray format = reader.format();
         // If it is a raster image (PNG, JPG, etc.), use the native size.
@@ -355,7 +355,7 @@ static bool setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Popp
     }
 
     // Load with our calculated size
-    QImage image = Okular::AnnotationUtils::loadStamp(iconName, targetSize).toImage();
+    QImage image = Okular::AnnotationUtils::loadStamp(imagePath, targetSize).toImage();
 
     if (!image.isNull()) {
         pStampAnnotation->setStampAppearanceImage(image);
@@ -1372,7 +1372,7 @@ Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::Annotation *p
         if (okularAnnotation->subType() == Okular::Annotation::SubType::AStamp) {
             Okular::StampAnnotation *oStampAnn = static_cast<Okular::StampAnnotation *>(okularAnnotation);
             Poppler::StampAnnotation *pStampAnn = static_cast<Poppler::StampAnnotation *>(popplerAnnotation);
-            QFileInfo stampIconFile {oStampAnn->stampIconName()};
+            QFileInfo stampIconFile {oStampAnn->stampImagePath()};
             oStampAnn->setFlags(okularAnnotation->flags() & ~Okular::Annotation::Flag::DenyWrite);
             if (stampIconFile.exists() && stampIconFile.isFile()) {
                 setPopplerStampAnnotationCustomImage(&popplerPage, pStampAnn, oStampAnn);
