@@ -39,16 +39,6 @@ Q_GLOBAL_STATIC_WITH_ARGS(QPixmap, busyPixmap, (QIcon::fromTheme(QLatin1String("
 
 namespace
 {
-bool isLatexNoteAnnotation(const Okular::Annotation *annotation)
-{
-    if (!annotation || annotation->subType() != Okular::Annotation::AStamp || annotation->contents().trimmed().isEmpty()) {
-        return false;
-    }
-
-    const auto *stamp = static_cast<const Okular::StampAnnotation *>(annotation);
-    return !GuiUtils::latexNotePdfFileForStamp(stamp->stampIconName()).isEmpty();
-}
-
 QColor textBorderColor(const Okular::TextAnnotation *annotation)
 {
     QColor color = annotation ? annotation->inplaceBorderColor() : QColor();
@@ -56,21 +46,6 @@ QColor textBorderColor(const Okular::TextAnnotation *annotation)
         color = annotation ? annotation->textColor() : Qt::black;
     }
     return color;
-}
-
-QColor latexNoteFillColor(const Okular::StampAnnotation *annotation)
-{
-    QColor color = annotation ? annotation->latexNoteFillColor() : QColor();
-    return color.isValid() ? color : QColor(255, 255, 0);
-}
-
-QColor latexNoteBorderColor(const Okular::StampAnnotation *annotation)
-{
-    QColor color = annotation ? annotation->latexNoteBorderColor() : QColor();
-    if (!color.isValid()) {
-        color = annotation ? annotation->style().color() : Qt::black;
-    }
-    return color.isValid() ? color : Qt::black;
 }
 }
 
@@ -218,11 +193,7 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
                     // ExternallyDrawn annots are never rendered by PagePainter.
                     // Just paint the boundingRect if the annot is moved or resized.
                     if (annFlags & (Okular::Annotation::BeingMoved | Okular::Annotation::BeingResized)) {
-                        // LaTeX notes draw their interactive layout frame in MouseAnnotation,
-                        // because only that layer knows the in-progress width during a drag.
-                        if (!isLatexNoteAnnotation(ann)) {
-                            boundingRectOnlyAnn = ann;
-                        }
+                        boundingRectOnlyAnn = ann;
                     }
                     continue;
                 }
@@ -631,20 +602,13 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
             Okular::StampAnnotation *stamp = static_cast<Okular::StampAnnotation *>(a);
 
             // get pixmap and alpha blend it if needed
-            const bool boxedLatexNote = stamp->latexNoteBoxed() && isLatexNoteAnnotation(stamp);
-            const QRect stampTargetRect = boxedLatexNote ? annotBoundary.adjusted(3, 3, -3, -3) : annotBoundary;
+            const QRect stampTargetRect = annotBoundary;
             const QPixmap stampPixmap = GuiUtils::stampPixmap(stamp->stampIconName(), stampTargetRect.size() * dpr);
             if (!stampPixmap.isNull()) // should never happen but can happen on huge sizes
             {
                 // Draw pixmap with opacity:
                 mixedPainter->save();
                 mixedPainter->setOpacity(mixedPainter->opacity() * opacity / 255.0);
-
-                if (boxedLatexNote) {
-                    mixedPainter->setPen(QPen(latexNoteBorderColor(stamp), qMax(1.0, stamp->style().width())));
-                    mixedPainter->setBrush(latexNoteFillColor(stamp));
-                    mixedPainter->drawRect(annotBoundary.adjusted(0, 0, -1, -1));
-                }
 
                 mixedPainter->drawPixmap(stampTargetRect.topLeft(), stampPixmap.scaled(stampTargetRect.width() * dpr, stampTargetRect.height() * dpr));
 

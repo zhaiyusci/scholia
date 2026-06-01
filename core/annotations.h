@@ -684,11 +684,15 @@ public:
     virtual void store(QDomNode &node, QDomDocument &document) const;
 
     /**
-     * Retrieve the QDomNode representing this annotation's properties
+     * Retrieve the QDomNode representing this annotation's properties.
+     *
+     * @p includeRuntimeState includes transient state needed by undo commands,
+     * such as the temporary PDF file backing a freshly rendered LaTeX note
+     * appearance. It must stay false for persistent serialization.
 
      * @since 0.17 (KDE 4.11)
      */
-    QDomNode getAnnotationPropertiesDomNode() const;
+    QDomNode getAnnotationPropertiesDomNode(bool includeRuntimeState = false) const;
 
     /**
      * Sets annotations internal properties according to the contents of @p node
@@ -756,14 +760,15 @@ public:
     double latexScale() const;
 
     /**
-     * Sets the temporary local PDF file used to refresh the LaTeX appearance.
+     * Sets the current-process PDF file used to refresh the LaTeX appearance.
      *
-     * This is an implementation cache, not part of the PDF semantics.
+     * This is a runtime bridge to the PDF writer, not part of the PDF
+     * annotation semantics and not persisted by Okular.
      */
     void setLatexAppearancePdfFileName(const QString &fileName);
 
     /**
-     * Returns the temporary local PDF file used to refresh the LaTeX appearance.
+     * Returns the current-process PDF file used to refresh the LaTeX appearance.
      */
     QString latexAppearancePdfFileName() const;
 
@@ -1398,62 +1403,6 @@ public:
      * Returns the name of the icon.
      */
     QString stampIconName() const;
-
-    /**
-     * Sets the LaTeX note layout width in PDF points.
-     *
-     * A value less than or equal to 0 means natural content width.
-     */
-    void setLatexNoteLayoutWidth(double width);
-
-    /**
-     * Returns the LaTeX note layout width in PDF points.
-     *
-     * A value less than or equal to 0 means natural content width.
-     */
-    double latexNoteLayoutWidth() const;
-
-    /**
-     * Sets the LaTeX note visual scale applied to the rendered appearance.
-     */
-    void setLatexNoteScale(double scale);
-
-    /**
-     * Returns the LaTeX note visual scale applied to the rendered appearance.
-     */
-    double latexNoteScale() const;
-
-    /**
-     * Sets whether this LaTeX note should render with an inline-note style
-     * background and border.
-     */
-    void setLatexNoteBoxed(bool boxed);
-
-    /**
-     * Returns whether this LaTeX note renders with an inline-note style
-     * background and border.
-     */
-    bool latexNoteBoxed() const;
-
-    /**
-     * Sets the fill color used by boxed LaTeX notes.
-     */
-    void setLatexNoteFillColor(const QColor &color);
-
-    /**
-     * Returns the fill color used by boxed LaTeX notes.
-     */
-    QColor latexNoteFillColor() const;
-
-    /**
-     * Sets the border color used by boxed LaTeX notes.
-     */
-    void setLatexNoteBorderColor(const QColor &color);
-
-    /**
-     * Returns the border color used by boxed LaTeX notes.
-     */
-    QColor latexNoteBorderColor() const;
 
     /**
      * Returns the sub type of the stamp annotation.

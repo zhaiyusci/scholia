@@ -114,7 +114,7 @@ public:
     void addBuiltinToolAction(QAction *action, const QString &type, const QString &name = QString());
     void selectTool(int toolId);
     void selectTool(const BuiltinToolSpec &toolSpec);
-    void slotStampToolSelected(const QString &stamp, const QString &contents = QString(), bool latexNoteBoxed = false);
+    void slotStampToolSelected(const QString &stamp);
     void slotSelectCustomStamp();
     void slotAddLatexNote(bool boxed = false);
     void slotQuickToolSelected(int favToolId);
@@ -557,9 +557,9 @@ void AnnotationActionHandlerPrivate::selectTool(const BuiltinToolSpec &toolSpec)
     parseTool(selectedBuiltinTool);
 }
 
-void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp, const QString &contents, bool latexNoteBoxed)
+void AnnotationActionHandlerPrivate::slotStampToolSelected(const QString &stamp)
 {
-    selectedBuiltinTool = annotator->selectStampTool(stamp, contents, latexNoteBoxed);
+    selectedBuiltinTool = annotator->selectStampTool(stamp);
     if (selectedBuiltinTool == -1) {
         return;
     }
@@ -595,20 +595,16 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed)
         return;
     }
 
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0);
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0);
     if (!rendered.ok) {
         KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return;
     }
     LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
 
-    if (boxed) {
-        selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput);
-        if (selectedBuiltinTool != -1) {
-            updateConfigActions(QStringLiteral("note-inline"));
-        }
-    } else {
-        slotStampToolSelected(rendered.pdfFileName, latexInput, false);
+    selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput, boxed);
+    if (selectedBuiltinTool != -1) {
+        updateConfigActions(boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter"));
     }
 }
 

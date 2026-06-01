@@ -949,10 +949,6 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     if (d->m_latexScale > 0.0 && d->m_latexScale != 1.0) {
         e.setAttribute(QStringLiteral("latexScale"), QString::number(d->m_latexScale, 'f', 6));
     }
-    if (!d->m_latexAppearancePdfFileName.isEmpty()) {
-        e.setAttribute(QStringLiteral("latexAppearancePdfFileName"), d->m_latexAppearancePdfFileName);
-    }
-
     // Sub-Node-1 - boundary
     QDomElement bE = document.createElement(QStringLiteral("boundary"));
     e.appendChild(bE);
@@ -1012,12 +1008,20 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     }
 }
 
-QDomNode Annotation::getAnnotationPropertiesDomNode() const
+QDomNode Annotation::getAnnotationPropertiesDomNode(bool includeRuntimeState) const
 {
+    Q_D(const Annotation);
+
     QDomDocument doc(QStringLiteral("documentInfo"));
     QDomElement node = doc.createElement(QStringLiteral("annotation"));
 
     store(node, doc);
+    if (includeRuntimeState && !d->m_latexAppearancePdfFileName.isEmpty()) {
+        QDomElement baseElement = node.firstChildElement(QStringLiteral("base"));
+        if (!baseElement.isNull()) {
+            baseElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), d->m_latexAppearancePdfFileName);
+        }
+    }
     return node;
 }
 
@@ -2439,9 +2443,6 @@ public:
     StampAnnotationPrivate()
         : AnnotationPrivate()
         , m_stampIconName(QStringLiteral("Draft"))
-        , m_latexNoteLayoutWidth(0.0)
-        , m_latexNoteScale(1.0)
-        , m_latexNoteBoxed(false)
     {
     }
     void setAnnotationProperties(const QDomNode &node) override;
@@ -2449,11 +2450,6 @@ public:
     AnnotationPrivate *getNewAnnotationPrivate() override;
 
     QString m_stampIconName;
-    double m_latexNoteLayoutWidth;
-    double m_latexNoteScale;
-    bool m_latexNoteBoxed;
-    QColor m_latexNoteFillColor;
-    QColor m_latexNoteBorderColor;
 };
 
 StampAnnotation::StampAnnotation()
@@ -2482,66 +2478,6 @@ QString StampAnnotation::stampIconName() const
     return d->m_stampIconName;
 }
 
-void StampAnnotation::setLatexNoteLayoutWidth(double width)
-{
-    Q_D(StampAnnotation);
-    d->m_latexNoteLayoutWidth = width;
-    Annotation::setLatexLayoutWidth(width);
-}
-
-double StampAnnotation::latexNoteLayoutWidth() const
-{
-    return Annotation::latexLayoutWidth();
-}
-
-void StampAnnotation::setLatexNoteScale(double scale)
-{
-    Q_D(StampAnnotation);
-    d->m_latexNoteScale = scale;
-    Annotation::setLatexScale(scale);
-}
-
-double StampAnnotation::latexNoteScale() const
-{
-    return Annotation::latexScale();
-}
-
-void StampAnnotation::setLatexNoteBoxed(bool boxed)
-{
-    Q_D(StampAnnotation);
-    d->m_latexNoteBoxed = boxed;
-}
-
-bool StampAnnotation::latexNoteBoxed() const
-{
-    Q_D(const StampAnnotation);
-    return d->m_latexNoteBoxed;
-}
-
-void StampAnnotation::setLatexNoteFillColor(const QColor &color)
-{
-    Q_D(StampAnnotation);
-    d->m_latexNoteFillColor = color;
-}
-
-QColor StampAnnotation::latexNoteFillColor() const
-{
-    Q_D(const StampAnnotation);
-    return d->m_latexNoteFillColor;
-}
-
-void StampAnnotation::setLatexNoteBorderColor(const QColor &color)
-{
-    Q_D(StampAnnotation);
-    d->m_latexNoteBorderColor = color;
-}
-
-QColor StampAnnotation::latexNoteBorderColor() const
-{
-    Q_D(const StampAnnotation);
-    return d->m_latexNoteBorderColor;
-}
-
 Annotation::SubType StampAnnotation::subType() const
 {
     return AStamp;
@@ -2560,21 +2496,6 @@ void StampAnnotation::store(QDomNode &node, QDomDocument &document) const
     // append the optional attributes
     if (d->m_stampIconName != QLatin1String("Draft")) {
         stampElement.setAttribute(QStringLiteral("icon"), d->m_stampIconName);
-    }
-    if (latexLayoutWidth() > 0.0) {
-        stampElement.setAttribute(QStringLiteral("latexNoteLayoutWidth"), QString::number(latexLayoutWidth(), 'f', 3));
-    }
-    if (latexScale() > 0.0 && latexScale() != 1.0) {
-        stampElement.setAttribute(QStringLiteral("latexNoteScale"), QString::number(latexScale(), 'f', 6));
-    }
-    if (d->m_latexNoteBoxed) {
-        stampElement.setAttribute(QStringLiteral("latexNoteBoxed"), QStringLiteral("1"));
-    }
-    if (d->m_latexNoteFillColor.isValid()) {
-        stampElement.setAttribute(QStringLiteral("latexNoteFillColor"), d->m_latexNoteFillColor.name(QColor::HexArgb));
-    }
-    if (d->m_latexNoteBorderColor.isValid()) {
-        stampElement.setAttribute(QStringLiteral("latexNoteBorderColor"), d->m_latexNoteBorderColor.name(QColor::HexArgb));
     }
 }
 
@@ -2595,34 +2516,10 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         if (e.hasAttribute(QStringLiteral("icon"))) {
             m_stampIconName = e.attribute(QStringLiteral("icon"));
         }
-        if (e.hasAttribute(QStringLiteral("latexNoteLayoutWidth"))) {
-            bool ok = false;
-            const double width = e.attribute(QStringLiteral("latexNoteLayoutWidth")).toDouble(&ok);
-            if (ok && width > 0.0) {
-                m_latexNoteLayoutWidth = width;
-                m_latexLayoutWidth = width;
-                m_okularLatex = true;
-            }
-        }
-        if (e.hasAttribute(QStringLiteral("latexNoteScale"))) {
-            bool ok = false;
-            const double scale = e.attribute(QStringLiteral("latexNoteScale")).toDouble(&ok);
-            if (ok && scale > 0.0) {
-                m_latexNoteScale = scale;
-                m_latexScale = scale;
-                m_okularLatex = true;
-            }
-        }
-        if (e.hasAttribute(QStringLiteral("latexNoteBoxed"))) {
-            m_latexNoteBoxed = e.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0;
-            m_okularLatex = true;
-        }
-        if (e.hasAttribute(QStringLiteral("latexNoteFillColor"))) {
-            m_latexNoteFillColor = QColor(e.attribute(QStringLiteral("latexNoteFillColor")));
-        }
-        if (e.hasAttribute(QStringLiteral("latexNoteBorderColor"))) {
-            m_latexNoteBorderColor = QColor(e.attribute(QStringLiteral("latexNoteBorderColor")));
-        }
+        m_okularLatex = false;
+        m_latexLayoutWidth = 0.0;
+        m_latexScale = 1.0;
+        m_latexAppearancePdfFileName.clear();
 
         // loading complete
         break;

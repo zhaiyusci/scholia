@@ -181,7 +181,7 @@
    <max>72</max>
   </entry>
   <entry key="LatexExecutablePath" type="String">
-   <default>QString()</default>
+   <default></default>
   </entry>
   <entry key="LatexRenderBackend" type="Enum">
    <default>Auto</default>

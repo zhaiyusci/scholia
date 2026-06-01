@@ -51,7 +51,7 @@ namespace
 QString executableFromUserSetting()
 {
     const QString configured = Okular::Settings::latexExecutablePath().trimmed();
-    if (configured.isEmpty()) {
+    if (configured.isEmpty() || configured == QLatin1String("QString()")) {
         return QString();
     }
 
@@ -101,6 +101,16 @@ QString sourceLatexBackendName(const QString &executable)
 bool canUseMicrotexForRender(bool renderSource, QString *pdfFileName, int resolution)
 {
     return renderSource && pdfFileName && resolution <= 0;
+}
+
+QString latexRuntimeTempPath()
+{
+    QString tempPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    if (tempPath.isEmpty()) {
+        tempPath = QDir::tempPath();
+    }
+    QDir().mkpath(tempPath);
+    return tempPath;
 }
 
 #ifdef OKULAR_ENABLE_MICROTEX
@@ -704,7 +714,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         const double width = qMax(1.0, std::ceil(paddedContentWidth));
         const double height = qMax(1.0, std::ceil(paddedContentHeight));
 
-        QTemporaryFile tempFile(QDir::tempPath() + QLatin1String("/okular_microtex-XXXXXX.pdf"));
+        QTemporaryFile tempFile(QDir(latexRuntimeTempPath()).filePath(QStringLiteral("okular_microtex-XXXXXX.pdf")));
         tempFile.setAutoRemove(false);
         if (!tempFile.open()) {
             latexOutput = QStringLiteral("Could not create a temporary PDF file for MicroTeX output.");
@@ -1067,7 +1077,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         return renderWithMicrotex();
     }
 
-    QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
+    QTemporaryFile *tempFile = new QTemporaryFile(QDir(latexRuntimeTempPath()).filePath(QStringLiteral("okular_kdelatex-XXXXXX.tex")));
     if (!tempFile->open()) {
         delete tempFile;
         return LatexNotFound;

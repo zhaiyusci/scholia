@@ -1136,7 +1136,7 @@ void DocumentPrivate::performModifyPageAnnotation(int page, Annotation *annotati
 
     // notify observers about the change
     notifyAnnotationChanges(page);
-    if (appearanceChanged && (annotation->flags() & Annotation::ExternallyDrawn)) {
+    if (annotation->flags() & Annotation::ExternallyDrawn) {
         if (annotation->flags() & (Annotation::BeingMoved | Annotation::BeingResized)) {
             // The generator suppresses externally drawn annotations while they
             // are being moved or resized. Redrawing the page pixmap here only
@@ -1159,7 +1159,7 @@ void DocumentPrivate::performSetAnnotationContents(const QString &newContents, A
     // If it's an in-place TextAnnotation, set the inplace text
     case Okular::Annotation::AText: {
         const Okular::TextAnnotation *txtann = static_cast<Okular::TextAnnotation *>(annot);
-        if (txtann->textType() == Okular::TextAnnotation::InPlace) {
+        if (txtann->textType() == Okular::TextAnnotation::InPlace && !txtann->isOkularLatex()) {
             appearanceChanged = true;
         }
         break;
@@ -3489,7 +3489,7 @@ void Document::prepareToModifyAnnotationProperties(Annotation *annotation)
         qCCritical(OkularCoreDebug) << "Error: Document::prepareToModifyAnnotationProperties has already been called since last call to Document::modifyPageAnnotationProperties";
         return;
     }
-    d->m_prevPropsOfAnnotBeingModified = annotation->getAnnotationPropertiesDomNode();
+    d->m_prevPropsOfAnnotBeingModified = annotation->getAnnotationPropertiesDomNode(true);
 }
 
 void Document::modifyPageAnnotationProperties(int page, Annotation *annotation)
@@ -3500,7 +3500,7 @@ void Document::modifyPageAnnotationProperties(int page, Annotation *annotation)
         return;
     }
     QDomNode prevProps = d->m_prevPropsOfAnnotBeingModified;
-    QUndoCommand *uc = new Okular::ModifyAnnotationPropertiesCommand(d, annotation, page, prevProps, annotation->getAnnotationPropertiesDomNode());
+    QUndoCommand *uc = new Okular::ModifyAnnotationPropertiesCommand(d, annotation, page, prevProps, annotation->getAnnotationPropertiesDomNode(true));
     d->m_undoStack->push(uc);
     d->m_prevPropsOfAnnotBeingModified.clear();
 }

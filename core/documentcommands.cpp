@@ -194,14 +194,14 @@ void TranslateAnnotationCommand::undo()
 {
     moveViewportIfBoundingRectNotFullyVisible(translateBoundingRectangle(minusDelta()), m_docPriv, m_pageNumber);
     m_annotation->translate(minusDelta());
-    m_docPriv->performModifyPageAnnotation(m_pageNumber, m_annotation, true);
+    m_docPriv->performModifyPageAnnotation(m_pageNumber, m_annotation, false);
 }
 
 void TranslateAnnotationCommand::redo()
 {
     moveViewportIfBoundingRectNotFullyVisible(translateBoundingRectangle(m_delta), m_docPriv, m_pageNumber);
     m_annotation->translate(m_delta);
-    m_docPriv->performModifyPageAnnotation(m_pageNumber, m_annotation, true);
+    m_docPriv->performModifyPageAnnotation(m_pageNumber, m_annotation, false);
 }
 
 int TranslateAnnotationCommand::id() const

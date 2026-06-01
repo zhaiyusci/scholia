@@ -29,6 +29,7 @@ private Q_SLOTS:
     //     void testHighlight();
     //     void testGeom();
     void testTypewriter();
+    void testLatexRuntimePathIsNotSerialized();
     void testCalloutTranslateKeepsLeaderPoints();
     void cleanupTestCase();
 
@@ -155,6 +156,29 @@ void AnnotationTest::testTypewriter()
     QCOMPARE(annotEl.attribute(QStringLiteral("color")), QStringLiteral("#00ffffff"));
     QCOMPARE(annotEl.attribute(QStringLiteral("flags")), QStringLiteral("4"));
     QCOMPARE(annotEl.attribute(QStringLiteral("contents")), QStringLiteral("annot contents"));
+}
+
+void AnnotationTest::testLatexRuntimePathIsNotSerialized()
+{
+    Okular::TextAnnotation textAnnotation;
+    textAnnotation.setTextType(Okular::TextAnnotation::InPlace);
+    textAnnotation.setInplaceIntent(Okular::TextAnnotation::TypeWriter);
+    textAnnotation.setContents(QStringLiteral("E=mc^2"));
+    textAnnotation.setOkularLatex(true);
+    textAnnotation.setLatexLayoutWidth(123.0);
+    textAnnotation.setLatexScale(1.25);
+    textAnnotation.setLatexAppearancePdfFileName(QStringLiteral("/tmp/okular-latex-appearances/latex-notes/runtime.pdf"));
+
+    QDomNode textNode = textAnnotation.getAnnotationPropertiesDomNode();
+    const QDomElement textBase = textNode.toElement().elementsByTagName(QStringLiteral("base")).item(0).toElement();
+    QCOMPARE(textBase.attribute(QStringLiteral("okularLatex")), QStringLiteral("1"));
+    QCOMPARE(textBase.attribute(QStringLiteral("latexLayoutWidth")), QStringLiteral("123.000"));
+    QCOMPARE(textBase.attribute(QStringLiteral("latexScale")), QStringLiteral("1.250000"));
+    QVERIFY(!textBase.hasAttribute(QStringLiteral("latexAppearancePdfFileName")));
+
+    QDomNode runtimeNode = textAnnotation.getAnnotationPropertiesDomNode(true);
+    const QDomElement runtimeBase = runtimeNode.toElement().elementsByTagName(QStringLiteral("base")).item(0).toElement();
+    QCOMPARE(runtimeBase.attribute(QStringLiteral("latexAppearancePdfFileName")), QStringLiteral("/tmp/okular-latex-appearances/latex-notes/runtime.pdf"));
 }
 
 void AnnotationTest::testCalloutTranslateKeepsLeaderPoints()

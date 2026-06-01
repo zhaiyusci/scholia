@@ -14,7 +14,6 @@
 #include <QEvent>
 #include <QFile>
 #include <QFileDialog>
-#include <QFileInfo>
 #include <QInputDialog>
 #include <QImageReader>
 #include <QList>
@@ -89,31 +88,21 @@ public:
             pixmap = GuiUtils::stampPixmap(hoverIconName, QSize(size, size));
         }
         if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && QFile::exists(iconName)) {
-            intrinsicStampSizeInPoints = GuiUtils::latexNotePdfSizeInPointsForStamp(iconName);
-            hasIntrinsicStampSizeInPoints = intrinsicStampSizeInPoints.isValid() && !intrinsicStampSizeInPoints.isEmpty();
-            const bool isLatexNoteStamp = QFileInfo(QFileInfo(iconName).absolutePath()).fileName() == QLatin1String("latex-notes");
-            if (hasIntrinsicStampSizeInPoints && isLatexNoteStamp) {
-                const bool boxed = m_annotElement.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0;
-                intrinsicStampSizeInPoints = LatexNoteUtils::visualSizeForLatexNote(intrinsicStampSizeInPoints, 0.0, boxed);
-                hasIntrinsicStampSizeInPoints = intrinsicStampSizeInPoints.isValid() && !intrinsicStampSizeInPoints.isEmpty();
-            }
-            if (!hasIntrinsicStampSizeInPoints && !isLatexNoteStamp) {
-                QImageReader reader(iconName);
-                const QImage image = reader.read();
-                if (!image.isNull()) {
-                    intrinsicStampSize = image.size();
-                    if (image.dotsPerMeterX() > 0) {
-                        intrinsicStampDpiX = image.dotsPerMeterX() * 0.0254;
-                    }
-                    if (image.dotsPerMeterY() > 0) {
-                        intrinsicStampDpiY = image.dotsPerMeterY() * 0.0254;
-                    }
+            QImageReader reader(iconName);
+            const QImage image = reader.read();
+            if (!image.isNull()) {
+                intrinsicStampSize = image.size();
+                if (image.dotsPerMeterX() > 0) {
+                    intrinsicStampDpiX = image.dotsPerMeterX() * 0.0254;
                 }
-                if (intrinsicStampSize.isEmpty()) {
-                    intrinsicStampSize = reader.size();
+                if (image.dotsPerMeterY() > 0) {
+                    intrinsicStampDpiY = image.dotsPerMeterY() * 0.0254;
                 }
-                hasIntrinsicStampSize = !intrinsicStampSize.isEmpty();
             }
+            if (intrinsicStampSize.isEmpty()) {
+                intrinsicStampSize = reader.size();
+            }
+            hasIntrinsicStampSize = !intrinsicStampSize.isEmpty();
         }
         if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && hasIntrinsicStampSizeInPoints && intrinsicStampSizeInPoints.height() > 0.0) {
             fixedAspectRatio = intrinsicStampSizeInPoints.width() / intrinsicStampSizeInPoints.height();
@@ -334,10 +323,10 @@ public:
         static const int padding = 2;
         const QFontMetricsF mf(ta->textFont());
         if (okularLatex && !ta->latexAppearancePdfFileName().isEmpty()) {
-            const QSizeF pdfSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(ta->latexAppearancePdfFileName());
+            const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(ta->latexAppearancePdfFileName());
             if (pdfSizePoints.isValid() && !pdfSizePoints.isEmpty()) {
                 if (pagewidth > 0.0 && pageheight > 0.0) {
-                    constexpr double latexFreeTextPaddingPoints = 6.0;
+                    const double latexFreeTextPaddingPoints = LatexNoteUtils::latexTextAnnotationPaddingPoints();
                     const double normalizedWidth = (pdfSizePoints.width() + latexFreeTextPaddingPoints) / pagewidth;
                     const double normalizedHeight = (pdfSizePoints.height() + latexFreeTextPaddingPoints) / pageheight;
                     rect.right = qMax(rect.right, rect.left + normalizedWidth);
@@ -393,10 +382,14 @@ public:
                 addCalloutAnnotation(ann, content);
             }
         } else if (typeString == QLatin1String("Typewriter")) {
-            bool resok;
-            const QString content = QInputDialog::getMultiLineText(pageView, i18n("New Text Note"), i18n("Text of the new note:"), QString(), &resok);
-            if (resok) {
-                addInPlaceTextAnnotation(ann, i18n("Typewriter"), content, Okular::TextAnnotation::TypeWriter);
+            if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
+                addInPlaceTextAnnotation(ann, i18n("Typewriter"), QString(), Okular::TextAnnotation::TypeWriter);
+            } else {
+                bool resok;
+                const QString content = QInputDialog::getMultiLineText(pageView, i18n("New Text Note"), i18n("Text of the new note:"), QString(), &resok);
+                if (resok) {
+                    addInPlaceTextAnnotation(ann, i18n("Typewriter"), content, Okular::TextAnnotation::TypeWriter);
+                }
             }
         } else if (typeString == QLatin1String("Text")) {
             Okular::TextAnnotation *ta = new Okular::TextAnnotation();
@@ -416,22 +409,8 @@ public:
             Okular::StampAnnotation *sa = new Okular::StampAnnotation();
             ann = sa;
             sa->setStampIconName(iconName);
-            const bool isLatexNoteStamp = QFileInfo(QFileInfo(iconName).absolutePath()).fileName() == QLatin1String("latex-notes");
-            if (isLatexNoteStamp) {
-                sa->setOkularLatex(true);
-                sa->setLatexAppearancePdfFileName(iconName);
-            }
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
                 sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
-            }
-            if (m_annotElement.hasAttribute(QStringLiteral("latexNoteBoxed"))) {
-                sa->setLatexNoteBoxed(m_annotElement.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0);
-            }
-            if (m_annotElement.hasAttribute(QStringLiteral("latexNoteFillColor"))) {
-                sa->setLatexNoteFillColor(QColor(m_annotElement.attribute(QStringLiteral("latexNoteFillColor"))));
-            }
-            if (m_annotElement.hasAttribute(QStringLiteral("latexNoteBorderColor"))) {
-                sa->setLatexNoteBorderColor(QColor(m_annotElement.attribute(QStringLiteral("latexNoteBorderColor"))));
             }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
@@ -1808,7 +1787,7 @@ void PageViewAnnotator::selectLastTool()
     selectTool(m_lastToolsDefinition, m_lastToolId, ShowTip::No);
 }
 
-int PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString &contents, bool latexNoteBoxed)
+int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
 {
     const int stampToolId = m_builtinToolsDefinition->findToolId(QStringLiteral("stamp"));
     QDomElement toolElement = builtinTool(stampToolId);
@@ -1819,31 +1798,17 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString
     QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
     engineElement.setAttribute(QStringLiteral("hoverIcon"), stampSymbol);
     annotationElement.setAttribute(QStringLiteral("icon"), stampSymbol);
-    if (contents.isNull()) {
-        annotationElement.removeAttribute(QStringLiteral("contents"));
-    } else {
-        annotationElement.setAttribute(QStringLiteral("contents"), contents);
-    }
-    if (latexNoteBoxed) {
-        annotationElement.setAttribute(QStringLiteral("latexNoteBoxed"), QStringLiteral("1"));
-        if (!annotationElement.hasAttribute(QStringLiteral("latexNoteFillColor"))) {
-            annotationElement.setAttribute(QStringLiteral("latexNoteFillColor"), QStringLiteral("#ffffff00"));
-        }
-        if (!annotationElement.hasAttribute(QStringLiteral("latexNoteBorderColor"))) {
-            annotationElement.setAttribute(QStringLiteral("latexNoteBorderColor"), QStringLiteral("#ff000000"));
-        }
-    } else {
-        annotationElement.removeAttribute(QStringLiteral("latexNoteBoxed"));
-    }
+    annotationElement.removeAttribute(QStringLiteral("contents"));
     saveBuiltinAnnotationTools();
     selectBuiltinTool(stampToolId, ShowTip::Yes);
     return stampToolId;
 }
 
-int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents)
+int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed)
 {
-    const int inlineToolId = m_builtinToolsDefinition->findToolId(QStringLiteral("note-inline"));
-    QDomElement toolElement = builtinTool(inlineToolId);
+    const QString toolType = boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter");
+    const int toolId = m_builtinToolsDefinition->findToolId(toolType);
+    QDomElement toolElement = builtinTool(toolId);
     if (toolElement.isNull()) {
         return -1;
     }
@@ -1855,9 +1820,8 @@ int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile,
     annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
     annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
-    saveBuiltinAnnotationTools();
-    selectBuiltinTool(inlineToolId, ShowTip::Yes);
-    return inlineToolId;
+    selectBuiltinTool(toolId, ShowTip::Yes);
+    return toolId;
 }
 
 void PageViewAnnotator::detachAnnotation()

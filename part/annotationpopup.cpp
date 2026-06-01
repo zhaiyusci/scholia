@@ -117,17 +117,10 @@ Okular::TextAnnotation *convertibleTextAnnotation(Okular::Annotation *annotation
     return textAnnotation;
 }
 
-Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
-{
-    return LatexNoteUtils::annotationAsLatexNote(annotation);
-}
-
 Okular::TextAnnotation *latexTextAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationAsLatexTextAnnotation(annotation);
 }
-
-constexpr double latexFreeTextPaddingPoints = 6.0;
 
 int latexFontSizeForTextAnnotation(const Okular::TextAnnotation *)
 {
@@ -195,47 +188,22 @@ double latexMaxWidthForTextAnnotation(const Okular::TextAnnotation *annotation, 
 
 double latexTextAnnotationScale(const Okular::TextAnnotation *annotation)
 {
-    if (!annotation || !std::isfinite(annotation->latexScale()) || annotation->latexScale() <= 0.0) {
-        return 1.0;
-    }
-    return annotation->latexScale();
+    return LatexNoteUtils::scaleForLatexTextAnnotation(annotation);
 }
 
 double latexTextAnnotationLayoutWidth(const Okular::TextAnnotation *annotation, const Okular::Page *page)
 {
-    if (!annotation) {
-        return 0.0;
-    }
-
-    const double storedWidth = annotation->latexLayoutWidth();
-    if (std::isfinite(storedWidth) && storedWidth > 0.0) {
-        return storedWidth;
-    }
-
-    const double visibleWidthPoints = LatexNoteUtils::annotationWidthInPoints(annotation, page);
-    return qMax(1.0, visibleWidthPoints / latexTextAnnotationScale(annotation) - latexFreeTextPaddingPoints);
+    return LatexNoteUtils::layoutWidthForLatexTextAnnotation(annotation, page);
 }
 
 double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double scale)
 {
-    if (!std::isfinite(visibleWidthPoints) || visibleWidthPoints <= 0.0 || !std::isfinite(scale) || scale <= 0.0) {
-        return 0.0;
-    }
-    return qMax(1.0, visibleWidthPoints / scale - latexFreeTextPaddingPoints);
+    return LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(visibleWidthPoints, scale);
 }
 
 QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentSizePoints, double layoutWidthPoints)
 {
-    if (!contentSizePoints.isValid() || contentSizePoints.isEmpty()) {
-        return contentSizePoints;
-    }
-
-    return QSizeF(qMax(layoutWidthPoints, contentSizePoints.width() + latexFreeTextPaddingPoints), contentSizePoints.height() + latexFreeTextPaddingPoints);
-}
-
-int textFontSizeForLatexStampAnnotation(const Okular::StampAnnotation *)
-{
-    return LatexNoteUtils::convertedTextFontSize();
+    return LatexNoteUtils::visualSizeForLatexTextAnnotation(contentSizePoints, layoutWidthPoints);
 }
 
 Okular::NormalizedRect textAnnotationRectForSource(const Okular::Annotation *annotation, const Okular::Page *page, const QFont &font)
@@ -261,34 +229,6 @@ Okular::NormalizedRect textAnnotationRectForSource(const Okular::Annotation *ann
     }
 
     return Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.right, qMin(1.0, sourceRect.top + normalizedHeight));
-}
-
-Okular::NormalizedRect textAnnotationRectForStampSource(const Okular::StampAnnotation *annotation, const Okular::Page *page, const QFont &font)
-{
-    return textAnnotationRectForSource(annotation, page, font);
-}
-
-QColor textColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation)
-{
-    return LatexNoteUtils::colorForLatexNote(annotation);
-}
-
-QColor fillColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation)
-{
-    QColor fillColor = annotation ? annotation->latexNoteFillColor() : QColor();
-    if (!fillColor.isValid()) {
-        fillColor = Qt::yellow;
-    }
-    return fillColor;
-}
-
-QColor borderColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation)
-{
-    QColor borderColor = annotation ? annotation->latexNoteBorderColor() : QColor();
-    if (!borderColor.isValid()) {
-        borderColor = textColorForLatexStampAnnotation(annotation);
-    }
-    return borderColor;
 }
 
 QColor fillColorForLatexTextAnnotation(const Okular::TextAnnotation *annotation, bool boxed)
@@ -317,26 +257,6 @@ QColor borderColorForLatexTextAnnotation(const Okular::TextAnnotation *annotatio
     return borderColor;
 }
 
-bool renderLatexNoteToCache(QWidget *parent, const QString &latexInput, const QColor &textColor, int fontSize, double maxWidth, QString *pdfFileName, GuiUtils::LatexRenderWarning *warning = nullptr)
-{
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderToCache(latexInput, textColor, fontSize, maxWidth);
-    if (!rendered.ok) {
-        KMessageBox::error(parent, rendered.errorMessage, i18n("LaTeX rendering failed"));
-        return false;
-    }
-
-    *pdfFileName = rendered.pdfFileName;
-    if (warning) {
-        *warning = rendered.warning;
-    }
-    return true;
-}
-
-Okular::NormalizedRect latexStampBoundingRect(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &stampSizePoints, double layoutWidthPoints, bool boxed, double scale = 1.0)
-{
-    return LatexNoteUtils::boundingRectForLatexNote(sourceRect, page, stampSizePoints, layoutWidthPoints, boxed, scale);
-}
-
 bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          Okular::Document *document,
                                          int pageNumber,
@@ -348,113 +268,7 @@ bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          bool boxed,
                                          double visualScale)
 {
-    if (!document || pageNumber == -1 || !textAnnotation) {
-        return false;
-    }
-
-    const Okular::Page *page = document->page(pageNumber);
-    if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints < 0.0) {
-        layoutWidthPoints = latexTextAnnotationLayoutWidth(textAnnotation, page);
-    }
-    if (!std::isfinite(visualScale) || visualScale <= 0.0) {
-        visualScale = latexTextAnnotationScale(textAnnotation);
-    }
-
-    QString pdfFileName;
-    GuiUtils::LatexRenderWarning warning;
-    if (!renderLatexNoteToCache(parent, textAnnotation->contents(), textColor, latexFontSizeForTextAnnotation(textAnnotation), layoutWidthPoints, &pdfFileName, &warning)) {
-        return false;
-    }
-
-    const QSizeF contentSizePoints = GuiUtils::pdfPageSizeInPoints(pdfFileName);
-    if (!contentSizePoints.isValid() || contentSizePoints.isEmpty()) {
-        KMessageBox::error(parent, i18n("Could not load the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
-        return false;
-    }
-
-    const QSizeF visualSizePoints = visualSizeForLatexTextAnnotation(contentSizePoints, layoutWidthPoints);
-    const Okular::NormalizedRect updatedRect = LatexNoteUtils::boundingRectForPdf(textAnnotation->boundingRectangle(), page, visualSizePoints, visualScale);
-    const Okular::TextAnnotation::InplaceIntent targetIntent =
-        textAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout ? Okular::TextAnnotation::Callout : (boxed ? Okular::TextAnnotation::Unknown : Okular::TextAnnotation::TypeWriter);
-    const double targetBorderWidth = boxed ? qMax(1.0, textAnnotation->style().width()) : 0.0;
-    const bool sameLayoutWidth = qAbs(textAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3;
-    const bool sameScale = qAbs(textAnnotation->latexScale() - visualScale) < 1e-6;
-    LatexNoteUtils::showRenderWarning(parent, warning);
-    if (pdfFileName == textAnnotation->latexAppearancePdfFileName() && updatedRect == textAnnotation->boundingRectangle() && textAnnotation->textColor() == textColor
-        && textAnnotation->style().color() == fillColor && textAnnotation->inplaceBorderColor() == borderColor && textAnnotation->inplaceIntent() == targetIntent
-        && qAbs(textAnnotation->style().width() - targetBorderWidth) < 1e-6 && sameLayoutWidth && sameScale && textAnnotation->isOkularLatex()) {
-        return true;
-    }
-
-    document->prepareToModifyAnnotationProperties(textAnnotation);
-    textAnnotation->setOkularLatex(true);
-    textAnnotation->setLatexAppearancePdfFileName(pdfFileName);
-    textAnnotation->setLatexLayoutWidth(layoutWidthPoints);
-    textAnnotation->setLatexScale(visualScale);
-    textAnnotation->setTextColor(textColor);
-    textAnnotation->setInplaceBorderColor(borderColor);
-    textAnnotation->setInplaceIntent(targetIntent);
-    textAnnotation->style().setColor(fillColor);
-    textAnnotation->style().setWidth(targetBorderWidth);
-    textAnnotation->setBoundingRectangle(updatedRect);
-    textAnnotation->setModificationDate(QDateTime::currentDateTime());
-    document->modifyPageAnnotationProperties(pageNumber, textAnnotation);
-    return true;
-}
-
-bool updateLatexNoteAppearance(QWidget *parent,
-                               Okular::Document *document,
-                               int pageNumber,
-                               Okular::StampAnnotation *stampAnnotation,
-                               const QColor &textColor,
-                               const QColor &fillColor,
-                               const QColor &borderColor,
-                               double layoutWidthPoints,
-                               bool boxed)
-{
-    if (!document || pageNumber == -1 || !stampAnnotation) {
-        return false;
-    }
-
-    const Okular::Page *page = document->page(pageNumber);
-    const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
-    const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
-    QString pdfFileName;
-    GuiUtils::LatexRenderWarning warning;
-    if (!renderLatexNoteToCache(parent, stampAnnotation->contents(), textColor, latexFontSizeForTextAnnotation(nullptr), layoutWidthPoints, &pdfFileName, &warning)) {
-        return false;
-    }
-
-    const QSizeF stampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(pdfFileName);
-    if (!stampSizePoints.isValid() || stampSizePoints.isEmpty()) {
-        KMessageBox::error(parent, i18n("Could not load the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
-        return false;
-    }
-
-    const Okular::NormalizedRect updatedRect = latexStampBoundingRect(stampAnnotation->boundingRectangle(), page, stampSizePoints, layoutWidthPoints, boxed, visualScale);
-    const bool sameLayoutWidth = qAbs(stampAnnotation->latexNoteLayoutWidth() - layoutWidthPoints) < 1e-3;
-    const bool sameScale = qAbs(stampAnnotation->latexNoteScale() - visualScale) < 1e-6;
-    const bool sameBoxed = stampAnnotation->latexNoteBoxed() == boxed;
-    const bool sameFillColor = stampAnnotation->latexNoteFillColor() == fillColor;
-    const bool sameBorderColor = stampAnnotation->latexNoteBorderColor() == borderColor;
-    LatexNoteUtils::showRenderWarning(parent, warning);
-    if (pdfFileName == stampAnnotation->stampIconName() && updatedRect == stampAnnotation->boundingRectangle() && stampAnnotation->style().color() == textColor && sameFillColor && sameBorderColor
-        && sameLayoutWidth && sameScale && sameBoxed) {
-        return true;
-    }
-
-    document->prepareToModifyAnnotationProperties(stampAnnotation);
-    stampAnnotation->setStampIconName(pdfFileName);
-    stampAnnotation->setLatexNoteLayoutWidth(layoutWidthPoints);
-    stampAnnotation->setLatexNoteScale(visualScale);
-    stampAnnotation->setLatexNoteBoxed(boxed);
-    stampAnnotation->setLatexNoteFillColor(fillColor);
-    stampAnnotation->setLatexNoteBorderColor(borderColor);
-    stampAnnotation->setBoundingRectangle(updatedRect);
-    stampAnnotation->style().setColor(textColor);
-    stampAnnotation->setModificationDate(QDateTime::currentDateTime());
-    document->modifyPageAnnotationProperties(pageNumber, stampAnnotation);
-    return true;
+    return LatexNoteUtils::updateLatexTextAnnotationAppearance(parent, document, pageNumber, textAnnotation, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale);
 }
 
 QTransform pageRotationMatrix(Okular::Rotation rotation)
@@ -724,14 +538,11 @@ void AnnotationPopup::addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair)
     }
 
     const bool canModify = mDocument->isAllowed(Okular::AllowNotes) && mDocument->canModifyPageAnnotation(pair.annotation);
-    const bool canConvertToText = mDocument->isAllowed(Okular::AllowNotes)
-        && (latexTextAnnotation(pair.annotation) ? mDocument->canModifyPageAnnotation(pair.annotation) : mDocument->canRemovePageAnnotation(pair.annotation));
-    const auto *stampAnnotation = latexStampAnnotation(pair.annotation);
     const auto *textAnnotation = latexTextAnnotation(pair.annotation);
     QAction *action = nullptr;
 
-    if (stampAnnotation || latexTextAnnotationSupportsFrameToggle(textAnnotation)) {
-        const bool boxed = stampAnnotation ? stampAnnotation->latexNoteBoxed() : latexNoteBoxedForTextAnnotation(textAnnotation);
+    if (latexTextAnnotationSupportsFrameToggle(textAnnotation)) {
+        const bool boxed = latexNoteBoxedForTextAnnotation(textAnnotation);
         action = menu->addAction(QIcon::fromTheme(QStringLiteral("note")), boxed ? i18nc("@action:inmenu", "Remove Inline Note Frame") : i18nc("@action:inmenu", "Use Inline Note Frame"));
         action->setEnabled(canModify);
         connect(action, &QAction::triggered, menu, [this, pair] { doToggleLatexAnnotationFrame(pair); });
@@ -750,7 +561,7 @@ void AnnotationPopup::addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair)
     connect(action, &QAction::triggered, menu, [this, pair] { doResetLatexAnnotationScale(pair); });
 
     action = menu->addAction(QIcon::fromTheme(QStringLiteral("tool-text")), i18nc("@action:inmenu", "Convert LaTeX Note to Plain Text"));
-    action->setEnabled(canConvertToText);
+    action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && textAnnotation && mDocument->canModifyPageAnnotation(pair.annotation));
     connect(action, &QAction::triggered, menu, [this, pair] { doConvertLatexAnnotationToText(pair); });
 }
 
@@ -771,13 +582,13 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
     const Okular::Page *page = mDocument->page(pair.pageNumber);
     const double maxWidth = layoutWidthForLatexTextVisibleWidth(latexMaxWidthForTextAnnotation(textAnnotation, page), 1.0);
 
-    QString pdfFileName;
-    GuiUtils::LatexRenderWarning warning;
-    if (!renderLatexNoteToCache(mParent, latexInput, textColor, fontSize, maxWidth, &pdfFileName, &warning)) {
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(latexInput, textColor, fontSize, maxWidth);
+    if (!rendered.ok) {
+        KMessageBox::error(mParent, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return;
     }
 
-    const QSizeF latexSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(pdfFileName);
+    const QSizeF latexSizePoints = rendered.pdfSizePoints;
     if (!latexSizePoints.isValid() || latexSizePoints.isEmpty()) {
         KMessageBox::error(mParent, i18n("Could not load the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
         return;
@@ -799,7 +610,7 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
     latexTextAnnotation->setOkularLatex(true);
     latexTextAnnotation->setLatexLayoutWidth(maxWidth);
     latexTextAnnotation->setLatexScale(1.0);
-    latexTextAnnotation->setLatexAppearancePdfFileName(pdfFileName);
+    latexTextAnnotation->setLatexAppearancePdfFileName(rendered.pdfFileName);
     latexTextAnnotation->setBoundingRectangle(rectForDocumentAdd(LatexNoteUtils::boundingRectForPdf(textAnnotation->boundingRectangle(), page, latexFreeTextSizePoints), page));
     latexTextAnnotation->style() = textAnnotation->style();
     latexTextAnnotation->style().setColor(latexFillColorForTextAnnotation(textAnnotation));
@@ -818,7 +629,7 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
 
     mDocument->addPageAnnotation(pair.pageNumber, latexTextAnnotation);
     mDocument->removePageAnnotation(pair.pageNumber, pair.annotation);
-    LatexNoteUtils::showRenderWarning(mParent, warning);
+    LatexNoteUtils::showRenderWarning(mParent, rendered.warning);
 }
 
 void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
@@ -827,10 +638,9 @@ void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
         return;
     }
 
-    Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation);
     Okular::TextAnnotation *textAnnotation = latexTextAnnotation(pair.annotation);
     const Okular::Page *page = mDocument->page(pair.pageNumber);
-    if ((!stampAnnotation && !textAnnotation) || !page || page->width() <= 0.0) {
+    if (!textAnnotation || !page || page->width() <= 0.0) {
         return;
     }
 
@@ -850,25 +660,6 @@ void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
     }
 
     const double visibleWidthPoints = LatexNoteUtils::pageWidthInPoints(page) * selectedPercent / 100.0;
-    if (stampAnnotation) {
-        const QSizeF currentStampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
-        const double visualScale = LatexNoteUtils::scaleForLatexNote(stampAnnotation, page, currentStampSizePoints);
-        const double layoutWidthPoints = LatexNoteUtils::layoutWidthForVisibleWidth(visibleWidthPoints, visualScale, stampAnnotation->latexNoteBoxed());
-        if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
-            return;
-        }
-        updateLatexNoteAppearance(mParent,
-                                  mDocument,
-                                  pair.pageNumber,
-                                  stampAnnotation,
-                                  textColorForLatexStampAnnotation(stampAnnotation),
-                                  fillColorForLatexStampAnnotation(stampAnnotation),
-                                  borderColorForLatexStampAnnotation(stampAnnotation),
-                                  layoutWidthPoints,
-                                  stampAnnotation->latexNoteBoxed());
-        return;
-    }
-
     const double visualScale = latexTextAnnotationScale(textAnnotation);
     const double layoutWidthPoints = layoutWidthForLatexTextVisibleWidth(visibleWidthPoints, visualScale);
     if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
@@ -893,22 +684,8 @@ void AnnotationPopup::doFitLatexAnnotationToContent(AnnotPagePair pair)
         return;
     }
 
-    Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation);
     Okular::TextAnnotation *textAnnotation = latexTextAnnotation(pair.annotation);
-    if (!stampAnnotation && !textAnnotation) {
-        return;
-    }
-
-    if (stampAnnotation) {
-        updateLatexNoteAppearance(mParent,
-                                  mDocument,
-                                  pair.pageNumber,
-                                  stampAnnotation,
-                                  textColorForLatexStampAnnotation(stampAnnotation),
-                                  fillColorForLatexStampAnnotation(stampAnnotation),
-                                  borderColorForLatexStampAnnotation(stampAnnotation),
-                                  0.0,
-                                  stampAnnotation->latexNoteBoxed());
+    if (!textAnnotation) {
         return;
     }
 
@@ -931,44 +708,23 @@ void AnnotationPopup::doResetLatexAnnotationScale(AnnotPagePair pair)
         return;
     }
 
-    Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation);
     Okular::TextAnnotation *textAnnotation = latexTextAnnotation(pair.annotation);
-    if (!stampAnnotation && !textAnnotation) {
+    if (!textAnnotation) {
         return;
     }
 
     const Okular::Page *page = mDocument->page(pair.pageNumber);
-    if (textAnnotation) {
-        const bool boxed = latexNoteBoxedForTextAnnotation(textAnnotation);
-        updateLatexTextAnnotationAppearance(mParent,
-                                            mDocument,
-                                            pair.pageNumber,
-                                            textAnnotation,
-                                            latexTextColorForTextAnnotation(textAnnotation),
-                                            fillColorForLatexTextAnnotation(textAnnotation, boxed),
-                                            borderColorForLatexTextAnnotation(textAnnotation, boxed),
-                                            latexTextAnnotationLayoutWidth(textAnnotation, page),
-                                            boxed,
-                                            1.0);
-        return;
-    }
-
-    const QSizeF stampSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(stampAnnotation->stampIconName());
-    if (!stampSizePoints.isValid() || stampSizePoints.isEmpty()) {
-        KMessageBox::error(mParent, i18n("Could not load the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
-        return;
-    }
-
-    const Okular::NormalizedRect updatedRect = latexStampBoundingRect(stampAnnotation->boundingRectangle(), page, stampSizePoints, LatexNoteUtils::layoutWidthForLatexNote(stampAnnotation, page), stampAnnotation->latexNoteBoxed(), 1.0);
-    if (updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexNoteScale() - 1.0) < 1e-6) {
-        return;
-    }
-
-    mDocument->prepareToModifyAnnotationProperties(stampAnnotation);
-    stampAnnotation->setLatexNoteScale(1.0);
-    stampAnnotation->setBoundingRectangle(updatedRect);
-    stampAnnotation->setModificationDate(QDateTime::currentDateTime());
-    mDocument->modifyPageAnnotationProperties(pair.pageNumber, stampAnnotation);
+    const bool boxed = latexNoteBoxedForTextAnnotation(textAnnotation);
+    updateLatexTextAnnotationAppearance(mParent,
+                                        mDocument,
+                                        pair.pageNumber,
+                                        textAnnotation,
+                                        latexTextColorForTextAnnotation(textAnnotation),
+                                        fillColorForLatexTextAnnotation(textAnnotation, boxed),
+                                        borderColorForLatexTextAnnotation(textAnnotation, boxed),
+                                        latexTextAnnotationLayoutWidth(textAnnotation, page),
+                                        boxed,
+                                        1.0);
 }
 
 void AnnotationPopup::doToggleLatexAnnotationFrame(AnnotPagePair pair)
@@ -977,41 +733,27 @@ void AnnotationPopup::doToggleLatexAnnotationFrame(AnnotPagePair pair)
         return;
     }
 
-    Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation);
     Okular::TextAnnotation *textAnnotation = latexTextAnnotation(pair.annotation);
-    if (!stampAnnotation && !textAnnotation) {
+    if (!textAnnotation) {
         return;
     }
 
     const Okular::Page *page = mDocument->page(pair.pageNumber);
-    if (textAnnotation) {
-        if (!latexTextAnnotationSupportsFrameToggle(textAnnotation)) {
-            return;
-        }
-
-        const bool boxed = !latexNoteBoxedForTextAnnotation(textAnnotation);
-        updateLatexTextAnnotationAppearance(mParent,
-                                            mDocument,
-                                            pair.pageNumber,
-                                            textAnnotation,
-                                            latexTextColorForTextAnnotation(textAnnotation),
-                                            fillColorForLatexTextAnnotation(textAnnotation, boxed),
-                                            borderColorForLatexTextAnnotation(textAnnotation, boxed),
-                                            latexTextAnnotationLayoutWidth(textAnnotation, page),
-                                            boxed,
-                                            latexTextAnnotationScale(textAnnotation));
+    if (!latexTextAnnotationSupportsFrameToggle(textAnnotation)) {
         return;
     }
 
-    updateLatexNoteAppearance(mParent,
-                              mDocument,
-                              pair.pageNumber,
-                              stampAnnotation,
-                              textColorForLatexStampAnnotation(stampAnnotation),
-                              fillColorForLatexStampAnnotation(stampAnnotation),
-                              borderColorForLatexStampAnnotation(stampAnnotation),
-                              LatexNoteUtils::layoutWidthForLatexNote(stampAnnotation, page),
-                              !stampAnnotation->latexNoteBoxed());
+    const bool boxed = !latexNoteBoxedForTextAnnotation(textAnnotation);
+    updateLatexTextAnnotationAppearance(mParent,
+                                        mDocument,
+                                        pair.pageNumber,
+                                        textAnnotation,
+                                        latexTextColorForTextAnnotation(textAnnotation),
+                                        fillColorForLatexTextAnnotation(textAnnotation, boxed),
+                                        borderColorForLatexTextAnnotation(textAnnotation, boxed),
+                                        latexTextAnnotationLayoutWidth(textAnnotation, page),
+                                        boxed,
+                                        latexTextAnnotationScale(textAnnotation));
 }
 
 void AnnotationPopup::doConvertLatexAnnotationToText(AnnotPagePair pair)
@@ -1020,77 +762,38 @@ void AnnotationPopup::doConvertLatexAnnotationToText(AnnotPagePair pair)
         return;
     }
 
-    Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation);
     Okular::TextAnnotation *latexTextAnn = latexTextAnnotation(pair.annotation);
-    if (!stampAnnotation && !latexTextAnn) {
+    if (!latexTextAnn) {
         return;
     }
 
     const Okular::Page *page = mDocument->page(pair.pageNumber);
-    if (latexTextAnn) {
-        if (!mDocument->canModifyPageAnnotation(latexTextAnn)) {
-            return;
-        }
-
-        QFont font(QStringLiteral("Noto Sans"));
-        font.setPointSize(LatexNoteUtils::convertedTextFontSize());
-
-        mDocument->prepareToModifyAnnotationProperties(latexTextAnn);
-        latexTextAnn->setOkularLatex(false);
-        latexTextAnn->setLatexAppearancePdfFileName(QString());
-        latexTextAnn->setLatexLayoutWidth(0.0);
-        latexTextAnn->setLatexScale(1.0);
-        latexTextAnn->setTextFont(font);
-        latexTextAnn->setBoundingRectangle(textAnnotationRectForSource(latexTextAnn, page, font));
-        if (latexTextAnn->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
-            latexTextAnn->style().setColor(QColor(255, 255, 255, 0));
-            latexTextAnn->style().setWidth(0);
-            latexTextAnn->setInplaceBorderColor(Qt::transparent);
-            latexTextAnn->window().setSummary(i18n("Typewriter"));
-        } else if (latexTextAnn->inplaceIntent() == Okular::TextAnnotation::Callout) {
-            latexTextAnn->window().setSummary(i18n("Callout"));
-        } else {
-            latexTextAnn->window().setSummary(i18n("Inline Note"));
-        }
-        latexTextAnn->setModificationDate(QDateTime::currentDateTime());
-        mDocument->modifyPageAnnotationProperties(pair.pageNumber, latexTextAnn);
+    if (!mDocument->canModifyPageAnnotation(latexTextAnn)) {
         return;
     }
-
-    if (!mDocument->canRemovePageAnnotation(pair.annotation)) {
-        return;
-    }
-
-    auto *textAnnotation = new Okular::TextAnnotation();
-    const bool boxed = stampAnnotation->latexNoteBoxed();
-    textAnnotation->setFlags(textAnnotation->flags() | Okular::Annotation::FixedRotation);
-    textAnnotation->setContents(stampAnnotation->contents());
-    textAnnotation->setTextType(Okular::TextAnnotation::InPlace);
-    textAnnotation->setInplaceIntent(boxed ? Okular::TextAnnotation::Unknown : Okular::TextAnnotation::TypeWriter);
-    textAnnotation->setTextColor(textColorForLatexStampAnnotation(stampAnnotation));
-    textAnnotation->setInplaceBorderColor(borderColorForLatexStampAnnotation(stampAnnotation));
 
     QFont font(QStringLiteral("Noto Sans"));
-    font.setPointSize(textFontSizeForLatexStampAnnotation(stampAnnotation));
-    textAnnotation->setTextFont(font);
-    textAnnotation->setBoundingRectangle(rectForDocumentAdd(textAnnotationRectForStampSource(stampAnnotation, page, font), page));
-    if (boxed) {
-        textAnnotation->style().setColor(fillColorForLatexStampAnnotation(stampAnnotation));
-        textAnnotation->style().setWidth(1);
-        textAnnotation->window().setSummary(i18n("Inline Note"));
+    font.setPointSize(LatexNoteUtils::convertedTextFontSize());
+
+    mDocument->prepareToModifyAnnotationProperties(latexTextAnn);
+    latexTextAnn->setOkularLatex(false);
+    latexTextAnn->setLatexAppearancePdfFileName(QString());
+    latexTextAnn->setLatexLayoutWidth(0.0);
+    latexTextAnn->setLatexScale(1.0);
+    latexTextAnn->setTextFont(font);
+    latexTextAnn->setBoundingRectangle(textAnnotationRectForSource(latexTextAnn, page, font));
+    if (latexTextAnn->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
+        latexTextAnn->style().setColor(QColor(255, 255, 255, 0));
+        latexTextAnn->style().setWidth(0);
+        latexTextAnn->setInplaceBorderColor(Qt::transparent);
+        latexTextAnn->window().setSummary(i18n("Typewriter"));
+    } else if (latexTextAnn->inplaceIntent() == Okular::TextAnnotation::Callout) {
+        latexTextAnn->window().setSummary(i18n("Callout"));
     } else {
-        textAnnotation->style().setColor(QColor(255, 255, 255, 0));
-        textAnnotation->style().setWidth(0);
-        textAnnotation->window().setSummary(i18n("Typewriter"));
+        latexTextAnn->window().setSummary(i18n("Inline Note"));
     }
-
-    const QDateTime now = QDateTime::currentDateTime();
-    textAnnotation->setCreationDate(stampAnnotation->creationDate().isValid() ? stampAnnotation->creationDate() : now);
-    textAnnotation->setModificationDate(now);
-    textAnnotation->setAuthor(stampAnnotation->author().isEmpty() ? Okular::Settings::identityAuthor() : stampAnnotation->author());
-
-    mDocument->addPageAnnotation(pair.pageNumber, textAnnotation);
-    mDocument->removePageAnnotation(pair.pageNumber, pair.annotation);
+    latexTextAnn->setModificationDate(QDateTime::currentDateTime());
+    mDocument->modifyPageAnnotationProperties(pair.pageNumber, latexTextAnn);
 }
 
 void AnnotationPopup::pasteAnnotationToPage(int pageNumber, const Okular::NormalizedPoint *targetPoint)

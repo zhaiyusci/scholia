@@ -325,7 +325,7 @@ The `patchYYYYMMDD` suffix is generated from the build date by default. Pass
 ## LaTeX Note Sizing Fix
 
 The Windows sizing bug was not a display rendering bug. The generated LaTeX PDF
-used a real 10pt font, but the stamp rectangle was computed using
+used a real 10pt font, but the annotation rectangle was computed using
 `Okular::Page::width()` as though it were PDF points.
 
 For the Poppler generator, Okular pages are loaded as:
@@ -375,12 +375,10 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 
 ## Useful Diagnostics
 
-Check the latest LaTeX note cache:
+Check whether a PDF still contains stale local LaTeX appearance paths:
 
 ```powershell
-Get-ChildItem "$env:APPDATA\okular\latex-notes" |
-  Sort-Object LastWriteTime -Descending |
-  Select-Object -First 8 Name,Length,LastWriteTime
+rg -a -n "latex-notes|latexAppearancePdfFileName" "C:\path\to\file.pdf"
 ```
 
 Check saved annotations in the test PDF:

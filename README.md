@@ -10,7 +10,7 @@ research-note workflows. The main differences are:
 
 * Interactive LaTeX note annotations:
   * adds a direct annotation action for LaTeX notes;
-  * renders LaTeX notes as vector PDF stamp appearances;
+  * renders LaTeX notes as vector PDF FreeText appearances;
   * supports source editing, configurable preamble/executable settings, color,
     width, reflow, warning display, and persistent layout/scale metadata;
   * keeps the intended physical font size, so a 10 pt LaTeX note is stored and
@@ -21,8 +21,8 @@ research-note workflows. The main differences are:
   * falls back to MicroTeX when an external TeX executable is unavailable;
   * installs the MicroTeX resource tree needed by the runtime package.
 * Local Poppler integration:
-  * pins `external/poppler` to the local Poppler branch used for vector stamp
-    appearance support and LaTeX note metadata round-tripping;
+  * pins `external/poppler` to the local Poppler branch used for vector
+    annotation appearance support and LaTeX note metadata round-tripping;
   * Okular still consumes Poppler through `find_package(Poppler)`, so the
     Poppler submodule should be built and installed into the prefix used for
     Okular configuration.
@@ -67,43 +67,21 @@ is LaTeX-backed.
 
 The PDF subtype and standard intent fields carry the annotation semantics:
 
-- `/Subtype /Stamp` is appropriate for sticker-like LaTeX objects, such as a
-  freely placed formula block.
 - `/Subtype /FreeText` is appropriate for visible text-note semantics.
 - `/Subtype /FreeText` with `/IT /FreeTextTypeWriter` is appropriate for
   typewriter-style LaTeX text.
 - `/Subtype /FreeText` with `/IT /FreeTextCallout` is appropriate for LaTeX
   callout notes.
 
-The expected structure for a sticker-like LaTeX object is:
-
-```pdf
-<<
-  /Type /Annot
-  /Subtype /Stamp
-  /Rect [100 500 180 525]
-
-  /Contents (E = mc^2)
-  /Name /OkularLatexNote
-
-  /OkularLatex true
-  /OkularLatexLayoutWidth 80
-  /OkularLatexScale 1.0
-
-  /AP <<
-    /N 11 0 R
-  >>
->>
-```
-
 `/Contents` stores the editable LaTeX source shown in the popup note. `/AP /N`
 stores the rendered appearance that other PDF readers display. The appearance
 should contain vector PDF drawing commands copied from the LaTeX renderer output
-when possible. A local file under `latex-notes/*.pdf` may be used as a temporary
-rendering cache while creating or refreshing the appearance, but it must not be
-required to reopen, display, or identify a saved LaTeX annotation. Saved PDFs
-must not depend on paths such as `~/.local/share/okular/latex-notes/*.pdf` or
-`C:/Users/.../okular/latex-notes/*.pdf`.
+when possible. A local file under a runtime `latex-notes/*.pdf` directory may be
+used only as a current-process bridge while creating or refreshing the
+appearance, because Poppler's custom appearance API takes a file path. It must
+not be required to reopen, display, or identify a saved LaTeX annotation. Saved
+PDFs must not depend on paths such as `~/.local/share/okular/latex-notes/*.pdf`
+or `C:/Users/.../okular/latex-notes/*.pdf`.
 
 Inline/typewriter/callout LaTeX annotations should use `FreeText`, not `Stamp`,
 because their PDF semantics are visible text notes:
@@ -191,16 +169,10 @@ endobj
 The read-side recognition rule should therefore be:
 
 ```text
-annotation subtype is a supported standard subtype, currently Stamp or FreeText
+annotation subtype is FreeText
 and /OkularLatex is true
 and /Contents is non-empty
 ```
-
-For compatibility with older files produced before this marker existed, the
-loader may fall back to legacy heuristics, such as existing
-`OkularLatexNote*` layout metadata or an old `stampIconName` that points at a
-`latex-notes` cache path. Those fallbacks are compatibility paths only and
-should not define the current format.
 
 For the Windows packaging workflow used by this fork, see the scripts and notes
 under `windows-build`.

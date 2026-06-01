@@ -308,25 +308,6 @@ static bool setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Popp
     if (!stampFileInfo.exists() || !stampFileInfo.isFile()) {
         return false;
     }
-    const bool isLatexNoteStamp = QFileInfo(stampFileInfo.absolutePath()).fileName() == QLatin1String("latex-notes");
-
-#ifdef POPPLER_QT6_HAS_STAMP_CUSTOM_PDF_APPEARANCE
-    if (stampFileInfo.exists() && isLatexNoteStamp) {
-        QString pdfAppearanceFile;
-        if (stampFileInfo.suffix().compare(QStringLiteral("pdf"), Qt::CaseInsensitive) == 0) {
-            pdfAppearanceFile = stampFileInfo.absoluteFilePath();
-        } else if (stampFileInfo.suffix().compare(QStringLiteral("png"), Qt::CaseInsensitive) == 0) {
-            pdfAppearanceFile = QDir(stampFileInfo.absolutePath()).filePath(stampFileInfo.completeBaseName() + QStringLiteral(".pdf"));
-        }
-        if (QFileInfo::exists(pdfAppearanceFile) && pStampAnnotation->setStampCustomPdf(pdfAppearanceFile)) {
-            return true;
-        }
-    }
-#endif
-    if (isLatexNoteStamp) {
-        return false;
-    }
-
     QSize targetSize;
 
     // Try to detect the native resolution of the image file.
@@ -383,7 +364,7 @@ static bool setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Popp
     return false;
 }
 
-static void updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnotation *oTextAnnotation, Poppler::TextAnnotation *pTextAnnotation)
+static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnotation *oTextAnnotation, Poppler::TextAnnotation *pTextAnnotation)
 {
     pTextAnnotation->setTextIcon(oTextAnnotation->textIcon());
     pTextAnnotation->setTextFont(oTextAnnotation->textFont());
@@ -391,17 +372,6 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
     pTextAnnotation->setOkularBorderColor(oTextAnnotation->inplaceBorderColor());
     pTextAnnotation->setInplaceAlign(static_cast<Poppler::TextAnnotation::InplaceAlignPosition>(oTextAnnotation->inplaceAlignment()));
     pTextAnnotation->setInplaceIntent(okularToPoppler(oTextAnnotation->inplaceIntent()));
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
-    pTextAnnotation->setOkularLatex(oTextAnnotation->isOkularLatex());
-    if (oTextAnnotation->isOkularLatex()) {
-        pTextAnnotation->setOkularLatexScale(oTextAnnotation->latexScale());
-        pTextAnnotation->setOkularLatexLayoutWidth(oTextAnnotation->latexLayoutWidth());
-        const QString pdfAppearanceFile = oTextAnnotation->latexAppearancePdfFileName();
-        if (!pdfAppearanceFile.isEmpty() && QFileInfo::exists(pdfAppearanceFile)) {
-            pTextAnnotation->setTextCustomPdf(pdfAppearanceFile);
-        }
-    }
-#endif
     QList<QPointF> calloutPoints;
     if (oTextAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout) {
         pTextAnnotation->setOkularInplaceBoundary(normRectToRectF(oTextAnnotation->boundingRectangle()));
@@ -420,6 +390,29 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
         }
     }
     pTextAnnotation->setCalloutPoints(calloutPoints);
+
+    bool appearanceUpdated = false;
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+    pTextAnnotation->setOkularLatex(oTextAnnotation->isOkularLatex());
+    if (oTextAnnotation->isOkularLatex()) {
+        pTextAnnotation->setOkularLatexScale(oTextAnnotation->latexScale());
+        pTextAnnotation->setOkularLatexLayoutWidth(oTextAnnotation->latexLayoutWidth());
+        const QString pdfAppearanceFile = oTextAnnotation->latexAppearancePdfFileName();
+        const QFileInfo pdfAppearanceInfo(pdfAppearanceFile);
+        qCDebug(OkularPdfDebug) << "Embedding LaTeX FreeText appearance; path:" << pdfAppearanceFile << "exists:" << pdfAppearanceInfo.exists() << "bytes:" << pdfAppearanceInfo.size()
+                                << "layout width:" << oTextAnnotation->latexLayoutWidth() << "scale:" << oTextAnnotation->latexScale() << "contents length:" << oTextAnnotation->contents().size();
+        if (!pdfAppearanceFile.isEmpty() && QFileInfo::exists(pdfAppearanceFile)) {
+            appearanceUpdated = pTextAnnotation->setTextCustomPdf(pdfAppearanceFile);
+            qCDebug(OkularPdfDebug) << "Embedding LaTeX FreeText appearance result:" << appearanceUpdated << "path:" << pdfAppearanceFile;
+            if (!appearanceUpdated) {
+                qCWarning(OkularPdfDebug) << "Could not embed LaTeX FreeText appearance" << pdfAppearanceFile;
+            }
+        } else {
+            qCWarning(OkularPdfDebug) << "LaTeX FreeText appearance PDF is not available; path:" << pdfAppearanceFile;
+        }
+    }
+#endif
+    return appearanceUpdated;
 }
 
 static void updatePopplerAnnotationFromOkularAnnotation(const Okular::LineAnnotation *oLineAnnotation, Poppler::LineAnnotation *pLineAnnotation)
@@ -469,25 +462,6 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::HighlightA
 static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page)
 {
     pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_NOTE_METADATA
-    const bool isLatexStamp = oStampAnnotation->isOkularLatex() || QFileInfo(QFileInfo(oStampAnnotation->stampIconName()).absolutePath()).fileName() == QLatin1String("latex-notes");
-    pStampAnnotation->setOkularLatex(isLatexStamp);
-    if (isLatexStamp) {
-        pStampAnnotation->setOkularLatexScale(oStampAnnotation->latexScale());
-        pStampAnnotation->setOkularLatexLayoutWidth(oStampAnnotation->latexLayoutWidth());
-        const double scale = oStampAnnotation->latexNoteScale();
-        if (std::isfinite(scale) && scale > 0.0) {
-            pStampAnnotation->setOkularLatexNoteScale(scale);
-        }
-        const double layoutWidth = oStampAnnotation->latexNoteLayoutWidth();
-        if (std::isfinite(layoutWidth) && layoutWidth >= 0.0) {
-            pStampAnnotation->setOkularLatexNoteLayoutWidth(layoutWidth);
-        }
-        pStampAnnotation->setOkularLatexNoteBoxed(oStampAnnotation->latexNoteBoxed());
-        pStampAnnotation->setOkularLatexNoteFillColor(oStampAnnotation->latexNoteFillColor());
-        pStampAnnotation->setOkularLatexNoteBorderColor(oStampAnnotation->latexNoteBorderColor());
-    }
-#endif
     return setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
 }
 
@@ -759,7 +733,6 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
 void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_ann, int page, bool appearanceChanged)
 {
     Q_UNUSED(page);
-    Q_UNUSED(appearanceChanged);
 
     Poppler::Annotation *ppl_ann = qvariant_cast<Poppler::Annotation *>(okl_ann->nativeId());
 
@@ -775,9 +748,14 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
         return;
     }
 
-    std::unique_ptr<Poppler::AnnotationAppearance> preservedStampAppearance;
+    std::unique_ptr<Poppler::AnnotationAppearance> preservedAppearance;
     if (ppl_ann->subType() == Poppler::Annotation::AStamp) {
-        preservedStampAppearance = ppl_ann->annotationAppearance();
+        preservedAppearance = ppl_ann->annotationAppearance();
+    } else if (ppl_ann->subType() == Poppler::Annotation::AText && okl_ann->subType() == Okular::Annotation::AText) {
+        const Okular::TextAnnotation *okl_txtann = static_cast<const Okular::TextAnnotation *>(okl_ann);
+        if (okl_txtann->isOkularLatex()) {
+            preservedAppearance = ppl_ann->annotationAppearance();
+        }
     }
 
     // Set basic properties
@@ -785,6 +763,39 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
     // FixedRotation annotations.
     ppl_ann->setFlags(static_cast<Poppler::Annotation::Flags>(maskExportedFlags(okl_ann->flags())));
     ppl_ann->setBoundary(normRectToRectF(okl_ann->boundingRectangle()));
+
+    if (!appearanceChanged && ppl_ann->subType() == Poppler::Annotation::AText && okl_ann->subType() == Okular::Annotation::AText) {
+        const Okular::TextAnnotation *okl_txtann = static_cast<const Okular::TextAnnotation *>(okl_ann);
+        if (okl_txtann->isOkularLatex() && okl_txtann->textType() == Okular::TextAnnotation::InPlace && okl_txtann->inplaceIntent() != Okular::TextAnnotation::Callout) {
+            Poppler::TextAnnotation *ppl_txtann = static_cast<Poppler::TextAnnotation *>(ppl_ann);
+            ppl_txtann->setAuthor(okl_ann->author());
+            ppl_txtann->setContents(okl_ann->contents());
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+            ppl_txtann->setOkularLatex(true);
+            ppl_txtann->setOkularLatexScale(okl_txtann->latexScale());
+            ppl_txtann->setOkularLatexLayoutWidth(okl_txtann->latexLayoutWidth());
+            qCDebug(OkularPdfDebug) << "Preserving existing LaTeX FreeText appearance without rewrite; path:" << okl_txtann->latexAppearancePdfFileName()
+                                    << "layout width:" << okl_txtann->latexLayoutWidth() << "scale:" << okl_txtann->latexScale();
+#endif
+            if (preservedAppearance) {
+                ppl_txtann->setAnnotationAppearance(*preservedAppearance);
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+                qCDebug(OkularPdfDebug) << "Restored preserved LaTeX FreeText appearance after metadata/content update; contents length:" << okl_txtann->contents().size();
+#endif
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+            } else {
+                const QString pdfAppearanceFile = okl_txtann->latexAppearancePdfFileName();
+                if (!pdfAppearanceFile.isEmpty() && QFileInfo::exists(pdfAppearanceFile)) {
+                    const bool appearanceUpdated = ppl_txtann->setTextCustomPdf(pdfAppearanceFile);
+                    qCDebug(OkularPdfDebug) << "Re-embedded LaTeX FreeText appearance while preserving content edit; result:" << appearanceUpdated << "path:" << pdfAppearanceFile;
+                } else {
+                    qCWarning(OkularPdfDebug) << "No preserved or runtime LaTeX FreeText appearance available while updating contents; path:" << pdfAppearanceFile;
+                }
+#endif
+            }
+            return;
+        }
+    }
 
     ppl_ann->setAuthor(okl_ann->author());
     ppl_ann->setContents(okl_ann->contents());
@@ -796,7 +807,10 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
     case Poppler::Annotation::AText: {
         const Okular::TextAnnotation *okl_txtann = static_cast<const Okular::TextAnnotation *>(okl_ann);
         Poppler::TextAnnotation *ppl_txtann = static_cast<Poppler::TextAnnotation *>(ppl_ann);
-        updatePopplerAnnotationFromOkularAnnotation(okl_txtann, ppl_txtann);
+        const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_txtann, ppl_txtann);
+        if (okl_txtann->isOkularLatex() && !appearanceUpdated && preservedAppearance) {
+            ppl_txtann->setAnnotationAppearance(*preservedAppearance);
+        }
         break;
     }
     case Poppler::Annotation::ALine: {
@@ -822,8 +836,8 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
         Poppler::StampAnnotation *ppl_stampann = static_cast<Poppler::StampAnnotation *>(ppl_ann);
         std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(page);
         const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get());
-        if (!appearanceUpdated && preservedStampAppearance) {
-            ppl_stampann->setAnnotationAppearance(*preservedStampAppearance);
+        if (!appearanceUpdated && preservedAppearance) {
+            ppl_stampann->setAnnotationAppearance(*preservedAppearance);
         }
         break;
     }
@@ -1216,16 +1230,6 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
     Okular::StampAnnotation *oStampAnn = new Okular::StampAnnotation();
 
     oStampAnn->setStampIconName(popplerAnnotation->stampIconName());
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_NOTE_METADATA
-    oStampAnn->setOkularLatex(popplerAnnotation->okularLatex());
-    oStampAnn->setLatexScale(popplerAnnotation->okularLatexScale());
-    oStampAnn->setLatexLayoutWidth(popplerAnnotation->okularLatexLayoutWidth());
-    oStampAnn->setLatexNoteScale(popplerAnnotation->okularLatexNoteScale());
-    oStampAnn->setLatexNoteLayoutWidth(popplerAnnotation->okularLatexNoteLayoutWidth());
-    oStampAnn->setLatexNoteBoxed(popplerAnnotation->okularLatexNoteBoxed());
-    oStampAnn->setLatexNoteFillColor(popplerAnnotation->okularLatexNoteFillColor());
-    oStampAnn->setLatexNoteBorderColor(popplerAnnotation->okularLatexNoteBorderColor());
-#endif
 
     return oStampAnn;
 }

@@ -164,17 +164,8 @@ protected:
     void createStyleWidget(QFormLayout *formlayout) override;
 
 private:
-    bool isLatexNote() const;
-    void createLatexNoteStyleWidget(QWidget *widget, QFormLayout *formlayout);
-    QColor latexNoteTextColor() const;
-    QColor latexNoteFillColor() const;
-    QColor latexNoteBorderColor() const;
-
     Okular::StampAnnotation *m_stampAnn;
     PixmapPreviewSelector *m_pixmapSelector;
-    KColorButton *m_latexTextColorBn {nullptr};
-    KColorButton *m_latexFillColorBn {nullptr};
-    KColorButton *m_latexBorderColorBn {nullptr};
 };
 
 class LineAnnotationWidget : public AnnotationWidget
