@@ -358,7 +358,7 @@ static bool setPopplerStampAnnotationCustomImage(const Poppler::Page *page, Popp
     QImage image = Okular::AnnotationUtils::loadStamp(iconName, targetSize).toImage();
 
     if (!image.isNull()) {
-        pStampAnnotation->setStampCustomImage(image);
+        pStampAnnotation->setStampAppearanceImage(image);
         return true;
     }
     return false;
