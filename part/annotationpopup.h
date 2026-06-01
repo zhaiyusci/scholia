@@ -84,6 +84,7 @@ private:
     Okular::DocumentViewport calculateAnnotationViewport(AnnotPagePair pair) const;
     void doCopyAnnotationText(AnnotPagePair pair);
     void doPasteAnnotation(AnnotPagePair pair);
+    void addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair);
     void doConvertTextAnnotationToLatex(AnnotPagePair pair);
     void doSetLatexAnnotationWidth(AnnotPagePair pair);
     void doFitLatexAnnotationToContent(AnnotPagePair pair);

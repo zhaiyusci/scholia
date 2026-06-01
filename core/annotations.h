@@ -718,6 +718,55 @@ public:
      */
     const void *nativeData() const;
 
+    /**
+     * Marks this annotation as backed by editable LaTeX source.
+     *
+     * The PDF writer stores this as /OkularLatex true. The annotation subtype
+     * remains the standard PDF subtype, for example Stamp or FreeText.
+     */
+    void setOkularLatex(bool latex);
+
+    /**
+     * Returns whether this annotation is backed by editable LaTeX source.
+     */
+    bool isOkularLatex() const;
+
+    /**
+     * Sets the LaTeX layout width in PDF points.
+     *
+     * A value less than or equal to 0 means natural content width.
+     */
+    void setLatexLayoutWidth(double width);
+
+    /**
+     * Returns the LaTeX layout width in PDF points.
+     *
+     * A value less than or equal to 0 means natural content width.
+     */
+    double latexLayoutWidth() const;
+
+    /**
+     * Sets the visual scale applied to the rendered LaTeX appearance.
+     */
+    void setLatexScale(double scale);
+
+    /**
+     * Returns the visual scale applied to the rendered LaTeX appearance.
+     */
+    double latexScale() const;
+
+    /**
+     * Sets the temporary local PDF file used to refresh the LaTeX appearance.
+     *
+     * This is an implementation cache, not part of the PDF semantics.
+     */
+    void setLatexAppearancePdfFileName(const QString &fileName);
+
+    /**
+     * Returns the temporary local PDF file used to refresh the LaTeX appearance.
+     */
+    QString latexAppearancePdfFileName() const;
+
 protected:
     /// @cond PRIVATE
     explicit Annotation(AnnotationPrivate &dd);

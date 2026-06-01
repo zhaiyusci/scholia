@@ -391,6 +391,17 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
     pTextAnnotation->setOkularBorderColor(oTextAnnotation->inplaceBorderColor());
     pTextAnnotation->setInplaceAlign(static_cast<Poppler::TextAnnotation::InplaceAlignPosition>(oTextAnnotation->inplaceAlignment()));
     pTextAnnotation->setInplaceIntent(okularToPoppler(oTextAnnotation->inplaceIntent()));
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+    pTextAnnotation->setOkularLatex(oTextAnnotation->isOkularLatex());
+    if (oTextAnnotation->isOkularLatex()) {
+        pTextAnnotation->setOkularLatexScale(oTextAnnotation->latexScale());
+        pTextAnnotation->setOkularLatexLayoutWidth(oTextAnnotation->latexLayoutWidth());
+        const QString pdfAppearanceFile = oTextAnnotation->latexAppearancePdfFileName();
+        if (!pdfAppearanceFile.isEmpty() && QFileInfo::exists(pdfAppearanceFile)) {
+            pTextAnnotation->setTextCustomPdf(pdfAppearanceFile);
+        }
+    }
+#endif
     QList<QPointF> calloutPoints;
     if (oTextAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout) {
         pTextAnnotation->setOkularInplaceBoundary(normRectToRectF(oTextAnnotation->boundingRectangle()));
@@ -459,17 +470,23 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
 {
     pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
 #ifdef POPPLER_QT6_HAS_OKULAR_LATEX_NOTE_METADATA
-    const double scale = oStampAnnotation->latexNoteScale();
-    if (std::isfinite(scale) && scale > 0.0) {
-        pStampAnnotation->setOkularLatexNoteScale(scale);
+    const bool isLatexStamp = oStampAnnotation->isOkularLatex() || QFileInfo(QFileInfo(oStampAnnotation->stampIconName()).absolutePath()).fileName() == QLatin1String("latex-notes");
+    pStampAnnotation->setOkularLatex(isLatexStamp);
+    if (isLatexStamp) {
+        pStampAnnotation->setOkularLatexScale(oStampAnnotation->latexScale());
+        pStampAnnotation->setOkularLatexLayoutWidth(oStampAnnotation->latexLayoutWidth());
+        const double scale = oStampAnnotation->latexNoteScale();
+        if (std::isfinite(scale) && scale > 0.0) {
+            pStampAnnotation->setOkularLatexNoteScale(scale);
+        }
+        const double layoutWidth = oStampAnnotation->latexNoteLayoutWidth();
+        if (std::isfinite(layoutWidth) && layoutWidth >= 0.0) {
+            pStampAnnotation->setOkularLatexNoteLayoutWidth(layoutWidth);
+        }
+        pStampAnnotation->setOkularLatexNoteBoxed(oStampAnnotation->latexNoteBoxed());
+        pStampAnnotation->setOkularLatexNoteFillColor(oStampAnnotation->latexNoteFillColor());
+        pStampAnnotation->setOkularLatexNoteBorderColor(oStampAnnotation->latexNoteBorderColor());
     }
-    const double layoutWidth = oStampAnnotation->latexNoteLayoutWidth();
-    if (std::isfinite(layoutWidth) && layoutWidth >= 0.0) {
-        pStampAnnotation->setOkularLatexNoteLayoutWidth(layoutWidth);
-    }
-    pStampAnnotation->setOkularLatexNoteBoxed(oStampAnnotation->latexNoteBoxed());
-    pStampAnnotation->setOkularLatexNoteFillColor(oStampAnnotation->latexNoteFillColor());
-    pStampAnnotation->setOkularLatexNoteBorderColor(oStampAnnotation->latexNoteBorderColor());
 #endif
     return setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
 }
@@ -1081,6 +1098,11 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::TextAn
     // this works because we use the same 0:left, 1:center, 2:right meaning both in poppler and okular
     oTextAnn->setInplaceAlignment(popplerAnnotation->inplaceAlign());
     oTextAnn->setInplaceIntent(popplerToOkular(popplerAnnotation->inplaceIntent()));
+#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+    oTextAnn->setOkularLatex(popplerAnnotation->okularLatex());
+    oTextAnn->setLatexScale(popplerAnnotation->okularLatexScale());
+    oTextAnn->setLatexLayoutWidth(popplerAnnotation->okularLatexLayoutWidth());
+#endif
     for (int i = 0; i < 3; ++i) {
         const QPointF p = popplerAnnotation->calloutPoint(i);
         oTextAnn->setInplaceCallout({p.x(), p.y()}, i);
@@ -1195,6 +1217,9 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
 
     oStampAnn->setStampIconName(popplerAnnotation->stampIconName());
 #ifdef POPPLER_QT6_HAS_OKULAR_LATEX_NOTE_METADATA
+    oStampAnn->setOkularLatex(popplerAnnotation->okularLatex());
+    oStampAnn->setLatexScale(popplerAnnotation->okularLatexScale());
+    oStampAnn->setLatexLayoutWidth(popplerAnnotation->okularLatexLayoutWidth());
     oStampAnn->setLatexNoteScale(popplerAnnotation->okularLatexNoteScale());
     oStampAnn->setLatexNoteLayoutWidth(popplerAnnotation->okularLatexNoteLayoutWidth());
     oStampAnn->setLatexNoteBoxed(popplerAnnotation->okularLatexNoteBoxed());

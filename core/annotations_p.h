@@ -65,6 +65,11 @@ public:
     QDateTime m_modifyDate;
     QDateTime m_creationDate;
 
+    bool m_okularLatex = false;
+    double m_latexLayoutWidth = 0.0;
+    double m_latexScale = 1.0;
+    QString m_latexAppearancePdfFileName;
+
     int m_flags;
     NormalizedRect m_boundary;
     NormalizedRect m_transformedBoundary;

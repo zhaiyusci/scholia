@@ -602,7 +602,14 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed)
     }
     LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
 
-    slotStampToolSelected(rendered.pdfFileName, latexInput, boxed);
+    if (boxed) {
+        selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput);
+        if (selectedBuiltinTool != -1) {
+            updateConfigActions(QStringLiteral("note-inline"));
+        }
+    } else {
+        slotStampToolSelected(rendered.pdfFileName, latexInput, false);
+    }
 }
 
 void AnnotationActionHandlerPrivate::slotQuickToolSelected(int favToolId)

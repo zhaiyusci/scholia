@@ -20,6 +20,7 @@ namespace Okular
 class Annotation;
 class Page;
 class StampAnnotation;
+class TextAnnotation;
 }
 
 namespace LatexNoteUtils
@@ -34,8 +35,13 @@ struct RenderResult {
 
 Okular::StampAnnotation *annotationAsLatexNote(Okular::Annotation *annotation);
 const Okular::StampAnnotation *annotationAsLatexNote(const Okular::Annotation *annotation);
+Okular::TextAnnotation *annotationAsLatexTextAnnotation(Okular::Annotation *annotation);
+const Okular::TextAnnotation *annotationAsLatexTextAnnotation(const Okular::Annotation *annotation);
+bool annotationIsLatex(Okular::Annotation *annotation);
+bool annotationIsLatex(const Okular::Annotation *annotation);
 
 QColor colorForLatexNote(const Okular::StampAnnotation *annotation);
+QColor colorForLatexAnnotation(const Okular::Annotation *annotation);
 int latexFontSize();
 int convertedTextFontSize();
 

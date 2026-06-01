@@ -116,7 +116,9 @@ const Okular::StampAnnotation *annotationAsLatexNote(const Okular::Annotation *a
     }
 
     const auto *stampAnnotation = static_cast<const Okular::StampAnnotation *>(annotation);
-    if (GuiUtils::latexNotePdfFileForStamp(stampAnnotation->stampIconName()).isEmpty()) {
+    const bool explicitLatex = stampAnnotation->isOkularLatex();
+    const bool legacyCachePath = !GuiUtils::latexNotePdfFileForStamp(stampAnnotation->stampIconName()).isEmpty();
+    if (!explicitLatex && !legacyCachePath) {
         return nullptr;
     }
 
@@ -132,10 +134,69 @@ Okular::StampAnnotation *annotationAsLatexNote(Okular::Annotation *annotation)
     return const_cast<Okular::StampAnnotation *>(annotationAsLatexNote(static_cast<const Okular::Annotation *>(annotation)));
 }
 
+const Okular::TextAnnotation *annotationAsLatexTextAnnotation(const Okular::Annotation *annotation)
+{
+    if (!annotation || annotation->subType() != Okular::Annotation::AText || annotation->contents().trimmed().isEmpty() || !annotation->isOkularLatex()) {
+        return nullptr;
+    }
+
+    const auto *textAnnotation = static_cast<const Okular::TextAnnotation *>(annotation);
+    if (textAnnotation->textType() != Okular::TextAnnotation::InPlace) {
+        return nullptr;
+    }
+
+    if (!isFiniteUsableRect(textAnnotation->boundingRectangle())) {
+        return nullptr;
+    }
+
+    return textAnnotation;
+}
+
+Okular::TextAnnotation *annotationAsLatexTextAnnotation(Okular::Annotation *annotation)
+{
+    return const_cast<Okular::TextAnnotation *>(annotationAsLatexTextAnnotation(static_cast<const Okular::Annotation *>(annotation)));
+}
+
+bool annotationIsLatex(const Okular::Annotation *annotation)
+{
+    return annotationAsLatexNote(annotation) || annotationAsLatexTextAnnotation(annotation);
+}
+
+bool annotationIsLatex(Okular::Annotation *annotation)
+{
+    return annotationAsLatexNote(annotation) || annotationAsLatexTextAnnotation(annotation);
+}
+
 QColor colorForLatexNote(const Okular::StampAnnotation *annotation)
 {
     if (!annotation) {
         return Qt::black;
+    }
+
+    QColor textColor = annotation->style().color();
+    if (!textColor.isValid() || textColor.alpha() == 0) {
+        textColor = Qt::black;
+    }
+    return textColor;
+}
+
+QColor colorForLatexAnnotation(const Okular::Annotation *annotation)
+{
+    if (!annotation) {
+        return Qt::black;
+    }
+
+    if (annotation->subType() == Okular::Annotation::AText) {
+        const auto *textAnnotation = static_cast<const Okular::TextAnnotation *>(annotation);
+        QColor textColor = textAnnotation->textColor();
+        if (!textColor.isValid() || textColor.alpha() == 0) {
+            textColor = Qt::black;
+        }
+        return textColor;
+    }
+
+    if (annotation->subType() == Okular::Annotation::AStamp) {
+        return colorForLatexNote(static_cast<const Okular::StampAnnotation *>(annotation));
     }
 
     QColor textColor = annotation->style().color();

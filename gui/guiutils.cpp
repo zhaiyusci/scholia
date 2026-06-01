@@ -46,6 +46,17 @@ AnnotationInfo getAnnotationInfo(const Okular::Annotation *ann)
         if (textAnn->textType() == Okular::TextAnnotation::Linked) {
             info.caption = i18n("Pop-up Note");
             info.iconName = QStringLiteral("edit-comment");
+        } else if (textAnn->isOkularLatex()) {
+            if (textAnn->inplaceIntent() == Okular::TextAnnotation::Callout) {
+                info.caption = i18n("LaTeX Callout");
+                info.iconName = QStringLiteral("text-x-tex");
+            } else if (textAnn->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
+                info.caption = i18n("LaTeX Typewriter");
+                info.iconName = QStringLiteral("text-x-tex");
+            } else {
+                info.caption = i18n("LaTeX Inline Note");
+                info.iconName = QStringLiteral("text-x-tex");
+            }
         } else {
             if (textAnn->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
                 info.caption = i18n("Typewriter");
@@ -107,8 +118,13 @@ AnnotationInfo getAnnotationInfo(const Okular::Annotation *ann)
         break;
     }
     case Okular::Annotation::AStamp:
-        info.caption = hasComment ? i18n("Stamp with Comment") : i18n("Stamp");
-        info.iconName = QStringLiteral("tag");
+        if (ann->isOkularLatex()) {
+            info.caption = i18n("LaTeX Note");
+            info.iconName = QStringLiteral("text-x-tex");
+        } else {
+            info.caption = hasComment ? i18n("Stamp with Comment") : i18n("Stamp");
+            info.iconName = QStringLiteral("tag");
+        }
         break;
     case Okular::Annotation::AInk:
         info.caption = hasComment ? i18n("Freehand Line with Comment") : i18n("Freehand Line");

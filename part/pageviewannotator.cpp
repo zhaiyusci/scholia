@@ -278,9 +278,23 @@ public:
         Okular::TextAnnotation *ta = new Okular::TextAnnotation();
         ann = ta;
         ta->setFlags(ta->flags() | Okular::Annotation::FixedRotation);
-        ta->setContents(content);
+        ta->setContents(m_annotElement.hasAttribute(QStringLiteral("contents")) ? m_annotElement.attribute(QStringLiteral("contents")) : content);
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->setInplaceIntent(inplaceIntent);
+        const bool okularLatex = m_annotElement.attribute(QStringLiteral("okularLatex")).toInt() != 0;
+        if (okularLatex) {
+            ta->setOkularLatex(true);
+            ta->setLatexAppearancePdfFileName(m_annotElement.attribute(QStringLiteral("latexAppearancePdfFileName")));
+            bool ok = false;
+            const double layoutWidth = m_annotElement.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
+            if (ok && layoutWidth > 0.0) {
+                ta->setLatexLayoutWidth(layoutWidth);
+            }
+            const double scale = m_annotElement.attribute(QStringLiteral("latexScale")).toDouble(&ok);
+            if (ok && scale > 0.0) {
+                ta->setLatexScale(scale);
+            }
+        }
         // set alignment
         if (m_annotElement.hasAttribute(QStringLiteral("align"))) {
             ta->setInplaceAlignment(m_annotElement.attribute(QStringLiteral("align")).toInt());
@@ -319,10 +333,23 @@ public:
         qCDebug(OkularUiDebug).nospace() << "xyScale=" << xscale << "," << yscale;
         static const int padding = 2;
         const QFontMetricsF mf(ta->textFont());
-        const QRectF rcf =
-            mf.boundingRect(Okular::NormalizedRect(rect.left, rect.top, 1.0, 1.0).geometry((int)pagewidth, (int)pageheight).adjusted(padding, padding, -padding, -padding), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, ta->contents());
-        rect.right = qMax(rect.right, rect.left + (rcf.width() + padding * 2) / pagewidth);
-        rect.bottom = qMax(rect.bottom, rect.top + (rcf.height() + padding * 2) / pageheight);
+        if (okularLatex && !ta->latexAppearancePdfFileName().isEmpty()) {
+            const QSizeF pdfSizePoints = GuiUtils::latexNotePdfSizeInPointsForStamp(ta->latexAppearancePdfFileName());
+            if (pdfSizePoints.isValid() && !pdfSizePoints.isEmpty()) {
+                if (pagewidth > 0.0 && pageheight > 0.0) {
+                    constexpr double latexFreeTextPaddingPoints = 6.0;
+                    const double normalizedWidth = (pdfSizePoints.width() + latexFreeTextPaddingPoints) / pagewidth;
+                    const double normalizedHeight = (pdfSizePoints.height() + latexFreeTextPaddingPoints) / pageheight;
+                    rect.right = qMax(rect.right, rect.left + normalizedWidth);
+                    rect.bottom = qMax(rect.bottom, rect.top + normalizedHeight);
+                }
+            }
+        } else {
+            const QRectF rcf =
+                mf.boundingRect(Okular::NormalizedRect(rect.left, rect.top, 1.0, 1.0).geometry((int)pagewidth, (int)pageheight).adjusted(padding, padding, -padding, -padding), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, ta->contents());
+            rect.right = qMax(rect.right, rect.left + (rcf.width() + padding * 2) / pagewidth);
+            rect.bottom = qMax(rect.bottom, rect.top + (rcf.height() + padding * 2) / pageheight);
+        }
         ta->window().setSummary(summary);
     }
 
@@ -389,6 +416,11 @@ public:
             Okular::StampAnnotation *sa = new Okular::StampAnnotation();
             ann = sa;
             sa->setStampIconName(iconName);
+            const bool isLatexNoteStamp = QFileInfo(QFileInfo(iconName).absolutePath()).fileName() == QLatin1String("latex-notes");
+            if (isLatexNoteStamp) {
+                sa->setOkularLatex(true);
+                sa->setLatexAppearancePdfFileName(iconName);
+            }
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
                 sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
             }
@@ -1806,6 +1838,26 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol, const QString
     saveBuiltinAnnotationTools();
     selectBuiltinTool(stampToolId, ShowTip::Yes);
     return stampToolId;
+}
+
+int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents)
+{
+    const int inlineToolId = m_builtinToolsDefinition->findToolId(QStringLiteral("note-inline"));
+    QDomElement toolElement = builtinTool(inlineToolId);
+    if (toolElement.isNull()) {
+        return -1;
+    }
+
+    QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
+    QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+    annotationElement.setAttribute(QStringLiteral("contents"), contents);
+    annotationElement.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
+    annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
+    annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
+    annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
+    saveBuiltinAnnotationTools();
+    selectBuiltinTool(inlineToolId, ShowTip::Yes);
+    return inlineToolId;
 }
 
 void PageViewAnnotator::detachAnnotation()

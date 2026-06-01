@@ -44,6 +44,164 @@ research-note workflows. The main differences are:
   * adds submodules for `external/poppler` and `external/MicroTeX`;
   * see `README.local-components.md` for initialization and local build notes.
 
+## LaTeX Annotation PDF Structure
+
+This fork treats LaTeX as a rendering/editing property on top of standard PDF
+annotation subtypes. The PDF annotation subtype must remain a standard value.
+It should not be changed to a custom subtype such as `/OkularLatexNote`,
+because other PDF readers are only expected to understand standard annotation
+subtypes and are most likely to preserve and display a known annotation subtype
+with a normal appearance stream.
+
+The canonical LaTeX identity marker is:
+
+```pdf
+/OkularLatex true
+```
+
+`/OkularLatex true` is the only custom field that should identify an annotation
+as LaTeX-backed. Style or layout fields such as `/OkularLatexScale`,
+`/OkularLatexLayoutWidth`, colors, borders, and boxes must not be used as the
+primary identity test; they are properties of an annotation, not proof that it
+is LaTeX-backed.
+
+The PDF subtype and standard intent fields carry the annotation semantics:
+
+- `/Subtype /Stamp` is appropriate for sticker-like LaTeX objects, such as a
+  freely placed formula block.
+- `/Subtype /FreeText` is appropriate for visible text-note semantics.
+- `/Subtype /FreeText` with `/IT /FreeTextTypeWriter` is appropriate for
+  typewriter-style LaTeX text.
+- `/Subtype /FreeText` with `/IT /FreeTextCallout` is appropriate for LaTeX
+  callout notes.
+
+The expected structure for a sticker-like LaTeX object is:
+
+```pdf
+<<
+  /Type /Annot
+  /Subtype /Stamp
+  /Rect [100 500 180 525]
+
+  /Contents (E = mc^2)
+  /Name /OkularLatexNote
+
+  /OkularLatex true
+  /OkularLatexLayoutWidth 80
+  /OkularLatexScale 1.0
+
+  /AP <<
+    /N 11 0 R
+  >>
+>>
+```
+
+`/Contents` stores the editable LaTeX source shown in the popup note. `/AP /N`
+stores the rendered appearance that other PDF readers display. The appearance
+should contain vector PDF drawing commands copied from the LaTeX renderer output
+when possible. A local file under `latex-notes/*.pdf` may be used as a temporary
+rendering cache while creating or refreshing the appearance, but it must not be
+required to reopen, display, or identify a saved LaTeX annotation. Saved PDFs
+must not depend on paths such as `~/.local/share/okular/latex-notes/*.pdf` or
+`C:/Users/.../okular/latex-notes/*.pdf`.
+
+Inline/typewriter/callout LaTeX annotations should use `FreeText`, not `Stamp`,
+because their PDF semantics are visible text notes:
+
+```pdf
+<<
+  /Type /Annot
+  /Subtype /FreeText
+  /IT /FreeText
+  /Rect [100 500 240 535]
+
+  /Contents (x^2 + y^2)
+  /DA (/Helv 10 Tf 0 0 0 rg)
+
+  /OkularLatex true
+  /OkularLatexLayoutWidth 120
+  /OkularLatexScale 1.0
+
+  /AP <<
+    /N 21 0 R
+  >>
+>>
+```
+
+For callout notes, the standard FreeText callout fields remain the source of
+the callout semantics:
+
+```pdf
+<<
+  /Type /Annot
+  /Subtype /FreeText
+  /IT /FreeTextCallout
+  /Rect [80 460 260 540]
+
+  /Contents (\frac{a}{b})
+  /DA (/Helv 10 Tf 0 0 0 rg)
+  /CL [90 480 130 520 150 520]
+  /LE /OpenArrow
+  /RD [3 3 3 3]
+
+  /OkularLatex true
+  /OkularLatexLayoutWidth 100
+  /OkularLatexScale 1.0
+
+  /AP <<
+    /N 31 0 R
+  >>
+>>
+```
+
+Boxes, callout leader lines, arrows, fills, borders, and padding are PDF
+appearance details. They should be drawn by the outer appearance Form XObject,
+not by the LaTeX source. The outer Form XObject may place an inner Form XObject
+containing only the rendered LaTeX content:
+
+```pdf
+21 0 obj
+<<
+  /Type /XObject
+  /Subtype /Form
+  /BBox [0 0 140 35]
+  /Resources <<
+    /XObject << /Fm0 22 0 R >>
+  >>
+>>
+stream
+q
+1 1 0.8 rg
+0 0 126 35 re
+f
+0 0 0 RG
+1 w
+0.5 0.5 125 34 re
+S
+Q
+
+q
+1 0 0 1 3 3 cm
+/Fm0 Do
+Q
+endstream
+endobj
+```
+
+The read-side recognition rule should therefore be:
+
+```text
+annotation subtype is a supported standard subtype, currently Stamp or FreeText
+and /OkularLatex is true
+and /Contents is non-empty
+```
+
+For compatibility with older files produced before this marker existed, the
+loader may fall back to legacy heuristics, such as existing
+`OkularLatexNote*` layout metadata or an old `stampIconName` that points at a
+`latex-notes` cache path. Those fallbacks are compatibility paths only and
+should not define the current format.
+
 For the Windows packaging workflow used by this fork, see the scripts and notes
 under `windows-build`.
 

@@ -28,6 +28,7 @@
 #include "page_p.h"
 #include "sound.h"
 
+#include <cmath>
 #include <functional>
 
 using namespace Okular;
@@ -828,6 +829,54 @@ const void *Annotation::nativeData() const
     return d->m_nativeData.get();
 }
 
+void Annotation::setOkularLatex(bool latex)
+{
+    Q_D(Annotation);
+    d->m_okularLatex = latex;
+}
+
+bool Annotation::isOkularLatex() const
+{
+    Q_D(const Annotation);
+    return d->m_okularLatex;
+}
+
+void Annotation::setLatexLayoutWidth(double width)
+{
+    Q_D(Annotation);
+    d->m_latexLayoutWidth = std::isfinite(width) && width > 0.0 ? width : 0.0;
+}
+
+double Annotation::latexLayoutWidth() const
+{
+    Q_D(const Annotation);
+    return d->m_latexLayoutWidth;
+}
+
+void Annotation::setLatexScale(double scale)
+{
+    Q_D(Annotation);
+    d->m_latexScale = std::isfinite(scale) && scale > 0.0 ? scale : 1.0;
+}
+
+double Annotation::latexScale() const
+{
+    Q_D(const Annotation);
+    return d->m_latexScale;
+}
+
+void Annotation::setLatexAppearancePdfFileName(const QString &fileName)
+{
+    Q_D(Annotation);
+    d->m_latexAppearancePdfFileName = fileName;
+}
+
+QString Annotation::latexAppearancePdfFileName() const
+{
+    Q_D(const Annotation);
+    return d->m_latexAppearancePdfFileName;
+}
+
 bool Annotation::canBeMoved() const
 {
     Q_D(const Annotation);
@@ -890,6 +939,18 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     }
     if (d->m_style.opacity() != 1.0) {
         e.setAttribute(QStringLiteral("opacity"), QString::number(d->m_style.opacity()));
+    }
+    if (d->m_okularLatex) {
+        e.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
+    }
+    if (d->m_latexLayoutWidth > 0.0) {
+        e.setAttribute(QStringLiteral("latexLayoutWidth"), QString::number(d->m_latexLayoutWidth, 'f', 3));
+    }
+    if (d->m_latexScale > 0.0 && d->m_latexScale != 1.0) {
+        e.setAttribute(QStringLiteral("latexScale"), QString::number(d->m_latexScale, 'f', 6));
+    }
+    if (!d->m_latexAppearancePdfFileName.isEmpty()) {
+        e.setAttribute(QStringLiteral("latexAppearancePdfFileName"), d->m_latexAppearancePdfFileName);
     }
 
     // Sub-Node-1 - boundary
@@ -1068,6 +1129,26 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     }
     if (e.hasAttribute(QStringLiteral("opacity"))) {
         m_style.setOpacity(e.attribute(QStringLiteral("opacity")).toDouble());
+    }
+    if (e.hasAttribute(QStringLiteral("okularLatex"))) {
+        m_okularLatex = e.attribute(QStringLiteral("okularLatex")).toInt() != 0;
+    }
+    if (e.hasAttribute(QStringLiteral("latexLayoutWidth"))) {
+        bool ok = false;
+        const double width = e.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
+        if (ok && width > 0.0) {
+            m_latexLayoutWidth = width;
+        }
+    }
+    if (e.hasAttribute(QStringLiteral("latexScale"))) {
+        bool ok = false;
+        const double scale = e.attribute(QStringLiteral("latexScale")).toDouble(&ok);
+        if (ok && scale > 0.0) {
+            m_latexScale = scale;
+        }
+    }
+    if (e.hasAttribute(QStringLiteral("latexAppearancePdfFileName"))) {
+        m_latexAppearancePdfFileName = e.attribute(QStringLiteral("latexAppearancePdfFileName"));
     }
 
     // parse -the-subnodes- (describing Style, Window, Revision(s) structures)
@@ -2399,24 +2480,24 @@ void StampAnnotation::setLatexNoteLayoutWidth(double width)
 {
     Q_D(StampAnnotation);
     d->m_latexNoteLayoutWidth = width;
+    Annotation::setLatexLayoutWidth(width);
 }
 
 double StampAnnotation::latexNoteLayoutWidth() const
 {
-    Q_D(const StampAnnotation);
-    return d->m_latexNoteLayoutWidth;
+    return Annotation::latexLayoutWidth();
 }
 
 void StampAnnotation::setLatexNoteScale(double scale)
 {
     Q_D(StampAnnotation);
     d->m_latexNoteScale = scale;
+    Annotation::setLatexScale(scale);
 }
 
 double StampAnnotation::latexNoteScale() const
 {
-    Q_D(const StampAnnotation);
-    return d->m_latexNoteScale;
+    return Annotation::latexScale();
 }
 
 void StampAnnotation::setLatexNoteBoxed(bool boxed)
@@ -2474,11 +2555,11 @@ void StampAnnotation::store(QDomNode &node, QDomDocument &document) const
     if (d->m_stampIconName != QLatin1String("Draft")) {
         stampElement.setAttribute(QStringLiteral("icon"), d->m_stampIconName);
     }
-    if (d->m_latexNoteLayoutWidth > 0.0) {
-        stampElement.setAttribute(QStringLiteral("latexNoteLayoutWidth"), QString::number(d->m_latexNoteLayoutWidth, 'f', 3));
+    if (latexLayoutWidth() > 0.0) {
+        stampElement.setAttribute(QStringLiteral("latexNoteLayoutWidth"), QString::number(latexLayoutWidth(), 'f', 3));
     }
-    if (d->m_latexNoteScale > 0.0 && d->m_latexNoteScale != 1.0) {
-        stampElement.setAttribute(QStringLiteral("latexNoteScale"), QString::number(d->m_latexNoteScale, 'f', 6));
+    if (latexScale() > 0.0 && latexScale() != 1.0) {
+        stampElement.setAttribute(QStringLiteral("latexNoteScale"), QString::number(latexScale(), 'f', 6));
     }
     if (d->m_latexNoteBoxed) {
         stampElement.setAttribute(QStringLiteral("latexNoteBoxed"), QStringLiteral("1"));
@@ -2513,6 +2594,8 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
             const double width = e.attribute(QStringLiteral("latexNoteLayoutWidth")).toDouble(&ok);
             if (ok && width > 0.0) {
                 m_latexNoteLayoutWidth = width;
+                m_latexLayoutWidth = width;
+                m_okularLatex = true;
             }
         }
         if (e.hasAttribute(QStringLiteral("latexNoteScale"))) {
@@ -2520,10 +2603,13 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
             const double scale = e.attribute(QStringLiteral("latexNoteScale")).toDouble(&ok);
             if (ok && scale > 0.0) {
                 m_latexNoteScale = scale;
+                m_latexScale = scale;
+                m_okularLatex = true;
             }
         }
         if (e.hasAttribute(QStringLiteral("latexNoteBoxed"))) {
             m_latexNoteBoxed = e.attribute(QStringLiteral("latexNoteBoxed")).toInt() != 0;
+            m_okularLatex = true;
         }
         if (e.hasAttribute(QStringLiteral("latexNoteFillColor"))) {
             m_latexNoteFillColor = QColor(e.attribute(QStringLiteral("latexNoteFillColor")));
