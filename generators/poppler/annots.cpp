@@ -402,7 +402,7 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
         qCDebug(OkularPdfDebug) << "Embedding LaTeX FreeText appearance; path:" << pdfAppearanceFile << "exists:" << pdfAppearanceInfo.exists() << "bytes:" << pdfAppearanceInfo.size()
                                 << "layout width:" << oTextAnnotation->latexLayoutWidth() << "scale:" << oTextAnnotation->latexScale() << "contents length:" << oTextAnnotation->contents().size();
         if (!pdfAppearanceFile.isEmpty() && QFileInfo::exists(pdfAppearanceFile)) {
-            appearanceUpdated = pTextAnnotation->setTextCustomPdf(pdfAppearanceFile);
+            appearanceUpdated = pTextAnnotation->setTextCustomPdf(pdfAppearanceFile, 1, oTextAnnotation->latexScale());
             qCDebug(OkularPdfDebug) << "Embedding LaTeX FreeText appearance result:" << appearanceUpdated << "path:" << pdfAppearanceFile;
             if (!appearanceUpdated) {
                 qCWarning(OkularPdfDebug) << "Could not embed LaTeX FreeText appearance" << pdfAppearanceFile;
@@ -786,7 +786,7 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
             } else {
                 const QString pdfAppearanceFile = okl_txtann->latexAppearancePdfFileName();
                 if (!pdfAppearanceFile.isEmpty() && QFileInfo::exists(pdfAppearanceFile)) {
-                    const bool appearanceUpdated = ppl_txtann->setTextCustomPdf(pdfAppearanceFile);
+                    const bool appearanceUpdated = ppl_txtann->setTextCustomPdf(pdfAppearanceFile, 1, okl_txtann->latexScale());
                     qCDebug(OkularPdfDebug) << "Re-embedded LaTeX FreeText appearance while preserving content edit; result:" << appearanceUpdated << "path:" << pdfAppearanceFile;
                 } else {
                     qCWarning(OkularPdfDebug) << "No preserved or runtime LaTeX FreeText appearance available while updating contents; path:" << pdfAppearanceFile;

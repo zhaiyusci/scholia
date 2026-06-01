@@ -15,7 +15,7 @@ int main()
     annotation.setCustomBoolProperty(QStringLiteral(\"OkularLatex\"), true);
     annotation.setCustomRealProperty(QStringLiteral(\"OkularLatexScale\"), 1.0);
     annotation.setCustomRealProperty(QStringLiteral(\"OkularLatexLayoutWidth\"), 100.0);
-    annotation.setTextCustomPdf(QStringLiteral(\"appearance.pdf\"));
+    annotation.setTextCustomPdf(QStringLiteral(\"appearance.pdf\"), 1, 1.0);
     return 0;
 }
 " POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
