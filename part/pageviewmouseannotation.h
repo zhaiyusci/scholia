@@ -155,6 +155,7 @@ private:
     void finishCommand();
     void rollbackCommand();
     void updateViewport(const AnnotationDescription &ad) const;
+    QRect controlGeometryForInteraction(const AnnotationDescription &ad) const;
     ResizeHandle getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const;
     QRect getHandleRect(ResizeHandle handle, const AnnotationDescription &ad) const;
     QRect getCalloutLineRect(const AnnotationDescription &ad) const;
@@ -181,6 +182,8 @@ private:
     AnnotationDescription m_focusedAnnotation;
     Okular::NormalizedRect m_originalBoundingRect;
     bool m_hasOriginalBoundingRect;
+    Okular::NormalizedRect m_previewBoundingRect;
+    bool m_hasPreviewBoundingRect;
     Okular::NormalizedPoint m_originalCalloutPoints[3];
     Okular::NormalizedRect m_originalCalloutBoundingRect;
     bool m_hasOriginalCalloutGeometry;
