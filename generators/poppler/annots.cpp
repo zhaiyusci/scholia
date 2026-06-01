@@ -392,11 +392,11 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
     pTextAnnotation->setCalloutPoints(calloutPoints);
 
     bool appearanceUpdated = false;
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
-    pTextAnnotation->setOkularLatex(oTextAnnotation->isOkularLatex());
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+    pTextAnnotation->setCustomBoolProperty(QStringLiteral("OkularLatex"), oTextAnnotation->isOkularLatex());
     if (oTextAnnotation->isOkularLatex()) {
-        pTextAnnotation->setOkularLatexScale(oTextAnnotation->latexScale());
-        pTextAnnotation->setOkularLatexLayoutWidth(oTextAnnotation->latexLayoutWidth());
+        pTextAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexScale"), oTextAnnotation->latexScale());
+        pTextAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexLayoutWidth"), oTextAnnotation->latexLayoutWidth());
         const QString pdfAppearanceFile = oTextAnnotation->latexAppearancePdfFileName();
         const QFileInfo pdfAppearanceInfo(pdfAppearanceFile);
         qCDebug(OkularPdfDebug) << "Embedding LaTeX FreeText appearance; path:" << pdfAppearanceFile << "exists:" << pdfAppearanceInfo.exists() << "bytes:" << pdfAppearanceInfo.size()
@@ -770,19 +770,19 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
             Poppler::TextAnnotation *ppl_txtann = static_cast<Poppler::TextAnnotation *>(ppl_ann);
             ppl_txtann->setAuthor(okl_ann->author());
             ppl_txtann->setContents(okl_ann->contents());
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
-            ppl_txtann->setOkularLatex(true);
-            ppl_txtann->setOkularLatexScale(okl_txtann->latexScale());
-            ppl_txtann->setOkularLatexLayoutWidth(okl_txtann->latexLayoutWidth());
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+            ppl_txtann->setCustomBoolProperty(QStringLiteral("OkularLatex"), true);
+            ppl_txtann->setCustomRealProperty(QStringLiteral("OkularLatexScale"), okl_txtann->latexScale());
+            ppl_txtann->setCustomRealProperty(QStringLiteral("OkularLatexLayoutWidth"), okl_txtann->latexLayoutWidth());
             qCDebug(OkularPdfDebug) << "Preserving existing LaTeX FreeText appearance without rewrite; path:" << okl_txtann->latexAppearancePdfFileName()
                                     << "layout width:" << okl_txtann->latexLayoutWidth() << "scale:" << okl_txtann->latexScale();
 #endif
             if (preservedAppearance) {
                 ppl_txtann->setAnnotationAppearance(*preservedAppearance);
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
                 qCDebug(OkularPdfDebug) << "Restored preserved LaTeX FreeText appearance after metadata/content update; contents length:" << okl_txtann->contents().size();
 #endif
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
             } else {
                 const QString pdfAppearanceFile = okl_txtann->latexAppearancePdfFileName();
                 if (!pdfAppearanceFile.isEmpty() && QFileInfo::exists(pdfAppearanceFile)) {
@@ -1112,10 +1112,10 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::TextAn
     // this works because we use the same 0:left, 1:center, 2:right meaning both in poppler and okular
     oTextAnn->setInplaceAlignment(popplerAnnotation->inplaceAlign());
     oTextAnn->setInplaceIntent(popplerToOkular(popplerAnnotation->inplaceIntent()));
-#ifdef POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE
-    oTextAnn->setOkularLatex(popplerAnnotation->okularLatex());
-    oTextAnn->setLatexScale(popplerAnnotation->okularLatexScale());
-    oTextAnn->setLatexLayoutWidth(popplerAnnotation->okularLatexLayoutWidth());
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+    oTextAnn->setOkularLatex(popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatex"), false));
+    oTextAnn->setLatexScale(popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexScale"), 1.0));
+    oTextAnn->setLatexLayoutWidth(popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexLayoutWidth"), 0.0));
 #endif
     for (int i = 0; i < 3; ++i) {
         const QPointF p = popplerAnnotation->calloutPoint(i);

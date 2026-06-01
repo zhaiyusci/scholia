@@ -12,13 +12,13 @@ check_cxx_source_compiles("
 int main()
 {
     Poppler::TextAnnotation annotation(Poppler::TextAnnotation::InPlace);
-    annotation.setOkularLatex(true);
-    annotation.setOkularLatexScale(1.0);
-    annotation.setOkularLatexLayoutWidth(100.0);
+    annotation.setCustomBoolProperty(QStringLiteral(\"OkularLatex\"), true);
+    annotation.setCustomRealProperty(QStringLiteral(\"OkularLatexScale\"), 1.0);
+    annotation.setCustomRealProperty(QStringLiteral(\"OkularLatexLayoutWidth\"), 100.0);
     annotation.setTextCustomPdf(QStringLiteral(\"appearance.pdf\"));
     return 0;
 }
-" POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE)
+" POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
 
 include_directories(
    ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -44,8 +44,8 @@ kconfig_add_kcfg_files(okularGenerator_poppler_PART_SRCS GENERATE_MOC conf/pdfse
 okular_add_generator(okularGenerator_poppler ${okularGenerator_poppler_PART_SRCS})
 
 target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Qt6 Qt6::Xml)
-if(POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE)
-    target_compile_definitions(okularGenerator_poppler PRIVATE POPPLER_QT6_HAS_OKULAR_LATEX_FREETEXT_APPEARANCE)
+if(POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
+    target_compile_definitions(okularGenerator_poppler PRIVATE POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
 endif()
 
 ########### autotests ###############
