@@ -98,6 +98,11 @@ QString sourceLatexBackendName(const QString &executable)
     return QStringLiteral("custom-xelatex");
 }
 
+bool canUseMicrotexForRender(bool renderSource, QString *pdfFileName, int resolution)
+{
+    return renderSource && pdfFileName && resolution <= 0;
+}
+
 #ifdef OKULAR_ENABLE_MICROTEX
 std::mutex microtexMutex;
 bool microtexInitialized = false;
@@ -1041,6 +1046,26 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
     const QString sourceVarWidth = QStringLiteral("varwidth");
     const QString effectiveSourcePreamble = sourcePreamble.isNull() ? defaultSourcePreamble() : sourcePreamble;
+    const int latexRenderBackend = Okular::Settings::latexRenderBackend();
+
+    auto renderWithMicrotex = [&]() -> Error {
+        fileName.clear();
+#ifdef OKULAR_ENABLE_MICROTEX
+        Error microtexError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
+        if (microtexError == NoError) {
+            m_lastBackendName = QStringLiteral("microtex");
+        }
+        return microtexError;
+#else
+        pdfFileName->clear();
+        latexOutput = QStringLiteral("MicroTeX rendering is not available in this Okular build.");
+        return MicrotexFailed;
+#endif
+    };
+
+    if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Microtex && canUseMicrotexForRender(renderSource, pdfFileName, resolution)) {
+        return renderWithMicrotex();
+    }
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir::tempPath() + QLatin1String("/okular_kdelatex-XXXXXX.tex"));
     if (!tempFile->open()) {
@@ -1117,15 +1142,9 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         qCDebug(OkularUiDebug) << "Could not find latex!";
         delete tempFile;
         fileName = QString();
-#ifdef OKULAR_ENABLE_MICROTEX
-        if (renderSource && pdfFileName && resolution <= 0) {
-            Error fallbackError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
-            if (fallbackError == NoError) {
-                m_lastBackendName = QStringLiteral("microtex");
-            }
-            return fallbackError;
+        if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Auto && canUseMicrotexForRender(renderSource, pdfFileName, resolution)) {
+            return renderWithMicrotex();
         }
-#endif
         return LatexNotFound;
     }
     m_lastBackendName = renderSource ? sourceLatexBackendName(latexExecutable) : QStringLiteral("latex");

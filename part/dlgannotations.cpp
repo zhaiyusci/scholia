@@ -80,6 +80,13 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     latexExecutablePath->setPlaceholderText(i18nc("@info:placeholder Config dialog, annotations page", "Leave empty to search PATH"));
     layout->addRow(i18nc("@label:textbox Config dialog, annotations page", "XeLaTeX executable:"), latexExecutablePath);
 
+    QComboBox *latexRenderBackend = new QComboBox(this);
+    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "Auto (system TeX, then MicroTeX fallback)"));
+    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "System TeX only"));
+    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "MicroTeX only"));
+    latexRenderBackend->setObjectName(QStringLiteral("kcfg_LatexRenderBackend"));
+    layout->addRow(i18nc("@label:listbox Config dialog, annotations page", "LaTeX renderer:"), latexRenderBackend);
+
     QPlainTextEdit *latexPreamble = new QPlainTextEdit(this);
     latexPreamble->setObjectName(QStringLiteral("kcfg_LatexPreamble"));
     latexPreamble->setMinimumHeight(latexPreamble->fontMetrics().lineSpacing() * 7);
