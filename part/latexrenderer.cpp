@@ -1229,6 +1229,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         QFile::remove(croppedPdfFile);
         KProcess pdfCropProc;
         pdfCropProc << pdfCropExecutable << QStringLiteral("--hires") << QStringLiteral("--margins") << QStringLiteral("0 0 0 0") << temporaryPdfFile << croppedPdfFile;
+        pdfCropProc.setWorkingDirectory(tempFilePath);
         pdfCropProc.setOutputChannelMode(KProcess::MergedChannels);
         logTexInvocation("texlive-pdfcrop",
                          QStringLiteral("pdfcrop"),

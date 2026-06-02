@@ -21,6 +21,7 @@ if (!$PdfPath) {
 if (!(Test-Path -LiteralPath $PdfPath)) {
     throw "Missing PDF smoke-test file: $PdfPath"
 }
+$PdfPath = [System.IO.Path]::GetFullPath($PdfPath)
 
 $okularExe = Join-Path $StageRoot "bin\okular.exe"
 if (!(Test-Path -LiteralPath $okularExe)) {
