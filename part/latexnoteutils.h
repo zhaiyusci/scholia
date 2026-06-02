@@ -78,7 +78,8 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
                                           const QColor &borderColor,
                                           double layoutWidthPoints,
                                           bool boxed,
-                                          double visualScale);
+                                          double visualScale,
+                                          bool prepareModification = true);
 QString warningText(const GuiUtils::LatexRenderWarning &warning);
 void showRenderWarning(QWidget *parent, const QString &warningMessage);
 void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning);

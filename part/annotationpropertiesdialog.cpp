@@ -23,6 +23,34 @@
 #include "core/annotations.h"
 #include "core/document.h"
 #include "core/page.h"
+#include "latexnoteutils.h"
+
+namespace
+{
+QColor validLatexStampTextColor(const Okular::StampAnnotation *annotation)
+{
+    const QColor textColor = annotation ? annotation->latexTextColor() : QColor();
+    return textColor.isValid() && textColor.alpha() != 0 ? textColor : Qt::black;
+}
+
+QColor validLatexStampFillColor(const Okular::StampAnnotation *annotation, bool boxed)
+{
+    if (!boxed) {
+        return Qt::transparent;
+    }
+    const QColor fillColor = annotation ? annotation->latexFillColor() : QColor();
+    return fillColor.isValid() && fillColor.alpha() != 0 ? fillColor : Qt::yellow;
+}
+
+QColor validLatexStampBorderColor(const Okular::StampAnnotation *annotation, bool boxed)
+{
+    if (!boxed) {
+        return Qt::transparent;
+    }
+    const QColor borderColor = annotation ? annotation->latexBorderColor() : QColor();
+    return borderColor.isValid() && borderColor.alpha() != 0 ? borderColor : validLatexStampTextColor(annotation);
+}
+}
 
 AnnotsPropertiesDialog::AnnotsPropertiesDialog(QWidget *parent, Okular::Document *document, int docpage, Okular::Annotation *ann)
     : KPageDialog(parent)
@@ -169,6 +197,29 @@ void AnnotsPropertiesDialog::slotapply()
     m_annot->setModificationDate(QDateTime::currentDateTime());
 
     m_annotWidget->applyChanges();
+
+    if (auto *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
+        const bool boxed = stampAnnotation->style().width() > 0.0;
+        const bool appearanceUpdated = LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
+                                                                                            m_document,
+                                                                                            m_page,
+                                                                                            stampAnnotation,
+                                                                                            validLatexStampTextColor(stampAnnotation),
+                                                                                            validLatexStampFillColor(stampAnnotation, boxed),
+                                                                                            validLatexStampBorderColor(stampAnnotation, boxed),
+                                                                                            stampAnnotation->latexLayoutWidth(),
+                                                                                            boxed,
+                                                                                            stampAnnotation->latexScale(),
+                                                                                            false);
+        if (!appearanceUpdated) {
+            m_document->modifyPageAnnotationProperties(m_page, m_annot);
+        }
+        m_modifyDateLabel->setText(QLocale().toString(m_annot->modificationDate(), QLocale::LongFormat));
+
+        modified = false;
+        button(QDialogButtonBox::Apply)->setEnabled(false);
+        return;
+    }
 
     m_document->modifyPageAnnotationProperties(m_page, m_annot);
 

@@ -475,7 +475,8 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
                                           const QColor &borderColor,
                                           double layoutWidthPoints,
                                           bool boxed,
-                                          double visualScale)
+                                          double visualScale,
+                                          bool prepareModification)
 {
     if (!document || pageNumber == -1 || !stampAnnotation) {
         return false;
@@ -514,10 +515,14 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
     if (rendered.pdfFileName == stampAnnotation->latexAppearancePdfFileName() && updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3
         && qAbs(stampAnnotation->latexScale() - visualScale) < 1e-6 && stampAnnotation->isOkularLatex() && stampAnnotation->latexTextColor() == textColor
         && stampAnnotation->latexFillColor() == fillColor && stampAnnotation->latexBorderColor() == borderColor && qAbs(stampAnnotation->style().width() - targetBorderWidth) < 1e-6) {
-        return true;
+        if (prepareModification) {
+            return true;
+        }
     }
 
-    document->prepareToModifyAnnotationProperties(stampAnnotation);
+    if (prepareModification) {
+        document->prepareToModifyAnnotationProperties(stampAnnotation);
+    }
     stampAnnotation->setOkularLatex(true);
     stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
     stampAnnotation->setStampImagePath(QString());
