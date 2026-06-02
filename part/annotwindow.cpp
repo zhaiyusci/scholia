@@ -595,8 +595,7 @@ void AnnotWindow::slotsaveWindowText()
 
 void AnnotWindow::updateLatexNoteAppearance()
 {
-    Okular::TextAnnotation *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(m_annot);
-    if (!textAnnotation || m_annot->contents().trimmed().isEmpty()) {
+    if (!LatexNoteUtils::annotationIsLatex(m_annot) || m_annot->contents().trimmed().isEmpty()) {
         return;
     }
 
@@ -608,16 +607,28 @@ void AnnotWindow::updateLatexNoteAppearance()
 
     const Okular::Page *page = m_document->page(m_page);
     const QColor textColor = LatexNoteUtils::colorForLatexAnnotation(m_annot);
-    LatexNoteUtils::updateLatexTextAnnotationAppearance(this,
-                                                        m_document,
-                                                        m_page,
-                                                        textAnnotation,
-                                                        textColor,
-                                                        textAnnotation->style().color(),
-                                                        textAnnotation->inplaceBorderColor(),
-                                                        LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page),
-                                                        textAnnotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter,
-                                                        LatexNoteUtils::scaleForLatexTextAnnotation(textAnnotation));
+    if (Okular::TextAnnotation *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(m_annot)) {
+        LatexNoteUtils::updateLatexTextAnnotationAppearance(this,
+                                                            m_document,
+                                                            m_page,
+                                                            textAnnotation,
+                                                            textColor,
+                                                            textAnnotation->style().color(),
+                                                            textAnnotation->inplaceBorderColor(),
+                                                            LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page),
+                                                            textAnnotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter,
+                                                            LatexNoteUtils::scaleForLatexTextAnnotation(textAnnotation));
+    } else if (Okular::StampAnnotation *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
+        Q_UNUSED(page);
+        LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
+                                                             m_document,
+                                                             m_page,
+                                                             stampAnnotation,
+                                                             textColor,
+                                                             stampAnnotation->latexLayoutWidth(),
+                                                             stampAnnotation->style().width() > 0.0,
+                                                             stampAnnotation->latexScale());
+    }
 }
 
 void AnnotWindow::renderLatex(bool render)

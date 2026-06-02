@@ -116,8 +116,13 @@ AnnotationInfo getAnnotationInfo(const Okular::Annotation *ann)
         break;
     }
     case Okular::Annotation::AStamp:
-        info.caption = hasComment ? i18n("Stamp with Comment") : i18n("Stamp");
-        info.iconName = QStringLiteral("tag");
+        if (ann->isOkularLatex()) {
+            info.caption = ann->style().width() > 0.0 ? i18n("LaTeX Inline Note") : i18n("LaTeX Note");
+            info.iconName = QStringLiteral("text-x-tex");
+        } else {
+            info.caption = hasComment ? i18n("Stamp with Comment") : i18n("Stamp");
+            info.iconName = QStringLiteral("tag");
+        }
         break;
     case Okular::Annotation::AInk:
         info.caption = hasComment ? i18n("Freehand Line with Comment") : i18n("Freehand Line");

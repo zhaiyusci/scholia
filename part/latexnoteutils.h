@@ -20,6 +20,7 @@ namespace Okular
 class Annotation;
 class Document;
 class Page;
+class StampAnnotation;
 class TextAnnotation;
 }
 
@@ -36,6 +37,8 @@ struct RenderResult {
 
 Okular::TextAnnotation *annotationAsLatexTextAnnotation(Okular::Annotation *annotation);
 const Okular::TextAnnotation *annotationAsLatexTextAnnotation(const Okular::Annotation *annotation);
+Okular::StampAnnotation *annotationAsLatexStampAnnotation(Okular::Annotation *annotation);
+const Okular::StampAnnotation *annotationAsLatexStampAnnotation(const Okular::Annotation *annotation);
 bool annotationIsLatex(Okular::Annotation *annotation);
 bool annotationIsLatex(const Okular::Annotation *annotation);
 
@@ -66,6 +69,14 @@ bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          double layoutWidthPoints,
                                          bool boxed,
                                          double visualScale);
+bool updateLatexStampAnnotationAppearance(QWidget *parent,
+                                          Okular::Document *document,
+                                          int pageNumber,
+                                          Okular::StampAnnotation *stampAnnotation,
+                                          const QColor &textColor,
+                                          double layoutWidthPoints,
+                                          bool boxed,
+                                          double visualScale);
 QString warningText(const GuiUtils::LatexRenderWarning &warning);
 void showRenderWarning(QWidget *parent, const QString &warningMessage);
 void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning);

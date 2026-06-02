@@ -30,6 +30,7 @@ private Q_SLOTS:
     //     void testGeom();
     void testTypewriter();
     void testLatexRuntimePathIsNotSerialized();
+    void testLatexStampPropertiesRoundTrip();
     void testCalloutTranslateKeepsLeaderPoints();
     void cleanupTestCase();
 
@@ -179,6 +180,29 @@ void AnnotationTest::testLatexRuntimePathIsNotSerialized()
     QDomNode runtimeNode = textAnnotation.getAnnotationPropertiesDomNode(true);
     const QDomElement runtimeBase = runtimeNode.toElement().elementsByTagName(QStringLiteral("base")).item(0).toElement();
     QCOMPARE(runtimeBase.attribute(QStringLiteral("latexAppearancePdfFileName")), QStringLiteral("/tmp/okular-latex-appearances/latex-notes/runtime.pdf"));
+}
+
+void AnnotationTest::testLatexStampPropertiesRoundTrip()
+{
+    Okular::StampAnnotation stampAnnotation;
+    stampAnnotation.setStampIconName(QStringLiteral("latex-notes"));
+    stampAnnotation.setContents(QStringLiteral("x^2"));
+    stampAnnotation.setOkularLatex(true);
+    stampAnnotation.setLatexLayoutWidth(96.0);
+    stampAnnotation.setLatexScale(1.5);
+    stampAnnotation.setLatexAppearancePdfFileName(QStringLiteral("/tmp/okular-latex-appearances/latex-notes/stamp.pdf"));
+    stampAnnotation.style().setWidth(1.0);
+
+    const QDomNode runtimeNode = stampAnnotation.getAnnotationPropertiesDomNode(true);
+    Okular::StampAnnotation restoredStamp(runtimeNode);
+
+    QCOMPARE(restoredStamp.stampIconName(), QStringLiteral("latex-notes"));
+    QCOMPARE(restoredStamp.contents(), QStringLiteral("x^2"));
+    QVERIFY(restoredStamp.isOkularLatex());
+    QCOMPARE(restoredStamp.latexLayoutWidth(), 96.0);
+    QCOMPARE(restoredStamp.latexScale(), 1.5);
+    QCOMPARE(restoredStamp.latexAppearancePdfFileName(), QStringLiteral("/tmp/okular-latex-appearances/latex-notes/stamp.pdf"));
+    QCOMPARE(restoredStamp.style().width(), 1.0);
 }
 
 void AnnotationTest::testCalloutTranslateKeepsLeaderPoints()

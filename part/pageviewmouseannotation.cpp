@@ -350,6 +350,21 @@ static bool latexTextAnnotationBoxed(const Okular::TextAnnotation *annotation)
     return annotation && annotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter;
 }
 
+static bool latexStampAnnotationBoxed(const Okular::StampAnnotation *annotation)
+{
+    return annotation && annotation->style().width() > 0.0;
+}
+
+static double latexAnnotationScale(const Okular::Annotation *annotation)
+{
+    if (!annotation) {
+        return 1.0;
+    }
+
+    const double scale = annotation->latexScale();
+    return std::isfinite(scale) && scale > 0.0 ? scale : 1.0;
+}
+
 static QColor fillColorForLatexTextAnnotation(const Okular::TextAnnotation *annotation, bool boxed)
 {
     if (!boxed) {
@@ -376,19 +391,36 @@ static QColor borderColorForLatexTextAnnotation(const Okular::TextAnnotation *an
     return borderColor;
 }
 
-static double latexLayoutWidthFraction(const Okular::TextAnnotation *annotation, const Okular::Page *page)
+static double latexAnnotationLayoutWidth(const Okular::Annotation *annotation, const Okular::Page *page)
+{
+    if (const auto *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(annotation)) {
+        return LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page);
+    }
+
+    if (const auto *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(annotation)) {
+        const double layoutWidthPoints = stampAnnotation->latexLayoutWidth();
+        if (std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0) {
+            return layoutWidthPoints;
+        }
+        return LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::rectWidthInPoints(stampAnnotation->boundingRectangle(), page), latexAnnotationScale(stampAnnotation));
+    }
+
+    return 0.0;
+}
+
+static double latexLayoutWidthFraction(const Okular::Annotation *annotation, const Okular::Page *page)
 {
     if (!annotation || !page) {
         return 0.0;
     }
 
-    const double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexTextAnnotation(annotation, page);
+    const double layoutWidthPoints = latexAnnotationLayoutWidth(annotation, page);
     const double pageWidthPoints = LatexNoteUtils::pageWidthInPoints(page);
     if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0 || !std::isfinite(pageWidthPoints) || pageWidthPoints <= 0.0) {
         return 0.0;
     }
 
-    const double visualScale = LatexNoteUtils::scaleForLatexTextAnnotation(annotation);
+    const double visualScale = latexAnnotationScale(annotation);
     if (!std::isfinite(visualScale) || visualScale <= 0.0) {
         return 0.0;
     }
@@ -399,9 +431,8 @@ static double latexLayoutWidthFraction(const Okular::TextAnnotation *annotation,
 
 static Okular::NormalizedRect latexLayoutBoundingRect(const AnnotationDescription &ad, const Okular::NormalizedRect &visualRect)
 {
-    const auto *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation);
     const Okular::Page *page = ad.pageViewItem ? ad.pageViewItem->page() : nullptr;
-    const double layoutWidthFraction = latexLayoutWidthFraction(textAnnotation, page);
+    const double layoutWidthFraction = latexLayoutWidthFraction(ad.annotation, page);
     if (!std::isfinite(layoutWidthFraction) || layoutWidthFraction <= 0.0) {
         return visualRect;
     }
@@ -414,14 +445,13 @@ static Okular::NormalizedRect latexLayoutBoundingRect(const AnnotationDescriptio
 static QRect latexLayoutGeometry(const AnnotationDescription &ad)
 {
     const QRect boundingRect = Okular::AnnotationUtils::annotationGeometry(ad.annotation, ad.pageViewItem->uncroppedWidth(), ad.pageViewItem->uncroppedHeight());
-    const auto *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation);
     const Okular::Page *page = ad.pageViewItem ? ad.pageViewItem->page() : nullptr;
-    const double layoutWidthFraction = latexLayoutWidthFraction(textAnnotation, page);
+    const double layoutWidthFraction = latexLayoutWidthFraction(ad.annotation, page);
     if (!std::isfinite(layoutWidthFraction) || layoutWidthFraction <= 0.0) {
         return boundingRect;
     }
 
-    const double visualWidth = textAnnotation->boundingRectangle().width();
+    const double visualWidth = ad.annotation->boundingRectangle().width();
     if (!std::isfinite(visualWidth) || visualWidth <= 0.0) {
         return boundingRect;
     }
@@ -432,7 +462,7 @@ static QRect latexLayoutGeometry(const AnnotationDescription &ad)
 
 static QRect controlGeometry(const AnnotationDescription &ad)
 {
-    if (LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation)) {
+    if (LatexNoteUtils::annotationIsLatex(ad.annotation)) {
         return latexLayoutGeometry(ad);
     }
 
@@ -467,18 +497,18 @@ static QRect geometryForBoundingRect(const AnnotationDescription &ad, Okular::No
 
 static GuiUtils::LatexRenderWarning layoutOverflowWarningForLatexNote(const AnnotationDescription &ad)
 {
-    const auto *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation);
+    const auto *latexAnnotation = LatexNoteUtils::annotationIsLatex(ad.annotation) ? ad.annotation : nullptr;
     const Okular::Page *page = ad.pageViewItem ? ad.pageViewItem->page() : nullptr;
-    if (!textAnnotation || !page) {
+    if (!latexAnnotation || !page) {
         return {};
     }
 
-    const double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page);
+    const double layoutWidthPoints = latexAnnotationLayoutWidth(latexAnnotation, page);
     if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
         return {};
     }
 
-    const QSizeF pdfSize = GuiUtils::pdfPageSizeInPoints(textAnnotation->latexAppearancePdfFileName());
+    const QSizeF pdfSize = GuiUtils::pdfPageSizeInPoints(latexAnnotation->latexAppearancePdfFileName());
     if (!pdfSize.isValid() || pdfSize.isEmpty() || !std::isfinite(pdfSize.width())) {
         return {};
     }
@@ -497,7 +527,10 @@ static GuiUtils::LatexRenderWarning layoutOverflowWarningForLatexNote(const Anno
     return warning;
 }
 
-static Okular::NormalizedRect latexAnnotationRectFromControlRect(const Okular::NormalizedRect &controlRect, const Okular::Page *page, const QSizeF &visualSizePoints, double visualScale)
+static Okular::NormalizedRect latexAnnotationRectFromControlRect(const Okular::NormalizedRect &controlRect,
+                                                                 const Okular::Page *page,
+                                                                 const QSizeF &visualSizePoints,
+                                                                 double visualScale)
 {
     const double pageWidthPoints = LatexNoteUtils::pageWidthInPoints(page);
     const double pageHeightPoints = LatexNoteUtils::pageHeightInPoints(page);
@@ -527,13 +560,13 @@ static Okular::NormalizedRect latexAnnotationRectFromControlRect(const Okular::N
 
 static bool updateLatexNoteAfterResize(Okular::Document *document,
                                        int pageNumber,
-                                       Okular::TextAnnotation *textAnnotation,
+                                       Okular::Annotation *annotation,
                                        const Okular::NormalizedRect &resizedRect,
                                        MouseAnnotation::ResizeHandle handle,
                                        Okular::Rotation rotation,
                                        GuiUtils::LatexRenderWarning *warning)
 {
-    if (!document || !textAnnotation || textAnnotation->contents().trimmed().isEmpty()) {
+    if (!document || !LatexNoteUtils::annotationIsLatex(annotation) || annotation->contents().trimmed().isEmpty()) {
         return false;
     }
 
@@ -547,24 +580,24 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
     const bool adjustsLayoutWidth = handleAdjustsLayoutWidth(rotatedHandle);
     const double visibleWidthPoints = LatexNoteUtils::rectWidthInPoints(resizedRect, page);
     const double visibleHeightPoints = LatexNoteUtils::rectHeightInPoints(resizedRect, page);
-    QSizeF currentPdfSize = GuiUtils::pdfPageSizeInPoints(textAnnotation->latexAppearancePdfFileName());
-    QString pdfFileName = textAnnotation->latexAppearancePdfFileName();
-    double layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page);
+    QSizeF currentPdfSize = GuiUtils::pdfPageSizeInPoints(annotation->latexAppearancePdfFileName());
+    QString pdfFileName = annotation->latexAppearancePdfFileName();
+    double layoutWidthPoints = latexAnnotationLayoutWidth(annotation, page);
     if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
-        layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::annotationWidthInPoints(textAnnotation, page), LatexNoteUtils::scaleForLatexTextAnnotation(textAnnotation));
+        layoutWidthPoints = LatexNoteUtils::layoutWidthForLatexTextVisibleWidth(LatexNoteUtils::rectWidthInPoints(annotation->boundingRectangle(), page), latexAnnotationScale(annotation));
     }
     if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
         return false;
     }
 
     GuiUtils::LatexRenderWarning renderWarning;
-    const QColor textColor = LatexNoteUtils::colorForLatexAnnotation(textAnnotation);
+    const QColor textColor = LatexNoteUtils::colorForLatexAnnotation(annotation);
 
     qCDebug(OkularUiDebug) << "Finalizing LaTeX note resize; handle:" << int(handle) << "rotated handle:" << int(rotatedHandle) << "adjusts layout width:" << adjustsLayoutWidth
                             << "adjusts scale:" << adjustsVertically << "visible width:" << visibleWidthPoints << "visible height:" << visibleHeightPoints;
 
     if (adjustsVertically && (!currentPdfSize.isValid() || currentPdfSize.isEmpty())) {
-        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(textAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(annotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
         if (!rendered.ok) {
             qCWarning(OkularUiDebug) << "LaTeX note resize refresh failed:" << rendered.errorMessage;
             return false;
@@ -574,7 +607,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         currentPdfSize = rendered.pdfSizePoints;
     }
 
-    double visualScale = LatexNoteUtils::scaleForLatexTextAnnotation(textAnnotation);
+    double visualScale = latexAnnotationScale(annotation);
     if (adjustsVertically) {
         if (!currentPdfSize.isValid() || currentPdfSize.isEmpty()) {
             return false;
@@ -597,7 +630,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         }
 
         qCDebug(OkularUiDebug) << "Reflowing LaTeX note after horizontal resize; layout width:" << layoutWidthPoints << "scale:" << visualScale;
-        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(textAnnotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(annotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
         if (!rendered.ok) {
             qCWarning(OkularUiDebug) << "LaTeX note resize reflow failed:" << rendered.errorMessage;
             return false;
@@ -626,26 +659,32 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         *warning = renderWarning;
     }
 
-    const bool boxed = latexTextAnnotationBoxed(textAnnotation);
-    const Okular::TextAnnotation::InplaceIntent targetIntent =
-        textAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout ? Okular::TextAnnotation::Callout : (boxed ? Okular::TextAnnotation::Unknown : Okular::TextAnnotation::TypeWriter);
-    const double targetBorderWidth = boxed ? qMax(1.0, textAnnotation->style().width()) : 0.0;
-
-    document->prepareToModifyAnnotationProperties(textAnnotation);
-    textAnnotation->setOkularLatex(true);
-    textAnnotation->setLatexAppearancePdfFileName(pdfFileName);
-    textAnnotation->setLatexLayoutWidth(layoutWidthPoints);
-    textAnnotation->setLatexScale(visualScale);
-    textAnnotation->setTextColor(textColor);
-    textAnnotation->setInplaceBorderColor(borderColorForLatexTextAnnotation(textAnnotation, boxed));
-    textAnnotation->setInplaceIntent(targetIntent);
-    textAnnotation->style().setColor(fillColorForLatexTextAnnotation(textAnnotation, boxed));
-    textAnnotation->style().setWidth(targetBorderWidth);
-    textAnnotation->setBoundingRectangle(updatedRect);
-    textAnnotation->setModificationDate(QDateTime::currentDateTime());
+    document->prepareToModifyAnnotationProperties(annotation);
+    if (auto *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(annotation)) {
+        const bool boxed = latexTextAnnotationBoxed(textAnnotation);
+        const Okular::TextAnnotation::InplaceIntent targetIntent =
+            textAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout ? Okular::TextAnnotation::Callout : (boxed ? Okular::TextAnnotation::Unknown : Okular::TextAnnotation::TypeWriter);
+        const double targetBorderWidth = boxed ? qMax(1.0, textAnnotation->style().width()) : 0.0;
+        textAnnotation->setTextColor(textColor);
+        textAnnotation->setInplaceBorderColor(borderColorForLatexTextAnnotation(textAnnotation, boxed));
+        textAnnotation->setInplaceIntent(targetIntent);
+        textAnnotation->style().setColor(fillColorForLatexTextAnnotation(textAnnotation, boxed));
+        textAnnotation->style().setWidth(targetBorderWidth);
+    } else if (auto *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(annotation)) {
+        stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
+        stampAnnotation->setStampImagePath(QString());
+        stampAnnotation->style().setColor(textColor);
+        stampAnnotation->style().setWidth(latexStampAnnotationBoxed(stampAnnotation) ? qMax(1.0, stampAnnotation->style().width()) : 0.0);
+    }
+    annotation->setOkularLatex(true);
+    annotation->setLatexAppearancePdfFileName(pdfFileName);
+    annotation->setLatexLayoutWidth(layoutWidthPoints);
+    annotation->setLatexScale(visualScale);
+    annotation->setBoundingRectangle(updatedRect);
+    annotation->setModificationDate(QDateTime::currentDateTime());
     qCDebug(OkularUiDebug) << "Writing LaTeX note resize result to annotation; appearance PDF:" << pdfFileName << "layout width:" << layoutWidthPoints << "scale:" << visualScale
                            << "pdf size:" << pdfSize << "visual size:" << visualSizePoints;
-    document->modifyPageAnnotationProperties(pageNumber, textAnnotation);
+    document->modifyPageAnnotationProperties(pageNumber, annotation);
     qCDebug(OkularUiDebug) << "Updated LaTeX note geometry; layout width:" << layoutWidthPoints << "scale:" << visualScale << "rect:" << updatedRect.left << updatedRect.top << updatedRect.right
                             << updatedRect.bottom;
     return true;
@@ -909,7 +948,7 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
      * This is useful for getting focus an a very small annotation,
      * but for drawing and modification we want the real size.
     */
-    const bool isLatexNote = LatexNoteUtils::annotationAsLatexTextAnnotation(m_focusedAnnotation.annotation);
+    const bool isLatexNote = LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation);
     QRect selectionRect = controlGeometryForInteraction(m_focusedAnnotation);
     const bool drawingMovePreview = isMoved();
     bool drawingLatexResizePreview = false;
@@ -1236,9 +1275,9 @@ QRect MouseAnnotation::getFullBoundingRect(const AnnotationDescription &ad) cons
         if (previewRect.isValid()) {
             boundingRect = boundingRect.united(previewRect);
         }
-        const int handleHalf = LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation) ? latexWidthHandleHalf : handleSizeHalf;
+        const int handleHalf = LatexNoteUtils::annotationIsLatex(ad.annotation) ? latexWidthHandleHalf : handleSizeHalf;
         boundingRect = boundingRect.adjusted(-handleHalf, -handleHalf, handleHalf, handleHalf);
-        if (LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation)) {
+        if (LatexNoteUtils::annotationIsLatex(ad.annotation)) {
             boundingRect = boundingRect.united(getHandleRect(RH_Left, ad));
             boundingRect = boundingRect.united(getHandleRect(RH_Right, ad));
         }
@@ -1298,7 +1337,7 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         const Okular::NormalizedRect annotRect = m_hasPreviewBoundingRect ? m_previewBoundingRect : m_focusedAnnotation.annotation->boundingRectangle();
         const ResizeHandle rotatedHandle = rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
 
-        if (LatexNoteUtils::annotationAsLatexTextAnnotation(m_focusedAnnotation.annotation)) {
+        if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation)) {
             const Okular::NormalizedRect baseLayoutRect = m_hasLatexResizeLayoutRect ? m_latexResizeLayoutRect : latexLayoutBoundingRect(m_focusedAnnotation, annotRect);
             QRectF adjustedLayoutRect = latexControlRectAfterResize(baseLayoutRect, rotatedHandle, delta1, delta2);
             if (adjustedLayoutRect.width() > 0.0 && adjustedLayoutRect.height() > 0.0) {
@@ -1420,10 +1459,10 @@ void MouseAnnotation::finishCommand()
                     m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta);
                 }
             } else if (wasResized) {
-                if (Okular::TextAnnotation *latexTextAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(m_focusedAnnotation.annotation)) {
+                if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation)) {
                     const Okular::NormalizedRect latexResizeRect = m_hasLatexResizeLayoutRect ? m_latexResizeLayoutRect : finalBoundingRect;
                     GuiUtils::LatexRenderWarning warning;
-                    if (!updateLatexNoteAfterResize(m_document, m_focusedAnnotation.pageNumber, latexTextAnnotation, latexResizeRect, m_handle, m_focusedAnnotation.pageViewItem->page()->rotation(), &warning)) {
+                    if (!updateLatexNoteAfterResize(m_document, m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, latexResizeRect, m_handle, m_focusedAnnotation.pageViewItem->page()->rotation(), &warning)) {
                         updateViewport(m_focusedAnnotation);
                     } else {
                         const GuiUtils::LatexRenderWarning effectiveWarning = warning.isValid() ? warning : layoutOverflowWarningForLatexNote(m_focusedAnnotation);
@@ -1502,12 +1541,12 @@ QRect MouseAnnotation::controlGeometryForInteraction(const AnnotationDescription
     }
 
     if (m_focusedAnnotation == ad) {
-        if (LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation) && isResized() && m_hasLatexResizeLayoutRect) {
+        if (LatexNoteUtils::annotationIsLatex(ad.annotation) && isResized() && m_hasLatexResizeLayoutRect) {
             return geometryForBoundingRect(ad, m_latexResizeLayoutRect);
         }
         if (m_hasPreviewBoundingRect) {
             Okular::NormalizedRect previewRect = m_previewBoundingRect;
-            if (LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation)) {
+            if (LatexNoteUtils::annotationIsLatex(ad.annotation)) {
                 previewRect = latexLayoutBoundingRect(ad, previewRect);
             }
             return geometryForBoundingRect(ad, previewRect);
@@ -1671,7 +1710,7 @@ QRect MouseAnnotation::getHandleRect(ResizeHandle handle, const AnnotationDescri
     }
 
     const QRect handleRect(left, top, handleSize, handleSize);
-    if (LatexNoteUtils::annotationAsLatexTextAnnotation(ad.annotation) && (handle == RH_Left || handle == RH_Right)) {
+    if (LatexNoteUtils::annotationIsLatex(ad.annotation) && (handle == RH_Left || handle == RH_Right)) {
         const QPoint center = handleRect.center();
         return QRect(center.x() - latexWidthHandleHitWidth / 2, center.y() - latexWidthHandleHitLength / 2, latexWidthHandleHitWidth, latexWidthHandleHitLength);
     }

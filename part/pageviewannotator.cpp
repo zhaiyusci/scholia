@@ -64,6 +64,9 @@ public:
         , hoverIconName {engineElement.attribute(QStringLiteral("hoverIcon"))}
         , iconName {m_annotElement.attribute(QStringLiteral("icon"))}
         , stampImagePath {m_annotElement.attribute(QStringLiteral("imagePath"))}
+        , latexAppearancePdfFileName {m_annotElement.attribute(QStringLiteral("latexAppearancePdfFileName"))}
+        , latexStamp(m_annotElement.attribute(QStringLiteral("okularLatex")).toInt() != 0)
+        , boxedLatexStamp(m_annotElement.attribute(QStringLiteral("latexBoxed")).toInt() != 0)
         , fixedAspectRatio(0.0)
         , hasIntrinsicStampSizeInPoints(false)
         , hasIntrinsicStampSize(false)
@@ -107,9 +110,23 @@ public:
             }
             hasIntrinsicStampSize = !intrinsicStampSize.isEmpty();
         }
-        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && hasIntrinsicStampSizeInPoints && intrinsicStampSizeInPoints.height() > 0.0) {
+        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && latexStamp && !latexAppearancePdfFileName.isEmpty()) {
+            QSizeF latexSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
+            bool ok = false;
+            const double layoutWidth = m_annotElement.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
+            if (ok && layoutWidth > 0.0) {
+                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, layoutWidth);
+            } else {
+                latexSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(latexSizePoints, 0.0);
+            }
+            if (latexSizePoints.isValid() && !latexSizePoints.isEmpty()) {
+                intrinsicStampSizeInPoints = latexSizePoints;
+                hasIntrinsicStampSizeInPoints = true;
+            }
+        }
+        if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !latexStamp && hasIntrinsicStampSizeInPoints && intrinsicStampSizeInPoints.height() > 0.0) {
             fixedAspectRatio = intrinsicStampSizeInPoints.width() / intrinsicStampSizeInPoints.height();
-        } else if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !pixmap.isNull() && pixmap.height() > 0) {
+        } else if (m_annotElement.attribute(QStringLiteral("type")) == QLatin1String("Stamp") && !latexStamp && !pixmap.isNull() && pixmap.height() > 0) {
             fixedAspectRatio = double(pixmap.width()) / pixmap.height();
         }
     }
@@ -418,6 +435,21 @@ public:
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
                 sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
             }
+            if (latexStamp) {
+                sa->setOkularLatex(true);
+                sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
+                bool ok = false;
+                const double layoutWidth = m_annotElement.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
+                if (ok && layoutWidth > 0.0) {
+                    sa->setLatexLayoutWidth(layoutWidth);
+                }
+                const double scale = m_annotElement.attribute(QStringLiteral("latexScale")).toDouble(&ok);
+                if (ok && scale > 0.0) {
+                    sa->setLatexScale(scale);
+                }
+                sa->style().setWidth(boxedLatexStamp ? 1.0 : 0.0);
+                sa->style().setColor(Qt::black);
+            }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
             rect.top = qMin(startpoint.y, point.y);
@@ -425,7 +457,16 @@ public:
             rect.bottom = qMax(startpoint.y, point.y);
             const QRectF rcf = rect.geometry((int)xscale, (int)yscale);
             const int ml = (rcf.bottomRight() - rcf.topLeft()).toPoint().manhattanLength();
-            if (ml <= QApplication::startDragDistance()) {
+            if (latexStamp && !latexAppearancePdfFileName.isEmpty()) {
+                const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
+                if (pdfSizePoints.isValid() && !pdfSizePoints.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
+                    const double latexFreeTextPaddingPoints = LatexNoteUtils::latexTextAnnotationPaddingPoints();
+                    const double normalizedWidth = (pdfSizePoints.width() + latexFreeTextPaddingPoints) / pagewidth;
+                    const double normalizedHeight = (pdfSizePoints.height() + latexFreeTextPaddingPoints) / pageheight;
+                    rect.right = qMax(rect.right, rect.left + normalizedWidth);
+                    rect.bottom = qMax(rect.bottom, rect.top + normalizedHeight);
+                }
+            } else if (ml <= QApplication::startDragDistance()) {
                 double stampxscale = xscale > 0.0 ? pixmap.width() / xscale : 0.0;
                 double stampyscale = yscale > 0.0 ? pixmap.height() / yscale : 0.0;
                 if (hasIntrinsicStampSizeInPoints && pagewidth > 0.0 && pageheight > 0.0) {
@@ -531,7 +572,9 @@ protected:
 
 private:
     QPixmap pixmap;
-    QString hoverIconName, iconName, stampImagePath;
+    QString hoverIconName, iconName, stampImagePath, latexAppearancePdfFileName;
+    bool latexStamp;
+    bool boxedLatexStamp;
     int size;
     double fixedAspectRatio;
     bool hasIntrinsicStampSizeInPoints;
@@ -1472,7 +1515,7 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
                 continue;
             }
 
-            if (annotation->subType() == Okular::Annotation::AStamp) {
+            if (annotation->subType() == Okular::Annotation::AStamp && !annotation->isOkularLatex()) {
                 detachAfterCreation = true;
                 createdStampPageItem = m_lockedItem;
                 createdStampAnnotation = annotation;
@@ -1811,6 +1854,11 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
         annotationElement.removeAttribute(QStringLiteral("imagePath"));
     }
     annotationElement.removeAttribute(QStringLiteral("contents"));
+    annotationElement.removeAttribute(QStringLiteral("okularLatex"));
+    annotationElement.removeAttribute(QStringLiteral("latexBoxed"));
+    annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
+    annotationElement.removeAttribute(QStringLiteral("latexScale"));
+    annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     saveBuiltinAnnotationTools();
     selectBuiltinTool(stampToolId, ShowTip::Yes);
     return stampToolId;
@@ -1818,7 +1866,7 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
 
 int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed)
 {
-    const QString toolType = boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter");
+    const QString toolType = QStringLiteral("stamp");
     const int toolId = m_builtinToolsDefinition->findToolId(toolType);
     QDomElement toolElement = builtinTool(toolId);
     if (toolElement.isNull()) {
@@ -1827,8 +1875,13 @@ int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile,
 
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+    engineElement.removeAttribute(QStringLiteral("hoverIcon"));
+    annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("Stamp"));
+    annotationElement.setAttribute(QStringLiteral("icon"), QStringLiteral("latex-notes"));
+    annotationElement.removeAttribute(QStringLiteral("imagePath"));
     annotationElement.setAttribute(QStringLiteral("contents"), contents);
     annotationElement.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
+    annotationElement.setAttribute(QStringLiteral("latexBoxed"), boxed ? QStringLiteral("1") : QStringLiteral("0"));
     annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
     annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));

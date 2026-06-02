@@ -519,7 +519,37 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::HighlightA
 
 static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page)
 {
-    pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
+    pStampAnnotation->setStampIconName(oStampAnnotation->isOkularLatex() ? QStringLiteral("latex-notes") : oStampAnnotation->stampIconName());
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+    pStampAnnotation->setCustomBoolProperty(QStringLiteral("OkularLatex"), oStampAnnotation->isOkularLatex());
+    if (oStampAnnotation->isOkularLatex()) {
+        pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexScale"), oStampAnnotation->latexScale());
+        pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexLayoutWidth"), oStampAnnotation->latexLayoutWidth());
+        pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexNoteScale"), oStampAnnotation->latexScale());
+        pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexNoteLayoutWidth"), oStampAnnotation->latexLayoutWidth());
+        pStampAnnotation->setCustomBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), oStampAnnotation->style().width() > 0.0);
+
+        const QString pdfAppearanceFile = oStampAnnotation->latexAppearancePdfFileName();
+        const QFileInfo pdfAppearanceInfo(pdfAppearanceFile);
+        qCDebug(OkularPdfDebug) << "Embedding LaTeX Stamp appearance; path:" << pdfAppearanceFile << "exists:" << pdfAppearanceInfo.exists() << "bytes:" << pdfAppearanceInfo.size()
+                                << "layout width:" << oStampAnnotation->latexLayoutWidth() << "scale:" << oStampAnnotation->latexScale()
+                                << "contents length:" << oStampAnnotation->contents().size();
+        if (!pdfAppearanceFile.isEmpty() && pdfAppearanceInfo.exists()) {
+            const bool appearanceUpdated = pStampAnnotation->setStampCustomPdf(pdfAppearanceFile, 1);
+            qCDebug(OkularPdfDebug) << "Embedding LaTeX Stamp appearance result:" << appearanceUpdated << "path:" << pdfAppearanceFile;
+            if (!appearanceUpdated) {
+                qCWarning(OkularPdfDebug) << "Could not embed LaTeX Stamp appearance" << pdfAppearanceFile;
+            }
+            return appearanceUpdated;
+        }
+        if (pdfAppearanceFile.isEmpty()) {
+            qCDebug(OkularPdfDebug) << "LaTeX Stamp appearance PDF is not available; no runtime path is set";
+        } else {
+            qCWarning(OkularPdfDebug) << "LaTeX Stamp appearance PDF is not available; path:" << pdfAppearanceFile;
+        }
+        return false;
+    }
+#endif
     return setPopplerStampAnnotationCustomImage(page, pStampAnnotation, oStampAnnotation);
 }
 
@@ -1265,6 +1295,18 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
     Okular::StampAnnotation *oStampAnn = new Okular::StampAnnotation();
 
     oStampAnn->setStampIconName(popplerAnnotation->stampIconName());
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+    const bool isLatexStamp = popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatex"), false) || popplerAnnotation->stampIconName() == QLatin1String("latex-notes")
+        || popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexNoteLayoutWidth"), 0.0) > 0.0
+        || popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), false);
+    oStampAnn->setOkularLatex(isLatexStamp);
+    oStampAnn->setLatexScale(popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexScale"), 1.0));
+    oStampAnn->setLatexLayoutWidth(popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexLayoutWidth"), 0.0));
+    if (oStampAnn->isOkularLatex()) {
+        oStampAnn->setStampIconName(QStringLiteral("latex-notes"));
+        oStampAnn->style().setWidth(popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), false) ? 1.0 : 0.0);
+    }
+#endif
 
     return oStampAnn;
 }

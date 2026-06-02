@@ -2538,11 +2538,6 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
             m_stampImagePath = m_stampIconName;
             m_stampIconName = QStringLiteral("Image");
         }
-        m_okularLatex = false;
-        m_latexLayoutWidth = 0.0;
-        m_latexScale = 1.0;
-        m_latexAppearancePdfFileName.clear();
-
         // loading complete
         break;
     }
