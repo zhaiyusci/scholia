@@ -186,6 +186,45 @@ bool latexStampAnnotationBoxed(const Okular::StampAnnotation *annotation)
     return annotation && annotation->style().width() > 0.0;
 }
 
+QColor latexTextColorForStampAnnotation(const Okular::StampAnnotation *annotation)
+{
+    if (!annotation) {
+        return Qt::black;
+    }
+
+    QColor textColor = annotation->latexTextColor();
+    if (!textColor.isValid() || textColor.alpha() == 0) {
+        textColor = Qt::black;
+    }
+    return textColor;
+}
+
+QColor fillColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation, bool boxed)
+{
+    if (!boxed) {
+        return Qt::transparent;
+    }
+
+    QColor fillColor = annotation ? annotation->latexFillColor() : QColor();
+    if (!fillColor.isValid() || fillColor.alpha() == 0) {
+        fillColor = Qt::yellow;
+    }
+    return fillColor;
+}
+
+QColor borderColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation, bool boxed)
+{
+    if (!boxed) {
+        return Qt::transparent;
+    }
+
+    QColor borderColor = annotation ? annotation->latexBorderColor() : QColor();
+    if (!borderColor.isValid() || borderColor.alpha() == 0) {
+        borderColor = latexTextColorForStampAnnotation(annotation);
+    }
+    return borderColor;
+}
+
 double latexMaxWidthForTextAnnotation(const Okular::TextAnnotation *annotation, const Okular::Page *page)
 {
     if (!annotation || !page) {
@@ -687,13 +726,16 @@ void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
                                             boxed,
                                             visualScale);
     } else if (Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation)) {
+        const bool boxed = latexStampAnnotationBoxed(stampAnnotation);
         LatexNoteUtils::updateLatexStampAnnotationAppearance(mParent,
                                                              mDocument,
                                                              pair.pageNumber,
                                                              stampAnnotation,
-                                                             LatexNoteUtils::colorForLatexAnnotation(stampAnnotation),
+                                                             latexTextColorForStampAnnotation(stampAnnotation),
+                                                             fillColorForLatexStampAnnotation(stampAnnotation, boxed),
+                                                             borderColorForLatexStampAnnotation(stampAnnotation, boxed),
                                                              layoutWidthPoints,
-                                                             latexStampAnnotationBoxed(stampAnnotation),
+                                                             boxed,
                                                              visualScale);
     }
 }
@@ -717,13 +759,16 @@ void AnnotationPopup::doFitLatexAnnotationToContent(AnnotPagePair pair)
                                             boxed,
                                             latexTextAnnotationScale(textAnnotation));
     } else if (Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation)) {
+        const bool boxed = latexStampAnnotationBoxed(stampAnnotation);
         LatexNoteUtils::updateLatexStampAnnotationAppearance(mParent,
                                                              mDocument,
                                                              pair.pageNumber,
                                                              stampAnnotation,
-                                                             LatexNoteUtils::colorForLatexAnnotation(stampAnnotation),
+                                                             latexTextColorForStampAnnotation(stampAnnotation),
+                                                             fillColorForLatexStampAnnotation(stampAnnotation, boxed),
+                                                             borderColorForLatexStampAnnotation(stampAnnotation, boxed),
                                                              0.0,
-                                                             latexStampAnnotationBoxed(stampAnnotation),
+                                                             boxed,
                                                              stampAnnotation->latexScale());
     }
 }
@@ -748,13 +793,16 @@ void AnnotationPopup::doResetLatexAnnotationScale(AnnotPagePair pair)
                                             boxed,
                                             1.0);
     } else if (Okular::StampAnnotation *stampAnnotation = latexStampAnnotation(pair.annotation)) {
+        const bool boxed = latexStampAnnotationBoxed(stampAnnotation);
         LatexNoteUtils::updateLatexStampAnnotationAppearance(mParent,
                                                              mDocument,
                                                              pair.pageNumber,
                                                              stampAnnotation,
-                                                             LatexNoteUtils::colorForLatexAnnotation(stampAnnotation),
+                                                             latexTextColorForStampAnnotation(stampAnnotation),
+                                                             fillColorForLatexStampAnnotation(stampAnnotation, boxed),
+                                                             borderColorForLatexStampAnnotation(stampAnnotation, boxed),
                                                              stampAnnotation->latexLayoutWidth(),
-                                                             latexStampAnnotationBoxed(stampAnnotation),
+                                                             boxed,
                                                              1.0);
     }
 }

@@ -165,7 +165,10 @@ protected:
 
 private:
     Okular::StampAnnotation *m_stampAnn;
-    PixmapPreviewSelector *m_pixmapSelector;
+    PixmapPreviewSelector *m_pixmapSelector {nullptr};
+    KColorButton *m_latexTextColorBn {nullptr};
+    KColorButton *m_latexFillColorBn {nullptr};
+    KColorButton *m_latexBorderColorBn {nullptr};
 };
 
 class LineAnnotationWidget : public AnnotationWidget

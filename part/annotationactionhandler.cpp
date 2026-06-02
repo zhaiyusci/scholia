@@ -256,9 +256,13 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
     }
 
     QDomElement toolElement = annotator->builtinTool(toolId);
-    const QString annotType = toolElement.attribute(QStringLiteral("type"));
+    QString annotType = toolElement.attribute(QStringLiteral("type"));
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+    const bool latexStamp = annotType == QLatin1String("stamp") && annElement.attribute(QStringLiteral("okularLatex")).toInt() != 0;
+    if (latexStamp) {
+        annotType = annElement.attribute(QStringLiteral("latexBoxed")).toInt() != 0 ? QStringLiteral("note-inline") : QStringLiteral("typewriter");
+    }
 
     QColor color, innerColor, textColor, borderColor, engineColor;
     if (engineElement.hasAttribute(QStringLiteral("color"))) {
@@ -595,14 +599,24 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed)
         return;
     }
 
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(latexInput, Qt::black, LatexNoteUtils::latexFontSize(), 0.0);
+    QColor textColor = currentTextColor.isValid() && currentTextColor.alpha() != 0 ? currentTextColor : Qt::black;
+    QColor fillColor = boxed ? currentInnerColor : Qt::transparent;
+    if (boxed && (!fillColor.isValid() || fillColor.alpha() == 0)) {
+        fillColor = Qt::yellow;
+    }
+    QColor borderColor = boxed ? currentColor : Qt::transparent;
+    if (boxed && (!borderColor.isValid() || borderColor.alpha() == 0)) {
+        borderColor = textColor;
+    }
+
+    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(latexInput, textColor, LatexNoteUtils::latexFontSize(), 0.0);
     if (!rendered.ok) {
         KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return;
     }
     LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
 
-    selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput, boxed);
+    selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput, boxed, textColor, fillColor, borderColor);
     if (selectedBuiltinTool != -1) {
         updateConfigActions(boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter"));
     }

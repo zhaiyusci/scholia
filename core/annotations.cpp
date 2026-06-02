@@ -865,6 +865,42 @@ double Annotation::latexScale() const
     return d->m_latexScale;
 }
 
+void Annotation::setLatexTextColor(const QColor &color)
+{
+    Q_D(Annotation);
+    d->m_latexTextColor = color;
+}
+
+QColor Annotation::latexTextColor() const
+{
+    Q_D(const Annotation);
+    return d->m_latexTextColor;
+}
+
+void Annotation::setLatexFillColor(const QColor &color)
+{
+    Q_D(Annotation);
+    d->m_latexFillColor = color;
+}
+
+QColor Annotation::latexFillColor() const
+{
+    Q_D(const Annotation);
+    return d->m_latexFillColor;
+}
+
+void Annotation::setLatexBorderColor(const QColor &color)
+{
+    Q_D(Annotation);
+    d->m_latexBorderColor = color;
+}
+
+QColor Annotation::latexBorderColor() const
+{
+    Q_D(const Annotation);
+    return d->m_latexBorderColor;
+}
+
 void Annotation::setLatexAppearancePdfFileName(const QString &fileName)
 {
     Q_D(Annotation);
@@ -948,6 +984,15 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     }
     if (d->m_latexScale > 0.0 && d->m_latexScale != 1.0) {
         e.setAttribute(QStringLiteral("latexScale"), QString::number(d->m_latexScale, 'f', 6));
+    }
+    if (d->m_latexTextColor.isValid()) {
+        e.setAttribute(QStringLiteral("latexTextColor"), d->m_latexTextColor.name(QColor::HexArgb));
+    }
+    if (d->m_latexFillColor.isValid()) {
+        e.setAttribute(QStringLiteral("latexFillColor"), d->m_latexFillColor.name(QColor::HexArgb));
+    }
+    if (d->m_latexBorderColor.isValid()) {
+        e.setAttribute(QStringLiteral("latexBorderColor"), d->m_latexBorderColor.name(QColor::HexArgb));
     }
     // Sub-Node-1 - boundary
     QDomElement bE = document.createElement(QStringLiteral("boundary"));
@@ -1150,6 +1195,15 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         if (ok && scale > 0.0) {
             m_latexScale = scale;
         }
+    }
+    if (e.hasAttribute(QStringLiteral("latexTextColor"))) {
+        m_latexTextColor = QColor(e.attribute(QStringLiteral("latexTextColor")));
+    }
+    if (e.hasAttribute(QStringLiteral("latexFillColor"))) {
+        m_latexFillColor = QColor(e.attribute(QStringLiteral("latexFillColor")));
+    }
+    if (e.hasAttribute(QStringLiteral("latexBorderColor"))) {
+        m_latexBorderColor = QColor(e.attribute(QStringLiteral("latexBorderColor")));
     }
     if (e.hasAttribute(QStringLiteral("latexAppearancePdfFileName"))) {
         m_latexAppearancePdfFileName = e.attribute(QStringLiteral("latexAppearancePdfFileName"));

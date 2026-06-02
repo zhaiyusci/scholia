@@ -68,6 +68,9 @@ public:
     bool m_okularLatex = false;
     double m_latexLayoutWidth = 0.0;
     double m_latexScale = 1.0;
+    QColor m_latexTextColor;
+    QColor m_latexFillColor;
+    QColor m_latexBorderColor;
     QString m_latexAppearancePdfFileName;
 
     int m_flags;

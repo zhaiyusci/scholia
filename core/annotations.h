@@ -760,6 +760,36 @@ public:
     double latexScale() const;
 
     /**
+     * Sets the LaTeX text color.
+     */
+    void setLatexTextColor(const QColor &color);
+
+    /**
+     * Returns the LaTeX text color.
+     */
+    QColor latexTextColor() const;
+
+    /**
+     * Sets the LaTeX boxed-note fill color.
+     */
+    void setLatexFillColor(const QColor &color);
+
+    /**
+     * Returns the LaTeX boxed-note fill color.
+     */
+    QColor latexFillColor() const;
+
+    /**
+     * Sets the LaTeX boxed-note border color.
+     */
+    void setLatexBorderColor(const QColor &color);
+
+    /**
+     * Returns the LaTeX boxed-note border color.
+     */
+    QColor latexBorderColor() const;
+
+    /**
      * Sets the current-process PDF file used to refresh the LaTeX appearance.
      *
      * This is a runtime bridge to the PDF writer, not part of the PDF

@@ -438,6 +438,21 @@ public:
             if (latexStamp) {
                 sa->setOkularLatex(true);
                 sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
+                QColor textColor = m_annotElement.hasAttribute(QStringLiteral("textColor")) ? QColor(m_annotElement.attribute(QStringLiteral("textColor"))) : Qt::black;
+                if (!textColor.isValid() || textColor.alpha() == 0) {
+                    textColor = Qt::black;
+                }
+                QColor fillColor = boxedLatexStamp ? (m_annotElement.hasAttribute(QStringLiteral("color")) ? QColor(m_annotElement.attribute(QStringLiteral("color"))) : Qt::yellow) : Qt::transparent;
+                if (boxedLatexStamp && (!fillColor.isValid() || fillColor.alpha() == 0)) {
+                    fillColor = Qt::yellow;
+                }
+                QColor borderColor = boxedLatexStamp ? (m_annotElement.hasAttribute(QStringLiteral("borderColor")) ? QColor(m_annotElement.attribute(QStringLiteral("borderColor"))) : textColor) : Qt::transparent;
+                if (boxedLatexStamp && (!borderColor.isValid() || borderColor.alpha() == 0)) {
+                    borderColor = textColor;
+                }
+                sa->setLatexTextColor(textColor);
+                sa->setLatexFillColor(fillColor);
+                sa->setLatexBorderColor(borderColor);
                 bool ok = false;
                 const double layoutWidth = m_annotElement.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
                 if (ok && layoutWidth > 0.0) {
@@ -448,7 +463,7 @@ public:
                     sa->setLatexScale(scale);
                 }
                 sa->style().setWidth(boxedLatexStamp ? 1.0 : 0.0);
-                sa->style().setColor(Qt::black);
+                sa->style().setColor(textColor);
             }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
@@ -459,12 +474,10 @@ public:
             const int ml = (rcf.bottomRight() - rcf.topLeft()).toPoint().manhattanLength();
             if (latexStamp && !latexAppearancePdfFileName.isEmpty()) {
                 const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
-                if (pdfSizePoints.isValid() && !pdfSizePoints.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
-                    const double latexFreeTextPaddingPoints = LatexNoteUtils::latexTextAnnotationPaddingPoints();
-                    const double normalizedWidth = (pdfSizePoints.width() + latexFreeTextPaddingPoints) / pagewidth;
-                    const double normalizedHeight = (pdfSizePoints.height() + latexFreeTextPaddingPoints) / pageheight;
-                    rect.right = qMax(rect.right, rect.left + normalizedWidth);
-                    rect.bottom = qMax(rect.bottom, rect.top + normalizedHeight);
+                const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, sa->latexLayoutWidth());
+                if (visualSizePoints.isValid() && !visualSizePoints.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
+                    rect.right = qMax(rect.right, rect.left + visualSizePoints.width() / pagewidth);
+                    rect.bottom = qMax(rect.bottom, rect.top + visualSizePoints.height() / pageheight);
                 }
             } else if (ml <= QApplication::startDragDistance()) {
                 double stampxscale = xscale > 0.0 ? pixmap.width() / xscale : 0.0;
@@ -1864,7 +1877,7 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     return stampToolId;
 }
 
-int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed)
+int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor)
 {
     const QString toolType = QStringLiteral("stamp");
     const int toolId = m_builtinToolsDefinition->findToolId(toolType);
@@ -1885,6 +1898,26 @@ int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile,
     annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
     annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
+    QColor targetTextColor = textColor;
+    if (!targetTextColor.isValid() || targetTextColor.alpha() == 0) {
+        targetTextColor = Qt::black;
+    }
+    annotationElement.setAttribute(QStringLiteral("textColor"), targetTextColor.name(QColor::HexArgb));
+    if (boxed) {
+        QColor targetFillColor = fillColor;
+        if (!targetFillColor.isValid() || targetFillColor.alpha() == 0) {
+            targetFillColor = Qt::yellow;
+        }
+        QColor targetBorderColor = borderColor;
+        if (!targetBorderColor.isValid() || targetBorderColor.alpha() == 0) {
+            targetBorderColor = targetTextColor;
+        }
+        annotationElement.setAttribute(QStringLiteral("color"), targetFillColor.name(QColor::HexArgb));
+        annotationElement.setAttribute(QStringLiteral("borderColor"), targetBorderColor.name(QColor::HexArgb));
+    } else {
+        annotationElement.setAttribute(QStringLiteral("color"), QStringLiteral("#00ffffff"));
+        annotationElement.setAttribute(QStringLiteral("borderColor"), QStringLiteral("#00000000"));
+    }
     selectBuiltinTool(toolId, ShowTip::Yes);
     return toolId;
 }
@@ -2181,7 +2214,8 @@ void PageViewAnnotator::setAnnotationColor(const QColor &color)
     QString annotType = annotationElement.attribute(QStringLiteral("type"));
     if (annotType == QLatin1String("Typewriter")) {
         annotationElement.setAttribute(QStringLiteral("textColor"), color.name(QColor::HexRgb));
-    } else if (annotType == QLatin1String("FreeText") || annotType == QLatin1String("Callout")) {
+    } else if (annotType == QLatin1String("FreeText") || annotType == QLatin1String("Callout")
+               || (annotType == QLatin1String("Stamp") && annotationElement.attribute(QStringLiteral("okularLatex")).toInt() != 0)) {
         annotationElement.setAttribute(QStringLiteral("borderColor"), color.name(QColor::HexRgb));
     } else {
         annotationElement.setAttribute(QStringLiteral("color"), color.name(QColor::HexRgb));
@@ -2194,7 +2228,8 @@ void PageViewAnnotator::setAnnotationInnerColor(const QColor &color)
 {
     QDomElement annotationElement = currentAnnotationElement();
     const QString annotType = annotationElement.attribute(QStringLiteral("type"));
-    if (annotType == QLatin1String("FreeText") || annotType == QLatin1String("Callout")) {
+    if (annotType == QLatin1String("FreeText") || annotType == QLatin1String("Callout")
+        || (annotType == QLatin1String("Stamp") && annotationElement.attribute(QStringLiteral("okularLatex")).toInt() != 0)) {
         annotationElement.setAttribute(QStringLiteral("color"), color.name(QColor::HexArgb));
         saveBuiltinAnnotationTools();
         selectLastTool();

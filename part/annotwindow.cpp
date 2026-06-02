@@ -620,13 +620,24 @@ void AnnotWindow::updateLatexNoteAppearance()
                                                             LatexNoteUtils::scaleForLatexTextAnnotation(textAnnotation));
     } else if (Okular::StampAnnotation *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
         Q_UNUSED(page);
+        const bool boxed = stampAnnotation->style().width() > 0.0;
+        QColor fillColor = boxed ? stampAnnotation->latexFillColor() : Qt::transparent;
+        if (boxed && (!fillColor.isValid() || fillColor.alpha() == 0)) {
+            fillColor = Qt::yellow;
+        }
+        QColor borderColor = boxed ? stampAnnotation->latexBorderColor() : Qt::transparent;
+        if (boxed && (!borderColor.isValid() || borderColor.alpha() == 0)) {
+            borderColor = textColor;
+        }
         LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
                                                              m_document,
                                                              m_page,
                                                              stampAnnotation,
                                                              textColor,
+                                                             fillColor,
+                                                             borderColor,
                                                              stampAnnotation->latexLayoutWidth(),
-                                                             stampAnnotation->style().width() > 0.0,
+                                                             boxed,
                                                              stampAnnotation->latexScale());
     }
 }

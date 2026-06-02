@@ -74,6 +74,8 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
                                           int pageNumber,
                                           Okular::StampAnnotation *stampAnnotation,
                                           const QColor &textColor,
+                                          const QColor &fillColor,
+                                          const QColor &borderColor,
                                           double layoutWidthPoints,
                                           bool boxed,
                                           double visualScale);

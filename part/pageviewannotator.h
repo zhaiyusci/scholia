@@ -111,7 +111,7 @@ public:
     // selects a stamp tool and sets the stamp symbol
     int selectStampTool(const QString &stampSymbol);
     // selects a FreeText tool backed by a rendered LaTeX appearance
-    int selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed);
+    int selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor);
     // selects the active quick tool
     void selectQuickTool(int toolId);
     // selects the last used tool

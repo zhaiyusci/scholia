@@ -391,6 +391,32 @@ static QColor borderColorForLatexTextAnnotation(const Okular::TextAnnotation *an
     return borderColor;
 }
 
+static QColor fillColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation, bool boxed)
+{
+    if (!boxed) {
+        return Qt::transparent;
+    }
+
+    QColor fillColor = annotation ? annotation->latexFillColor() : QColor();
+    if (!fillColor.isValid() || fillColor.alpha() == 0) {
+        fillColor = Qt::yellow;
+    }
+    return fillColor;
+}
+
+static QColor borderColorForLatexStampAnnotation(const Okular::StampAnnotation *annotation, bool boxed)
+{
+    if (!boxed) {
+        return Qt::transparent;
+    }
+
+    QColor borderColor = annotation ? annotation->latexBorderColor() : QColor();
+    if (!borderColor.isValid() || borderColor.alpha() == 0) {
+        borderColor = LatexNoteUtils::colorForLatexAnnotation(annotation);
+    }
+    return borderColor;
+}
+
 static double latexAnnotationLayoutWidth(const Okular::Annotation *annotation, const Okular::Page *page)
 {
     if (const auto *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(annotation)) {
@@ -671,10 +697,15 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         textAnnotation->style().setColor(fillColorForLatexTextAnnotation(textAnnotation, boxed));
         textAnnotation->style().setWidth(targetBorderWidth);
     } else if (auto *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(annotation)) {
+        const bool boxed = latexStampAnnotationBoxed(stampAnnotation);
+        const QColor fillColor = fillColorForLatexStampAnnotation(stampAnnotation, boxed);
         stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
         stampAnnotation->setStampImagePath(QString());
+        stampAnnotation->setLatexTextColor(textColor);
+        stampAnnotation->setLatexFillColor(fillColor);
+        stampAnnotation->setLatexBorderColor(borderColorForLatexStampAnnotation(stampAnnotation, boxed));
         stampAnnotation->style().setColor(textColor);
-        stampAnnotation->style().setWidth(latexStampAnnotationBoxed(stampAnnotation) ? qMax(1.0, stampAnnotation->style().width()) : 0.0);
+        stampAnnotation->style().setWidth(boxed ? qMax(1.0, stampAnnotation->style().width()) : 0.0);
     }
     annotation->setOkularLatex(true);
     annotation->setLatexAppearancePdfFileName(pdfFileName);

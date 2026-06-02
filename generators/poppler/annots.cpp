@@ -528,6 +528,8 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
         pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexNoteScale"), oStampAnnotation->latexScale());
         pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexNoteLayoutWidth"), oStampAnnotation->latexLayoutWidth());
         pStampAnnotation->setCustomBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), oStampAnnotation->style().width() > 0.0);
+        pStampAnnotation->setOkularLatexNoteFillColor(oStampAnnotation->latexFillColor());
+        pStampAnnotation->setOkularLatexNoteBorderColor(oStampAnnotation->latexBorderColor());
 
         const QString pdfAppearanceFile = oStampAnnotation->latexAppearancePdfFileName();
         const QFileInfo pdfAppearanceInfo(pdfAppearanceFile);
@@ -817,6 +819,12 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
             LatexFreeTextAppearanceRequest request;
             request.policy = LatexFreeTextAppearancePolicy::RewriteFromRuntimePdf;
             applyLatexFreeTextAppearance(okl_txtann, static_cast<Poppler::TextAnnotation *>(ppl_ann), request);
+        }
+    }
+    if (okl_ann->subType() == Okular::Annotation::AStamp && ppl_ann->subType() == Poppler::Annotation::AStamp) {
+        const Okular::StampAnnotation *okl_stampann = static_cast<const Okular::StampAnnotation *>(okl_ann);
+        if (okl_stampann->isOkularLatex()) {
+            updatePopplerAnnotationFromOkularAnnotation(okl_stampann, static_cast<Poppler::StampAnnotation *>(ppl_ann), ppl_page.get());
         }
     }
 
@@ -1304,6 +1312,9 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
     oStampAnn->setLatexLayoutWidth(popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexLayoutWidth"), 0.0));
     if (oStampAnn->isOkularLatex()) {
         oStampAnn->setStampIconName(QStringLiteral("latex-notes"));
+        oStampAnn->setLatexTextColor(popplerAnnotation->style().color());
+        oStampAnn->setLatexFillColor(popplerAnnotation->okularLatexNoteFillColor());
+        oStampAnn->setLatexBorderColor(popplerAnnotation->okularLatexNoteBorderColor());
         oStampAnn->style().setWidth(popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), false) ? 1.0 : 0.0);
     }
 #endif

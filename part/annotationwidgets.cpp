@@ -452,7 +452,6 @@ const QList<QPair<QString, QString>> &StampAnnotationWidget::defaultStamps()
 
 StampAnnotationWidget::StampAnnotationWidget(Okular::Annotation *ann)
     : AnnotationWidget(ann)
-    , m_pixmapSelector(nullptr)
 {
     m_stampAnn = static_cast<Okular::StampAnnotation *>(ann);
 }
@@ -463,6 +462,38 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
 
     addOpacitySpinBox(widget, formlayout);
     addVerticalSpacer(formlayout);
+
+    if (m_stampAnn->isOkularLatex()) {
+        m_latexTextColorBn = new KColorButton(widget);
+        QColor textColor = m_stampAnn->latexTextColor();
+        if (!textColor.isValid() || textColor.alpha() == 0) {
+            textColor = Qt::black;
+        }
+        m_latexTextColorBn->setColor(textColor);
+        formlayout->addRow(i18n("Text &color:"), m_latexTextColorBn);
+        connect(m_latexTextColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+
+        if (m_stampAnn->style().width() > 0.0) {
+            m_latexFillColorBn = new KColorButton(widget);
+            QColor fillColor = m_stampAnn->latexFillColor();
+            if (!fillColor.isValid() || fillColor.alpha() == 0) {
+                fillColor = Qt::yellow;
+            }
+            m_latexFillColorBn->setColor(fillColor);
+            formlayout->addRow(i18n("&Color:"), m_latexFillColorBn);
+            connect(m_latexFillColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+
+            m_latexBorderColorBn = new KColorButton(widget);
+            QColor borderColor = m_stampAnn->latexBorderColor();
+            if (!borderColor.isValid() || borderColor.alpha() == 0) {
+                borderColor = textColor;
+            }
+            m_latexBorderColorBn->setColor(borderColor);
+            formlayout->addRow(i18n("Border &color:"), m_latexBorderColorBn);
+            connect(m_latexBorderColorBn, &KColorButton::changed, this, &AnnotationWidget::dataChanged);
+        }
+        return;
+    }
 
     m_pixmapSelector = new PixmapPreviewSelector(widget, PixmapPreviewSelector::Below);
     formlayout->addRow(i18n("Stamp symbol:"), m_pixmapSelector);
@@ -481,6 +512,24 @@ void StampAnnotationWidget::createStyleWidget(QFormLayout *formlayout)
 void StampAnnotationWidget::applyChanges()
 {
     AnnotationWidget::applyChanges();
+
+    if (m_stampAnn->isOkularLatex()) {
+        if (m_latexTextColorBn) {
+            m_stampAnn->setLatexTextColor(m_latexTextColorBn->color());
+            m_stampAnn->style().setColor(m_latexTextColorBn->color());
+        }
+        if (m_latexFillColorBn) {
+            m_stampAnn->setLatexFillColor(m_latexFillColorBn->color());
+        } else {
+            m_stampAnn->setLatexFillColor(Qt::transparent);
+        }
+        if (m_latexBorderColorBn) {
+            m_stampAnn->setLatexBorderColor(m_latexBorderColorBn->color());
+        } else {
+            m_stampAnn->setLatexBorderColor(Qt::transparent);
+        }
+        return;
+    }
 
     const QString selectedIcon = m_pixmapSelector->icon();
     const QFileInfo selectedFile(selectedIcon);

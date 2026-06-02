@@ -209,7 +209,7 @@ QColor colorForLatexAnnotation(const Okular::Annotation *annotation)
         return textColor;
     }
 
-    QColor textColor = annotation->style().color();
+    QColor textColor = annotation->latexTextColor();
     if (!textColor.isValid() || textColor.alpha() == 0) {
         textColor = Qt::black;
     }
@@ -471,6 +471,8 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
                                           int pageNumber,
                                           Okular::StampAnnotation *stampAnnotation,
                                           const QColor &textColor,
+                                          const QColor &fillColor,
+                                          const QColor &borderColor,
                                           double layoutWidthPoints,
                                           bool boxed,
                                           double visualScale)
@@ -507,9 +509,11 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
     }
 
     const Okular::NormalizedRect updatedRect = boundingRectForPdf(stampAnnotation->boundingRectangle(), page, visualSizePoints, visualScale);
+    const double targetBorderWidth = boxed ? qMax(1.0, stampAnnotation->style().width()) : 0.0;
     showRenderWarning(parent, rendered.warning);
     if (rendered.pdfFileName == stampAnnotation->latexAppearancePdfFileName() && updatedRect == stampAnnotation->boundingRectangle() && qAbs(stampAnnotation->latexLayoutWidth() - layoutWidthPoints) < 1e-3
-        && qAbs(stampAnnotation->latexScale() - visualScale) < 1e-6 && stampAnnotation->isOkularLatex() && ((stampAnnotation->style().width() > 0.0) == boxed)) {
+        && qAbs(stampAnnotation->latexScale() - visualScale) < 1e-6 && stampAnnotation->isOkularLatex() && stampAnnotation->latexTextColor() == textColor
+        && stampAnnotation->latexFillColor() == fillColor && stampAnnotation->latexBorderColor() == borderColor && qAbs(stampAnnotation->style().width() - targetBorderWidth) < 1e-6) {
         return true;
     }
 
@@ -520,7 +524,10 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
     stampAnnotation->setLatexAppearancePdfFileName(rendered.pdfFileName);
     stampAnnotation->setLatexLayoutWidth(layoutWidthPoints);
     stampAnnotation->setLatexScale(visualScale);
-    stampAnnotation->style().setWidth(boxed ? 1.0 : 0.0);
+    stampAnnotation->setLatexTextColor(textColor);
+    stampAnnotation->setLatexFillColor(fillColor);
+    stampAnnotation->setLatexBorderColor(borderColor);
+    stampAnnotation->style().setWidth(targetBorderWidth);
     stampAnnotation->style().setColor(textColor);
     stampAnnotation->setBoundingRectangle(updatedRect);
     stampAnnotation->setModificationDate(QDateTime::currentDateTime());
