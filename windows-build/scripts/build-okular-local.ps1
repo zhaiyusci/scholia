@@ -31,7 +31,7 @@ function Convert-ToCraftPath([string] $Path) {
 }
 
 function Invoke-Craft([string[]] $CraftArgs) {
-    & (Join-Path $PSScriptRoot "craft.ps1") @CraftArgs
+    & (Join-Path $PSScriptRoot "craft.ps1") @CraftArgs | ForEach-Object { Write-Host $_ }
     return $LASTEXITCODE
 }
 

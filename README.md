@@ -174,6 +174,44 @@ and /OkularLatex is true
 and /Contents is non-empty
 ```
 
+## LaTeX Note Rendering And Resize Contract
+
+LaTeX notes separate the editable layout width from the visual scale:
+
+- The layout width controls TeX reflow. Horizontal width-handle changes may
+  re-render the note because they change the TeX paragraph width.
+- The visual scale controls display size. Vertical-only resizing is a pure
+  rescale operation and must not call TeX, MicroTeX, or any TeX Live helper.
+  If the runtime appearance PDF path is unavailable, the resize path derives
+  the unscaled visual size from the current annotation rectangle and
+  `/OkularLatexScale` instead of re-rendering.
+- Overflow is a warning state, not a reason to run TeX twice. When system TeX
+  renders source-PDF appearances, Okular runs TeX once on a large page
+  (`article` with `geometry` `paper=a0paper,margin=0pt` and no page numbers)
+  and then runs `pdfcrop --hires --margins "0 0 0 0"` to crop the PDF to the
+  actual drawn ink. The first TeX log is kept for `Overfull \hbox` warning
+  detection. The old second TeX pass for overflow compensation must not be
+  restored.
+- MicroTeX does not use `pdfcrop`. It renders directly into a PDF sized from
+  its measured vector bounds and writes the needed crop box itself. Therefore a
+  MicroTeX-only runtime is expected to work without any system TeX Live tools.
+
+When debugging renderer selection, enable `org.kde.okular.ui.debug`. Every TeX
+or TeX-like render operation writes a line to
+`okular-tex-debug.log` under the platform local application data directory. On
+Windows this is normally:
+
+```text
+%LOCALAPPDATA%\okular\okular-tex-debug.log
+```
+
+Expected operations are:
+
+- `system-latex` for a system `xelatex` or `lualatex` compile.
+- `texlive-pdfcrop` for the system-TeX PDF crop post-process.
+- `microtex-render` for MicroTeX rendering or Auto fallback when system TeX is
+  unavailable.
+
 ## Image Note PDF Structure
 
 Image notes use standard PDF stamp annotations. The semantic PDF shape is:

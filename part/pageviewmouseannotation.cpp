@@ -584,6 +584,26 @@ static Okular::NormalizedRect latexAnnotationRectFromControlRect(const Okular::N
     return isUsableRect(normalizedRect) ? normalizedRect : Okular::NormalizedRect();
 }
 
+static QSizeF latexVisualSizeForResize(const Okular::Annotation *annotation, const Okular::Page *page, const QSizeF &pdfSizePoints, double layoutWidthPoints, double visualScale)
+{
+    const QSizeF visualSize = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, layoutWidthPoints);
+    if (visualSize.isValid() && !visualSize.isEmpty()) {
+        return visualSize;
+    }
+
+    if (!annotation || !page || !std::isfinite(visualScale) || visualScale <= 0.0) {
+        return {};
+    }
+
+    const double widthPoints = LatexNoteUtils::rectWidthInPoints(annotation->boundingRectangle(), page) / visualScale;
+    const double heightPoints = LatexNoteUtils::rectHeightInPoints(annotation->boundingRectangle(), page) / visualScale;
+    if (!std::isfinite(widthPoints) || !std::isfinite(heightPoints) || widthPoints <= 0.0 || heightPoints <= 0.0) {
+        return {};
+    }
+
+    return QSizeF(widthPoints, heightPoints);
+}
+
 static bool updateLatexNoteAfterResize(Okular::Document *document,
                                        int pageNumber,
                                        Okular::Annotation *annotation,
@@ -622,23 +642,9 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
     qCDebug(OkularUiDebug) << "Finalizing LaTeX note resize; handle:" << int(handle) << "rotated handle:" << int(rotatedHandle) << "adjusts layout width:" << adjustsLayoutWidth
                             << "adjusts scale:" << adjustsVertically << "visible width:" << visibleWidthPoints << "visible height:" << visibleHeightPoints;
 
-    if (adjustsVertically && (!currentPdfSize.isValid() || currentPdfSize.isEmpty())) {
-        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(annotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
-        if (!rendered.ok) {
-            qCWarning(OkularUiDebug) << "LaTeX note resize refresh failed:" << rendered.errorMessage;
-            return false;
-        }
-        renderWarning = rendered.warning;
-        pdfFileName = rendered.pdfFileName;
-        currentPdfSize = rendered.pdfSizePoints;
-    }
-
     double visualScale = latexAnnotationScale(annotation);
+    QSizeF currentVisualSize = latexVisualSizeForResize(annotation, page, currentPdfSize, layoutWidthPoints, visualScale);
     if (adjustsVertically) {
-        if (!currentPdfSize.isValid() || currentPdfSize.isEmpty()) {
-            return false;
-        }
-        const QSizeF currentVisualSize = LatexNoteUtils::visualSizeForLatexTextAnnotation(currentPdfSize, layoutWidthPoints);
         if (!currentVisualSize.isValid() || currentVisualSize.isEmpty()) {
             return false;
         }
@@ -665,16 +671,17 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
 
         pdfFileName = rendered.pdfFileName;
         pdfSize = rendered.pdfSizePoints;
+        currentVisualSize = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSize, layoutWidthPoints);
         qCDebug(OkularUiDebug) << "LaTeX note resize reflow produced PDF; path:" << pdfFileName << "size:" << pdfSize << "warning:" << LatexNoteUtils::warningText(renderWarning);
         if (!pdfSize.isValid() || pdfSize.isEmpty()) {
             qCWarning(OkularUiDebug) << "Could not read resized LaTeX note PDF size";
             return false;
         }
-    } else if (!pdfSize.isValid() || pdfSize.isEmpty()) {
+    } else if (!currentVisualSize.isValid() || currentVisualSize.isEmpty()) {
         return false;
     }
 
-    const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSize, layoutWidthPoints);
+    const QSizeF visualSizePoints = adjustsLayoutWidth ? LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSize, layoutWidthPoints) : currentVisualSize;
     const Okular::NormalizedRect updatedRect = latexAnnotationRectFromControlRect(resizedRect, page, visualSizePoints, visualScale);
     if (!isUsableRect(updatedRect)) {
         qCWarning(OkularUiDebug) << "LaTeX note resize produced an invalid annotation rectangle";

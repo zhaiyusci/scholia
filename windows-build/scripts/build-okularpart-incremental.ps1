@@ -49,8 +49,12 @@ try {
         if (!(Test-Path -LiteralPath $from)) {
             throw "Missing source file: $from"
         }
-        Write-Host "Sync: $sourceFile"
-        Copy-Item -LiteralPath $from -Destination $to -Force
+        if ([System.IO.Path]::GetFullPath($from) -eq [System.IO.Path]::GetFullPath($to)) {
+            Write-Host "Sync skipped, source already in Craft tree: $sourceFile"
+        } else {
+            Write-Host "Sync: $sourceFile"
+            Copy-Item -LiteralPath $from -Destination $to -Force
+        }
     }
 
     $mingwPath = "C:\Users\Yu Zhai\mingw64\bin"

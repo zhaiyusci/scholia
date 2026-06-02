@@ -20,7 +20,9 @@
 
 #include <QColor>
 #include <QByteArray>
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QImage>
 #include <QPageLayout>
@@ -101,6 +103,39 @@ QString sourceLatexBackendName(const QString &executable)
 bool canUseMicrotexForRender(bool renderSource, QString *pdfFileName, int resolution)
 {
     return renderSource && pdfFileName && resolution <= 0;
+}
+
+QString texInvocationLogPath()
+{
+    QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (logDir.isEmpty()) {
+        logDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    }
+    if (logDir.isEmpty()) {
+        logDir = QDir::tempPath();
+    }
+    QDir().mkpath(logDir);
+    return QDir(logDir).filePath(QStringLiteral("okular-tex-debug.log"));
+}
+
+void logTexInvocation(const char *operation, const QString &backend, const QString &reason, const QStringList &details = QStringList())
+{
+    if (!OkularUiDebug().isDebugEnabled()) {
+        return;
+    }
+
+    QStringList fields = {QStringLiteral("Invoking TeX; operation: %1").arg(QLatin1String(operation)), QStringLiteral("backend: %1").arg(backend), QStringLiteral("reason: %1").arg(reason)};
+    for (const QString &detail : details) {
+        fields << detail;
+    }
+    const QString message = fields.join(QStringLiteral("; "));
+    qCDebug(OkularUiDebug).noquote() << message;
+
+    QFile logFile(texInvocationLogPath());
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        QTextStream stream(&logFile);
+        stream << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << " " << message << '\n';
+    }
 }
 
 QString latexRuntimeTempPath()
@@ -742,6 +777,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         tex::Graphics2D_qt graphics(&painter);
         render->draw(graphics, 0, 0);
         painter.end();
+        qCDebug(OkularUiDebug) << "MicroTeX draw finished; output PDF:" << tempFileName;
 
         addIncrementalPdfCropBox(tempFileName, 0.0, qMax(0.0, height - paddedContentHeight), qMin(width, paddedContentWidth), height);
 
@@ -753,6 +789,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
 
         pdfFileName = tempFileName;
         fileList << tempFileName;
+        qCDebug(OkularUiDebug) << "MicroTeX render finished; output PDF:" << pdfFileName << "bytes:" << QFileInfo(pdfFileName).size();
         QStringList outputLines;
         outputLines << QStringLiteral("Rendered with MicroTeX fallback. LaTeX preamble and external packages are not supported by MicroTeX.");
         if (fixedWidth) {
@@ -830,27 +867,6 @@ LatexRenderWarning latexWarningMessage(const QString &latexOutput)
     return {};
 }
 
-double maxHorizontalOverflowPoints(const QString &latexOutput)
-{
-    static const QRegularExpression overfullHBoxRegex(QStringLiteral("^Overfull \\\\hbox \\(([0-9]+(?:\\.[0-9]+)?)pt too wide\\)"));
-    constexpr double overfullThresholdPt = 0.5;
-
-    double maxOverflow = 0.0;
-    const QStringList lines = latexOutput.split(QLatin1Char('\n'));
-    for (const QString &line : lines) {
-        const QRegularExpressionMatch match = overfullHBoxRegex.match(line.trimmed());
-        if (!match.hasMatch()) {
-            continue;
-        }
-
-        const double overflow = match.captured(1).toDouble();
-        if (overflow > maxOverflow) {
-            maxOverflow = overflow;
-        }
-    }
-
-    return maxOverflow > overfullThresholdPt ? maxOverflow : 0.0;
-}
 }
 
 LatexRenderer::LatexRenderer()
@@ -1054,13 +1070,19 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     const bool renderSource = bodyMode == BodyMode::Source;
     const bool constrainSourceWidth = renderSource && std::isfinite(maxWidth) && maxWidth > 0.0;
     const QString sourceWidth = constrainSourceWidth ? QString::number(maxWidth, 'f', 3) + QStringLiteral("bp") : QString();
-    const QString sourceVarWidth = QStringLiteral("varwidth");
     const QString effectiveSourcePreamble = sourcePreamble.isNull() ? defaultSourcePreamble() : sourcePreamble;
     const int latexRenderBackend = Okular::Settings::latexRenderBackend();
 
-    auto renderWithMicrotex = [&]() -> Error {
+    auto renderWithMicrotex = [&](const char *reason) -> Error {
         fileName.clear();
 #ifdef OKULAR_ENABLE_MICROTEX
+        logTexInvocation("microtex-render",
+                         QStringLiteral("microtex"),
+                         QString::fromLatin1(reason),
+                         {QStringLiteral("font size: %1").arg(fontSize),
+                          QStringLiteral("resolution: %1").arg(resolution),
+                          QStringLiteral("max width: %1").arg(maxWidth),
+                          QStringLiteral("source length: %1").arg(latexSource.size())});
         Error microtexError = renderMicrotexToPdf(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList, &m_lastWarning);
         if (microtexError == NoError) {
             m_lastBackendName = QStringLiteral("microtex");
@@ -1074,7 +1096,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     };
 
     if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Microtex && canUseMicrotexForRender(renderSource, pdfFileName, resolution)) {
-        return renderWithMicrotex();
+        return renderWithMicrotex("configured-microtex");
     }
 
     QTemporaryFile *tempFile = new QTemporaryFile(QDir(latexRuntimeTempPath()).filePath(QStringLiteral("okular_kdelatex-XXXXXX.tex")));
@@ -1089,7 +1111,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     delete tempFileInfo;
     tempFile->close();
 
-    auto writeLatexSource = [&](double extraRightWidthPoints) -> bool {
+    auto writeLatexSource = [&]() -> bool {
         QFile sourceFile(tempFileName);
         if (!sourceFile.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
             return false;
@@ -1099,10 +1121,13 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         if (renderSource) {
             tempStream << "\
 \\documentclass["
-                       << fontSize << "pt," << sourceVarWidth << ",border=0pt]{standalone}\n"
+                       << fontSize << "pt]{article}\n"
+                       << "\\usepackage[paper=a0paper,margin=0pt]{geometry}\n"
                        << effectiveSourcePreamble << "\n"
                        << "\\pagestyle{empty}\n"
+                          "\\setlength{\\parindent}{0pt}\n"
                           "\\begin{document}\n";
+            tempStream << "\\thispagestyle{empty}\n";
             tempStream << "{\\color[rgb]{"
                        << textColor.redF()
                        << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
@@ -1132,9 +1157,6 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
             tempStream << latexSource;
             if (constrainSourceWidth) {
                 tempStream << "\n\\end{minipage}%\n";
-                if (std::isfinite(extraRightWidthPoints) && extraRightWidthPoints > 0.0) {
-                    tempStream << "\\hspace*{" << QString::number(extraRightWidthPoints, 'f', 3) << "bp}%\n";
-                }
             }
         }
         tempStream << "} \
@@ -1142,7 +1164,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         return true;
     };
 
-    if (!writeLatexSource(0.0)) {
+    if (!writeLatexSource()) {
         delete tempFile;
         return LatexNotFound;
     }
@@ -1153,28 +1175,28 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         delete tempFile;
         fileName = QString();
         if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Auto && canUseMicrotexForRender(renderSource, pdfFileName, resolution)) {
-            return renderWithMicrotex();
+            return renderWithMicrotex("system-tex-not-found-fallback");
         }
         return LatexNotFound;
     }
     m_lastBackendName = renderSource ? sourceLatexBackendName(latexExecutable) : QStringLiteral("latex");
-    auto runLatex = [&]() -> QString {
+    auto runLatex = [&](const char *reason) -> QString {
         KProcess latexProc;
         latexProc << latexExecutable << QStringLiteral("-interaction=nonstopmode") << QStringLiteral("-halt-on-error") << QStringLiteral("-output-directory=%1").arg(tempFilePath) << tempFileName;
         latexProc.setOutputChannelMode(KProcess::MergedChannels);
+        logTexInvocation("system-latex",
+                         m_lastBackendName,
+                         QString::fromLatin1(reason),
+                         {QStringLiteral("executable: %1").arg(latexExecutable),
+                          QStringLiteral("source: %1").arg(tempFileName),
+                          QStringLiteral("output directory: %1").arg(tempFilePath),
+                          QStringLiteral("max width: %1").arg(maxWidth)});
         latexProc.execute();
         return QString::fromLocal8Bit(latexProc.readAll());
     };
 
-    latexOutput = runLatex();
+    latexOutput = runLatex("initial-render");
     m_lastWarning = latexWarningMessage(latexOutput);
-    if (renderSource && pdfFileName && resolution <= 0 && constrainSourceWidth) {
-        const double overflowPoints = maxHorizontalOverflowPoints(latexOutput);
-        if (overflowPoints > 0.0 && writeLatexSource(overflowPoints + 1.0)) {
-            latexOutput = runLatex();
-            m_lastWarning = latexWarningMessage(latexOutput);
-        }
-    }
     tempFile->remove();
 
     QFile::remove(tempFileNameNS + QStringLiteral(".log"));
@@ -1182,7 +1204,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     delete tempFile;
 
     if (renderSource) {
-        const QString temporaryPdfFile = tempFileNameNS + QStringLiteral(".pdf");
+        QString temporaryPdfFile = tempFileNameNS + QStringLiteral(".pdf");
         if (!QFile::exists(temporaryPdfFile)) {
             fileName = QString();
             if (pdfFileName) {
@@ -1191,11 +1213,47 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
             return LatexFailed;
         }
 
+        const QString pdfCropExecutable = QStandardPaths::findExecutable(QStringLiteral("pdfcrop"));
+        if (pdfCropExecutable.isEmpty()) {
+            qCDebug(OkularUiDebug) << "Could not find pdfcrop!";
+            QFile::remove(temporaryPdfFile);
+            fileName = QString();
+            if (pdfFileName) {
+                pdfFileName->clear();
+            }
+            latexOutput += QStringLiteral("\npdfcrop was not found.");
+            return LatexFailed;
+        }
+
+        const QString croppedPdfFile = tempFileNameNS + QStringLiteral("-crop.pdf");
+        QFile::remove(croppedPdfFile);
+        KProcess pdfCropProc;
+        pdfCropProc << pdfCropExecutable << QStringLiteral("--hires") << QStringLiteral("--margins") << QStringLiteral("0 0 0 0") << temporaryPdfFile << croppedPdfFile;
+        pdfCropProc.setOutputChannelMode(KProcess::MergedChannels);
+        logTexInvocation("texlive-pdfcrop",
+                         QStringLiteral("pdfcrop"),
+                         QStringLiteral("source-pdf-crop"),
+                         {QStringLiteral("executable: %1").arg(pdfCropExecutable), QStringLiteral("input: %1").arg(temporaryPdfFile), QStringLiteral("output: %1").arg(croppedPdfFile)});
+        const int pdfCropExitCode = pdfCropProc.execute();
+        const QString pdfCropOutput = QString::fromLocal8Bit(pdfCropProc.readAll());
+        if (pdfCropExitCode != 0 || !QFile::exists(croppedPdfFile)) {
+            qCWarning(OkularUiDebug) << "Could not crop rendered LaTeX PDF; exit code:" << pdfCropExitCode << "output:" << pdfCropOutput;
+            QFile::remove(temporaryPdfFile);
+            fileName = QString();
+            if (pdfFileName) {
+                pdfFileName->clear();
+            }
+            latexOutput += QLatin1Char('\n') + pdfCropOutput;
+            return LatexFailed;
+        }
+        QFile::remove(temporaryPdfFile);
+        temporaryPdfFile = croppedPdfFile;
+        m_fileList << temporaryPdfFile;
+
         if (resolution <= 0) {
             fileName.clear();
             if (pdfFileName) {
                 *pdfFileName = temporaryPdfFile;
-                m_fileList << temporaryPdfFile;
             } else {
                 QFile::remove(temporaryPdfFile);
             }
@@ -1215,6 +1273,13 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
 
         pdfToImageProc << pdfToImageExecutable << QStringLiteral("-png") << QStringLiteral("-singlefile") << QStringLiteral("-transp") << QStringLiteral("-r") << QString::number(resolution) << QStringLiteral("%1").arg(temporaryPdfFile) << tempFileNameNS;
         pdfToImageProc.setOutputChannelMode(KProcess::MergedChannels);
+        logTexInvocation("pdf-to-image",
+                         QStringLiteral("system-converter"),
+                         QStringLiteral("render-image"),
+                         {QStringLiteral("executable: %1").arg(pdfToImageExecutable),
+                          QStringLiteral("source PDF: %1").arg(temporaryPdfFile),
+                          QStringLiteral("output base: %1").arg(tempFileNameNS),
+                          QStringLiteral("resolution: %1").arg(resolution)});
         pdfToImageProc.execute();
 
         if (pdfFileName) {
@@ -1252,6 +1317,13 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
     dvipngProc << dvipngExecutable << QStringLiteral("-o%1").arg(tempFileNameNS + QStringLiteral(".png")) << QStringLiteral("-Ttight") << QStringLiteral("-bgTransparent") << QStringLiteral("-D %1").arg(resolution)
                << QStringLiteral("%1").arg(tempFileNameNS + QStringLiteral(".dvi"));
     dvipngProc.setOutputChannelMode(KProcess::MergedChannels);
+    logTexInvocation("dvi-to-image",
+                     QStringLiteral("system-converter"),
+                     QStringLiteral("render-image"),
+                     {QStringLiteral("executable: %1").arg(dvipngExecutable),
+                      QStringLiteral("source DVI: %1").arg(tempFileNameNS + QStringLiteral(".dvi")),
+                      QStringLiteral("output PNG: %1").arg(tempFileNameNS + QStringLiteral(".png")),
+                      QStringLiteral("resolution: %1").arg(resolution)});
     dvipngProc.execute();
 
     QFile::remove(tempFileNameNS + QStringLiteral(".dvi"));

@@ -1,42 +1,29 @@
 param(
-    [string] $TinyTeXRoot = "",
     [string] $OutDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptRoot "..\..\.."))
-$workspaceRoot = Split-Path -Parent $repoRoot
-if (!$TinyTeXRoot) {
-    $TinyTeXRoot = Join-Path $workspaceRoot "TinyTeX"
-}
 if (!$OutDir) {
     $OutDir = Join-Path $scriptRoot "out"
 }
 
 $texFile = Join-Path $scriptRoot "cjk-xelatex-smoke.tex"
-$tinyTeXBin = Join-Path $TinyTeXRoot "bin\windows"
-$xelatex = Join-Path $tinyTeXBin "xelatex.exe"
-$tlmgr = Join-Path $tinyTeXBin "tlmgr.bat"
+$xelatex = (Get-Command xelatex.exe -ErrorAction SilentlyContinue).Source
+$kpsewhich = (Get-Command kpsewhich.exe -ErrorAction SilentlyContinue).Source
 
-if (!(Test-Path -LiteralPath $xelatex)) {
-    throw "xelatex.exe not found: $xelatex"
+if (!$xelatex) {
+    throw "xelatex.exe was not found in PATH."
 }
-if (!(Test-Path -LiteralPath $tlmgr)) {
-    throw "tlmgr.bat not found: $tlmgr"
+if (!$kpsewhich) {
+    throw "kpsewhich.exe was not found in PATH."
 }
-
-$env:PATH = "$tinyTeXBin;$env:PATH"
 
 Write-Host "Checking required XeLaTeX CJK package..."
-& kpsewhich.exe xeCJK.sty | Out-Null
+& $kpsewhich xeCJK.sty | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "xeCJK.sty not found. Installing TinyTeX packages: xecjk ctex cjk"
-    & $tlmgr install xecjk ctex cjk
-    if ($LASTEXITCODE -ne 0) {
-        throw "tlmgr failed while installing CJK packages."
-    }
+    throw "xeCJK.sty was not found. Install the xeCJK/ctex packages in the system TeX distribution."
 } else {
     Write-Host "Found xeCJK.sty."
 }

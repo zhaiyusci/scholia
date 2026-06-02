@@ -17,4 +17,4 @@ Output:
 ```
 
 The script checks for `xeCJK.sty`; if it is missing, it installs the relevant
-TinyTeX packages with `tlmgr`.
+packages with your system TeX package manager before running this smoke test.
