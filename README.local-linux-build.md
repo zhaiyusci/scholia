@@ -186,6 +186,8 @@ export QT_QUICK_CONTROLS_STYLE_PATH="\$libdir/qml/QtQuick/Controls.2\${QT_QUICK_
 export MANPATH="\$prefix/share/man:\${MANPATH:-/usr/local/share/man:/usr/share/man}"
 export SASL_PATH="\$libdir/sasl2:\${SASL_PATH:-/usr/lib64/sasl2}"
 export POPPLER_DATADIR="\$prefix/share/poppler"
+okular_default_logging_rules="kf.kio.workers.file.debug=false;kf.kio.workers.file.info=false"
+export QT_LOGGING_RULES="\$okular_default_logging_rules\${QT_LOGGING_RULES:+;\$QT_LOGGING_RULES}"
 
 exec "\$prefix/bin/okular" "\$@"
 EOF

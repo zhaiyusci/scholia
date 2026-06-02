@@ -102,7 +102,7 @@ static Poppler::TextAnnotation::TextType okularToPoppler(Okular::TextAnnotation:
     case Okular::TextAnnotation::InPlace:
         return Poppler::TextAnnotation::InPlace;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << ott;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << ott;
     }
 
     return Poppler::TextAnnotation::Linked;
@@ -116,7 +116,7 @@ static Poppler::Annotation::LineEffect okularToPoppler(Okular::Annotation::LineE
     case Okular::Annotation::Cloudy:
         return Poppler::Annotation::Cloudy;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << ole;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << ole;
     }
 
     return Poppler::Annotation::NoEffect;
@@ -136,7 +136,7 @@ static Poppler::Annotation::LineStyle okularToPoppler(Okular::Annotation::LineSt
     case Okular::Annotation::Underline:
         return Poppler::Annotation::Underline;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << ols;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << ols;
     }
 
     return Poppler::Annotation::Solid;
@@ -152,7 +152,7 @@ static Poppler::TextAnnotation::InplaceIntent okularToPoppler(Okular::TextAnnota
     case Okular::TextAnnotation::TypeWriter:
         return Poppler::TextAnnotation::TypeWriter;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << oii;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << oii;
     }
 
     return Poppler::TextAnnotation::Unknown;
@@ -182,7 +182,7 @@ static Poppler::LineAnnotation::TermStyle okularToPoppler(Okular::LineAnnotation
     case Okular::LineAnnotation::Slash:
         return Poppler::LineAnnotation::Slash;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << ots;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << ots;
     }
 
     return Poppler::LineAnnotation::None;
@@ -200,7 +200,7 @@ static Poppler::LineAnnotation::LineIntent okularToPoppler(Okular::LineAnnotatio
     case Okular::LineAnnotation::PolygonCloud:
         return Poppler::LineAnnotation::PolygonCloud;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << oli;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << oli;
     }
 
     return Poppler::LineAnnotation::Unknown;
@@ -214,7 +214,7 @@ static Poppler::GeomAnnotation::GeomType okularToPoppler(Okular::GeomAnnotation:
     case Okular::GeomAnnotation::InscribedCircle:
         return Poppler::GeomAnnotation::InscribedCircle;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << ogt;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << ogt;
     }
 
     return Poppler::GeomAnnotation::InscribedSquare;
@@ -232,7 +232,7 @@ static Poppler::HighlightAnnotation::HighlightType okularToPoppler(Okular::Highl
     case Okular::HighlightAnnotation::StrikeOut:
         return Poppler::HighlightAnnotation::StrikeOut;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << oht;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << oht;
     }
 
     return Poppler::HighlightAnnotation::Highlight;
@@ -246,7 +246,7 @@ static Poppler::CaretAnnotation::CaretSymbol okularToPoppler(Okular::CaretAnnota
     case Okular::CaretAnnotation::P:
         return Poppler::CaretAnnotation::P;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << ocs;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << ocs;
     }
 
     return Poppler::CaretAnnotation::None;
@@ -407,6 +407,8 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::TextAnnota
             if (!appearanceUpdated) {
                 qCWarning(OkularPdfDebug) << "Could not embed LaTeX FreeText appearance" << pdfAppearanceFile;
             }
+        } else if (pdfAppearanceFile.isEmpty()) {
+            qCDebug(OkularPdfDebug) << "LaTeX FreeText appearance PDF is not available; no runtime path is set";
         } else {
             qCWarning(OkularPdfDebug) << "LaTeX FreeText appearance PDF is not available; path:" << pdfAppearanceFile;
         }
@@ -706,7 +708,7 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
             signatureAnnt->setPage(page);
             ppl_ann = createPopplerAnnotationFromOkularAnnotation(signatureAnnt, ppl_doc).release();
         } else {
-            qWarning() << "Unsupported annotation type" << okl_ann->subType();
+            qCWarning(OkularPdfDebug) << "Unsupported annotation type" << okl_ann->subType();
         }
 
         break;
@@ -714,7 +716,7 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
 #endif
 
     default:
-        qWarning() << "Unsupported annotation type" << okl_ann->subType();
+        qCWarning(OkularPdfDebug) << "Unsupported annotation type" << okl_ann->subType();
         return;
     }
 
@@ -810,6 +812,12 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
         const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_txtann, ppl_txtann);
         if (okl_txtann->isOkularLatex() && !appearanceUpdated && preservedAppearance) {
             ppl_txtann->setAnnotationAppearance(*preservedAppearance);
+#ifdef POPPLER_QT6_HAS_FREETEXT_APPEARANCE_FROM_CURRENT_APPEARANCE
+            if (okl_txtann->textType() == Okular::TextAnnotation::InPlace && okl_txtann->inplaceIntent() == Okular::TextAnnotation::Callout) {
+                const bool rebuiltAppearance = ppl_txtann->setTextCustomPdfFromCurrentAppearance(okl_txtann->latexScale());
+                qCDebug(OkularPdfDebug) << "Rebuilt LaTeX callout appearance from existing AP:" << rebuiltAppearance;
+            }
+#endif
         }
         break;
     }
@@ -914,7 +922,7 @@ static Okular::Annotation::LineStyle popplerToOkular(Poppler::Annotation::LineSt
     case Poppler::Annotation::Underline:
         return Okular::Annotation::Underline;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << s;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << s;
     }
 
     return Okular::Annotation::Solid;
@@ -928,7 +936,7 @@ static Okular::Annotation::LineEffect popplerToOkular(Poppler::Annotation::LineE
     case Poppler::Annotation::Cloudy:
         return Okular::Annotation::Cloudy;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << e;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << e;
     }
 
     return Okular::Annotation::NoEffect;
@@ -946,7 +954,7 @@ static Okular::Annotation::RevisionScope popplerToOkular(Poppler::Annotation::Re
     case Poppler::Annotation::Delete:
         return Okular::Annotation::Delete;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << s;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << s;
     }
 
     return Okular::Annotation::Reply;
@@ -970,7 +978,7 @@ static Okular::Annotation::RevisionType popplerToOkular(Poppler::Annotation::Rev
     case Poppler::Annotation::Completed:
         return Okular::Annotation::Completed;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << t;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << t;
     }
 
     return Okular::Annotation::None;
@@ -984,7 +992,7 @@ static Okular::TextAnnotation::TextType popplerToOkular(Poppler::TextAnnotation:
     case Poppler::TextAnnotation::InPlace:
         return Okular::TextAnnotation::InPlace;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << ptt;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << ptt;
     }
 
     return Okular::TextAnnotation::Linked;
@@ -1000,7 +1008,7 @@ static Okular::TextAnnotation::InplaceIntent popplerToOkular(Poppler::TextAnnota
     case Poppler::TextAnnotation::TypeWriter:
         return Okular::TextAnnotation::TypeWriter;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << pii;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << pii;
     }
 
     return Okular::TextAnnotation::Unknown;
@@ -1030,7 +1038,7 @@ static Okular::LineAnnotation::TermStyle popplerToOkular(Poppler::LineAnnotation
     case Poppler::LineAnnotation::Slash:
         return Okular::LineAnnotation::Slash;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << pts;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << pts;
     }
 
     return Okular::LineAnnotation::None;
@@ -1048,7 +1056,7 @@ static Okular::LineAnnotation::LineIntent popplerToOkular(Poppler::LineAnnotatio
     case Poppler::LineAnnotation::PolygonCloud:
         return Okular::LineAnnotation::PolygonCloud;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << pli;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << pli;
     }
 
     return Okular::LineAnnotation::Unknown;
@@ -1062,7 +1070,7 @@ static Okular::GeomAnnotation::GeomType popplerToOkular(Poppler::GeomAnnotation:
     case Poppler::GeomAnnotation::InscribedCircle:
         return Okular::GeomAnnotation::InscribedCircle;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << pgt;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << pgt;
     }
 
     return Okular::GeomAnnotation::InscribedSquare;
@@ -1080,7 +1088,7 @@ static Okular::HighlightAnnotation::HighlightType popplerToOkular(Poppler::Highl
     case Poppler::HighlightAnnotation::StrikeOut:
         return Okular::HighlightAnnotation::StrikeOut;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << pht;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << pht;
     }
 
     return Okular::HighlightAnnotation::Highlight;
@@ -1094,7 +1102,7 @@ static Okular::CaretAnnotation::CaretSymbol popplerToOkular(Poppler::CaretAnnota
     case Poppler::CaretAnnotation::P:
         return Okular::CaretAnnotation::P;
     default:
-        qWarning() << Q_FUNC_INFO << "unknown value" << pcs;
+        qCWarning(OkularPdfDebug) << Q_FUNC_INFO << "unknown value" << pcs;
     }
 
     return Okular::CaretAnnotation::None;

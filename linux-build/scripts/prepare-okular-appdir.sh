@@ -292,6 +292,8 @@ export QT_QUICK_CONTROLS_STYLE_PATH="$libdir/qml/QtQuick/Controls.2${QT_QUICK_CO
 export QT_TRANSLATION_PATH="$prefix/share/qt6/translations${QT_TRANSLATION_PATH:+:$QT_TRANSLATION_PATH}"
 export SASL_PATH="$libdir/sasl2${SASL_PATH:+:$SASL_PATH}"
 export POPPLER_DATADIR="$prefix/share/poppler"
+okular_default_logging_rules="kf.kio.workers.file.debug=false;kf.kio.workers.file.info=false"
+export QT_LOGGING_RULES="$okular_default_logging_rules${QT_LOGGING_RULES:+;$QT_LOGGING_RULES}"
 
 if [ -d "$prefix/share/icons/breeze" ]; then
     export QT_ICON_THEME="${QT_ICON_THEME:-breeze}"
