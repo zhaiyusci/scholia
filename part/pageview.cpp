@@ -3432,6 +3432,17 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
 
         // if the mouse has not moved since the press, that's a -click-
         if (leftButton && pageItem && pageItem == pageItemPressPos && ((d->mousePressPos - e->globalPosition()).manhattanLength() < QApplication::startDragDistance())) {
+            if (e->modifiers() & Qt::ControlModifier) {
+                const double nX = pageItem->absToPageX(eventPos.x());
+                const double nY = pageItem->absToPageY(eventPos.y());
+                const Okular::ObjectRect *linkobj = pageItem->page()->objectRect(Okular::ObjectRect::Action, nX, nY, pageItem->uncroppedWidth(), pageItem->uncroppedHeight());
+                Okular::DocumentViewport target;
+                if (viewportForInternalGotoLink(d->document, linkobj, &target)) {
+                    updateLinkPreview(linkobj, eventPos);
+                    e->accept();
+                    return;
+                }
+            }
             if (!mouseReleaseOverLink(d->mouseOverLinkObject) && (e->modifiers() == Qt::ShiftModifier)) {
                 const double nX = pageItem->absToPageX(eventPos.x());
                 const double nY = pageItem->absToPageY(eventPos.y());
@@ -5379,6 +5390,14 @@ QMenu *PageView::createProcessLinkMenu(PageViewItem *item, const QPoint eventPos
         // creating the menu and its actions
         QAction *processLink = menu->addAction(i18n("Follow This Link"));
         processLink->setObjectName(QStringLiteral("ProcessLinkAction"));
+        Okular::DocumentViewport target;
+        if (viewportForInternalGotoLink(d->document, rect, &target)) {
+            QAction *showLinkPreview = menu->addAction(QIcon::fromTheme(QStringLiteral("document-preview")), i18n("Show Link Preview"));
+            showLinkPreview->setObjectName(QStringLiteral("ShowLinkPreviewAction"));
+            connect(showLinkPreview, &QAction::triggered, this, [this, rect, eventPos]() {
+                updateLinkPreview(rect, eventPos);
+            });
+        }
         if (link->actionType() == Okular::Action::Sound) {
             processLink->setText(i18n("Play this Sound"));
             if (Okular::AudioPlayer::instance()->state() == Okular::AudioPlayer::PlayingState) {

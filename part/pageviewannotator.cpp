@@ -15,11 +15,13 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFont>
 #include <QInputDialog>
 #include <QImageReader>
 #include <QList>
 #include <QLoggingCategory>
 #include <QPainter>
+#include <QPainterPath>
 #include <QSet>
 #include <QVariant>
 
@@ -1979,20 +1981,13 @@ QPixmap PageViewAnnotator::makeToolPixmap(const QDomElement &toolElement)
 {
     QPixmap pixmap(32 * qApp->devicePixelRatio(), 32 * qApp->devicePixelRatio());
     pixmap.setDevicePixelRatio(qApp->devicePixelRatio());
+    pixmap.fill(Qt::transparent);
     const QString annotType = toolElement.attribute(QStringLiteral("type"));
-
-    // Load HiDPI variant on HiDPI screen
-    QString imageVariant;
-    if (qApp->devicePixelRatio() > 1.05) {
-        imageVariant = QStringLiteral("@2x");
-    }
-
-    // Load base pixmap. We'll draw on top of it
-    pixmap.load(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics/tool-base-okular") + imageVariant + QStringLiteral(".png")));
 
     /* Parse color, innerColor and icon (if present) */
     QColor engineColor, innerColor, textColor, annotColor;
     QString icon;
+    int endStyle = 5;
     QDomNodeList engineNodeList = toolElement.elementsByTagName(QStringLiteral("engine"));
     if (engineNodeList.size() > 0) {
         QDomElement engineEl = engineNodeList.item(0).toElement();
@@ -2019,104 +2014,151 @@ QPixmap PageViewAnnotator::makeToolPixmap(const QDomElement &toolElement)
             if (annotationEl.hasAttribute(QStringLiteral("icon"))) {
                 icon = annotationEl.attribute(QStringLiteral("icon"));
             }
+            if (annotationEl.hasAttribute(QStringLiteral("endStyle"))) {
+                endStyle = annotationEl.attribute(QStringLiteral("endStyle")).toInt();
+            }
         }
+    }
+    if (!engineColor.isValid()) {
+        engineColor = QColor(0, 0, 0);
+    }
+    if (!textColor.isValid()) {
+        textColor = QColor(0, 0, 0);
     }
 
     QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    const auto drawLetter = [&p](const QString &letter, const QColor &color) {
+        QFont font = qApp->font();
+        font.setBold(true);
+        font.setPointSize(16);
+        p.setFont(font);
+        p.setPen(color);
+        p.drawText(QRectF(0, 3, 32, 22), Qt::AlignCenter, letter);
+    };
+    const auto drawArrowHead = [&p](const QPointF &tip, const QPointF &left, const QPointF &right) {
+        QPainterPath head;
+        head.moveTo(tip);
+        head.lineTo(left);
+        head.moveTo(tip);
+        head.lineTo(right);
+        p.drawPath(head);
+    };
 
     if (annotType == QLatin1String("ellipse")) {
-        p.setRenderHint(QPainter::Antialiasing);
+        p.setBrush(Qt::NoBrush);
         if (innerColor.isValid()) {
             p.setBrush(innerColor);
         }
         p.setPen(QPen(engineColor, 2));
-        p.drawEllipse(2, 7, 21, 14);
+        p.drawEllipse(QRectF(4, 9, 24, 15));
     } else if (annotType == QLatin1String("highlight")) {
-        QImage overlay(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics/tool-highlighter-okular-colorizable") + imageVariant + QStringLiteral(".png")));
-        QImage colorizedOverlay = overlay;
-        GuiUtils::colorizeImage(colorizedOverlay, engineColor);
-
-        p.drawImage(QPoint(0, 0), colorizedOverlay);   // Trail
-        p.drawImage(QPoint(0, -32), overlay);          // Text + Shadow (uncolorized)
-        p.drawImage(QPoint(0, -64), colorizedOverlay); // Pen
+        QColor markerColor = engineColor;
+        markerColor.setAlpha(190);
+        p.setPen(Qt::NoPen);
+        p.setBrush(markerColor);
+        p.drawRoundedRect(QRectF(3, 10, 26, 11), 2.5, 2.5);
+        p.drawRoundedRect(QRectF(6, 18, 20, 7), 2.0, 2.0);
+        drawLetter(QStringLiteral("H"), QColor(45, 45, 45));
     } else if (annotType == QLatin1String("ink")) {
-        QImage overlay(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics/tool-ink-okular-colorizable") + imageVariant + QStringLiteral(".png")));
-        QImage colorizedOverlay = overlay;
-        GuiUtils::colorizeImage(colorizedOverlay, engineColor);
-
-        p.drawImage(QPoint(0, 0), colorizedOverlay);   // Trail
-        p.drawImage(QPoint(0, -32), overlay);          // Shadow (uncolorized)
-        p.drawImage(QPoint(0, -64), colorizedOverlay); // Pen
+        QPainterPath path;
+        path.moveTo(4, 22);
+        path.cubicTo(9, 8, 16, 27, 21, 13);
+        path.cubicTo(23, 8, 26, 9, 28, 12);
+        p.setPen(QPen(engineColor, 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawPath(path);
     } else if (annotType == QLatin1String("note-inline")) {
-        QImage overlay(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics/tool-note-inline-okular-colorizable") + imageVariant + QStringLiteral(".png")));
-        GuiUtils::colorizeImage(overlay, engineColor);
-        p.drawImage(QPoint(0, 0), overlay);
+        p.setPen(QPen(engineColor, 1.7));
+        p.setBrush(annotColor.isValid() ? annotColor : QColor(255, 255, 160, 180));
+        p.drawRoundedRect(QRectF(5, 7, 22, 18), 2, 2);
+        p.setPen(QPen(QColor(100, 100, 100), 1, Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(QPointF(9, 13), QPointF(23, 13));
+        p.drawLine(QPointF(9, 18), QPointF(20, 18));
     } else if (annotType == QLatin1String("note-linked")) {
-        QImage overlay(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics/tool-note-okular-colorizable") + imageVariant + QStringLiteral(".png")));
-        GuiUtils::colorizeImage(overlay, engineColor);
-        p.drawImage(QPoint(0, 0), overlay);
+        p.setPen(QPen(engineColor, 1.7));
+        p.setBrush(annotColor.isValid() ? annotColor : QColor(255, 255, 160, 220));
+        QPainterPath note;
+        note.addRoundedRect(QRectF(7, 6, 18, 20), 2, 2);
+        p.drawPath(note);
+        QPainterPath fold;
+        fold.moveTo(20, 6);
+        fold.lineTo(25, 11);
+        fold.lineTo(20, 11);
+        fold.closeSubpath();
+        p.setBrush(QColor(255, 255, 255, 160));
+        p.drawPath(fold);
     } else if (annotType == QLatin1String("note-callout")) {
-        p.setRenderHint(QPainter::Antialiasing);
+        p.setBrush(Qt::NoBrush);
         if (annotColor.isValid()) {
             p.setBrush(annotColor);
         }
         p.setPen(QPen(engineColor, 2));
         p.drawLine(QPointF(4, 24), QPointF(12, 16));
         p.drawLine(QPointF(12, 16), QPointF(19, 16));
-        p.drawRect(QRectF(18, 9, 11, 12));
+        p.drawRoundedRect(QRectF(18, 8, 11, 13), 1.5, 1.5);
     } else if (annotType == QLatin1String("polygon")) {
         QPainterPath path;
-        path.moveTo(0, 7);
-        path.lineTo(19, 7);
-        path.lineTo(19, 14);
-        path.lineTo(23, 14);
-        path.lineTo(23, 20);
-        path.lineTo(0, 20);
+        path.moveTo(6, 20);
+        path.lineTo(11, 8);
+        path.lineTo(24, 9);
+        path.lineTo(28, 20);
+        path.lineTo(17, 26);
+        path.closeSubpath();
+        p.setBrush(Qt::NoBrush);
         if (innerColor.isValid()) {
             p.setBrush(innerColor);
         }
-        p.setPen(QPen(engineColor, 1));
+        p.setPen(QPen(engineColor, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         p.drawPath(path);
     } else if (annotType == QLatin1String("rectangle")) {
-        p.setRenderHint(QPainter::Antialiasing);
+        p.setBrush(Qt::NoBrush);
         if (innerColor.isValid()) {
             p.setBrush(innerColor);
         }
         p.setPen(QPen(engineColor, 2));
-        p.drawRect(2, 7, 21, 14);
+        p.drawRect(QRectF(5, 8, 22, 17));
     } else if (annotType == QLatin1String("squiggly")) {
-        QPen pen(engineColor, 1);
-        pen.setDashPattern(QList<qreal>() << 1 << 1);
-        p.setPen(pen);
-        p.drawLine(1, 13, 16, 13);
-        p.drawLine(2, 14, 15, 14);
-        p.drawLine(0, 20, 19, 20);
-        p.drawLine(1, 21, 18, 21);
+        drawLetter(QStringLiteral("W"), QColor(45, 45, 45));
+        QPainterPath wave;
+        wave.moveTo(4, 26);
+        for (int x = 4; x <= 24; x += 4) {
+            wave.quadTo(QPointF(x, 21), QPointF(x + 2, 26));
+            wave.quadTo(QPointF(x + 4, 31), QPointF(x + 6, 26));
+        }
+        p.setPen(QPen(engineColor, 2.4, Qt::SolidLine, Qt::RoundCap));
+        p.drawPath(wave);
     } else if (annotType == QLatin1String("stamp")) {
-        QPixmap stamp = Okular::AnnotationUtils::loadStamp(icon, QSize(16, 16), Qt::IgnoreAspectRatio);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.drawPixmap(16, 14, stamp);
+        p.save();
+        p.translate(16, 16);
+        p.rotate(-10);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(engineColor, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawRoundedRect(QRectF(-10, -7, 20, 14), 2, 2);
+        p.drawLine(QPointF(-6, 1), QPointF(6, 1));
+        p.restore();
     } else if (annotType == QLatin1String("straight-line")) {
-        QPainterPath path;
-        path.moveTo(1, 8);
-        path.lineTo(20, 8);
-        path.lineTo(1, 27);
-        path.lineTo(20, 27);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(QPen(engineColor, 1));
-        p.drawPath(path); // TODO To be discussed: This is not a straight line!
+        p.setPen(QPen(engineColor, 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        if (endStyle == 3 || endStyle == 4 || endStyle == 7 || endStyle == 8) {
+            p.drawLine(QPointF(6, 24), QPointF(25, 8));
+            drawArrowHead(QPointF(25, 8), QPointF(24, 15), QPointF(18, 8));
+        } else {
+            p.drawLine(QPointF(5, 17), QPointF(27, 17));
+        }
     } else if (annotType == QLatin1String("strikeout")) {
-        p.setPen(QPen(engineColor, 1));
-        p.drawLine(1, 10, 16, 10);
-        p.drawLine(0, 17, 19, 17);
+        drawLetter(QStringLiteral("X"), QColor(45, 45, 45));
+        p.setPen(QPen(engineColor, 3.0, Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(QPointF(4, 16), QPointF(28, 16));
     } else if (annotType == QLatin1String("underline")) {
-        p.setPen(QPen(engineColor, 1));
-        p.drawLine(1, 13, 16, 13);
-        p.drawLine(0, 20, 19, 20);
+        drawLetter(QStringLiteral("U"), QColor(45, 45, 45));
+        p.setPen(QPen(engineColor, 3.0, Qt::SolidLine, Qt::RoundCap));
+        p.drawLine(QPointF(4, 27), QPointF(28, 27));
     } else if (annotType == QLatin1String("typewriter")) {
-        QImage overlay(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics/tool-typewriter-okular-colorizable") + imageVariant + QStringLiteral(".png")));
-        GuiUtils::colorizeImage(overlay, textColor);
-        p.drawImage(QPoint(-2, 2), overlay);
+        QFont font = qApp->font();
+        font.setBold(true);
+        font.setPointSize(20);
+        p.setFont(font);
+        p.setPen(textColor);
+        p.drawText(QRectF(0, 1, 32, 30), Qt::AlignCenter, QStringLiteral("T"));
     } else {
         /* Unrecognized annotation type -- It shouldn't happen */
         p.setPen(QPen(engineColor));
