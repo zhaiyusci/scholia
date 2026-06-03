@@ -30,6 +30,10 @@ example:
 cd /mnt/c/path/to/okular
 ```
 
+Build directories are kept outside the source checkout, under
+`../linux_build/`. Do not create CMake build directories in the repository
+root.
+
 From PowerShell, enter the WSL distro with:
 
 ```powershell
@@ -44,21 +48,21 @@ git submodule update --init --recursive
 
 linux-build/scripts/install-poppler-data.sh "$PREFIX"
 
-cmake -S external/poppler -B build-poppler-local \
+cmake -S external/poppler -B ../linux_build/poppler-local \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
   -DPOPPLER_DATADIR="$PREFIX/share/poppler" \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF
-cmake --build build-poppler-local -j 8
-cmake --install build-poppler-local
+cmake --build ../linux_build/poppler-local -j 8
+cmake --install ../linux_build/poppler-local
 
 PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig" \
-cmake -S . -B build-local-poppler \
+cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
   -DOKULAR_ENABLE_MICROTEX=ON \
   -DCMAKE_INSTALL_PREFIX="$PREFIX"
-cmake --build build-local-poppler -j 8
-cmake --install build-local-poppler
+cmake --build ../linux_build/okular-local-poppler -j 8
+cmake --install ../linux_build/okular-local-poppler
 ```
 
 Create or refresh the launcher after installing:
@@ -109,10 +113,10 @@ After pulling normal source changes, an incremental rebuild is usually enough:
 export PREFIX="$HOME/.local/opt/okular"
 git submodule update --init --recursive
 linux-build/scripts/install-poppler-data.sh "$PREFIX"
-cmake --build build-poppler-local -j 8
-cmake --install build-poppler-local
-cmake --build build-local-poppler -j 8
-cmake --install build-local-poppler
+cmake --build ../linux_build/poppler-local -j 8
+cmake --install ../linux_build/poppler-local
+cmake --build ../linux_build/okular-local-poppler -j 8
+cmake --install ../linux_build/okular-local-poppler
 ```
 
 Reconfigure from scratch if the Poppler submodule, CMake options, Qt/KF
@@ -123,8 +127,8 @@ packages, MicroTeX source, or install prefix changed.
 - Okular source: this repository
 - Poppler submodule: `external/poppler`
 - MicroTeX submodule: `external/MicroTeX`
-- Poppler build directory: `build-poppler-local`
-- Okular build directory: `build-local-poppler`
+- Poppler build directory: `../linux_build/poppler-local`
+- Okular build directory: `../linux_build/okular-local-poppler`
 - Install prefix: `$HOME/.local/opt/okular`
 - Poppler encoding data: `$HOME/.local/opt/okular/share/poppler`
 - Launcher: `$HOME/.local/bin/okular`
@@ -203,7 +207,7 @@ For a full local rebuild, remove the two build directories and the install
 prefix:
 
 ```sh
-rm -rf build-poppler-local build-local-poppler
+rm -rf ../linux_build/poppler-local ../linux_build/okular-local-poppler
 rm -rf "$PREFIX"
 ```
 
@@ -234,14 +238,14 @@ Configure Poppler from the submodule and install it into the shared local
 prefix:
 
 ```sh
-cmake -S external/poppler -B build-poppler-local \
+cmake -S external/poppler -B ../linux_build/poppler-local \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
   -DPOPPLER_DATADIR="$PREFIX/share/poppler" \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF
 
-cmake --build build-poppler-local -j 8
-cmake --install build-poppler-local
+cmake --build ../linux_build/poppler-local -j 8
+cmake --install ../linux_build/poppler-local
 ```
 
 This installs the Poppler core and Qt 6 wrapper under
@@ -262,20 +266,20 @@ copy:
 
 ```sh
 PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig" \
-cmake -S . -B build-local-poppler \
+cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
   -DOKULAR_ENABLE_MICROTEX=ON \
   -DCMAKE_INSTALL_PREFIX="$PREFIX"
 
-cmake --build build-local-poppler -j 8
-cmake --install build-local-poppler
+cmake --build ../linux_build/okular-local-poppler -j 8
+cmake --install ../linux_build/okular-local-poppler
 ```
 
 If `MICROTEX_SRC` is not set, Okular looks for MicroTeX at
 `external/MicroTeX`. To use a different checkout:
 
 ```sh
-cmake -S . -B build-local-poppler \
+cmake -S . -B ../linux_build/okular-local-poppler \
   -DMICROTEX_SRC=/path/to/MicroTeX
 ```
 
@@ -312,7 +316,7 @@ chmod 755 "$HOME/.local/bin/okular"
 
 This wrapper keeps the install isolated while still allowing `okular` to be
 resolved from the normal user `PATH`. It intentionally does not use
-`build-local-poppler/prefix.sh`, because the source tree should be removable
+`../linux_build/okular-local-poppler/prefix.sh`, because the source tree should be removable
 after installation. It also sets `POPPLER_DATADIR` so relocatable bundles such
 as AppImages can point Poppler at their bundled CMap and Unicode mapping data.
 
@@ -347,7 +351,7 @@ Library runpath: [$HOME/.local/opt/okular/lib64]
 Check the CMake cache if there is any doubt about which Poppler was selected:
 
 ```sh
-rg 'Poppler_.*LIBRARY|Poppler_.*INCLUDE|PKG_Poppler' build-local-poppler/CMakeCache.txt
+rg 'Poppler_.*LIBRARY|Poppler_.*INCLUDE|PKG_Poppler' ../linux_build/okular-local-poppler/CMakeCache.txt
 ```
 
 The libraries should resolve under `$HOME/.local/opt/okular`.
@@ -355,7 +359,7 @@ The libraries should resolve under `$HOME/.local/opt/okular`.
 Check that Poppler was compiled to use the bundled poppler-data directory:
 
 ```sh
-rg 'POPPLER_DATADIR' build-poppler-local/config.h
+rg 'POPPLER_DATADIR' ../linux_build/poppler-local/config.h
 strings "$PREFIX/lib64/libpoppler.so.157" | rg "$PREFIX/share/poppler"
 test -d "$PREFIX/share/poppler/cMap/Adobe-GB1"
 ```
@@ -367,10 +371,10 @@ For normal development after a source pull:
 ```sh
 git submodule update --init --recursive
 linux-build/scripts/install-poppler-data.sh "$PREFIX"
-cmake --build build-poppler-local -j 8
-cmake --install build-poppler-local
-cmake --build build-local-poppler -j 8
-cmake --install build-local-poppler
+cmake --build ../linux_build/poppler-local -j 8
+cmake --install ../linux_build/poppler-local
+cmake --build ../linux_build/okular-local-poppler -j 8
+cmake --install ../linux_build/okular-local-poppler
 ```
 
 Reconfigure from scratch if the Poppler submodule, CMake options, Qt/KF

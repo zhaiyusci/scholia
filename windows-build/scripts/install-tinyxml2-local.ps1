@@ -12,7 +12,7 @@ if (!$TinyXml2Source) {
     $TinyXml2Source = Join-Path $workspaceRoot "tinyxml2"
 }
 if (!$BuildDir) {
-    $BuildDir = Join-Path $workspaceRoot "tinyxml2-build-craft"
+    $BuildDir = Join-Path $workspaceRoot "windows_build\tinyxml2-build-craft"
 }
 
 $resolvedCraftRoot = (Resolve-Path -LiteralPath $CraftRootPath).Path

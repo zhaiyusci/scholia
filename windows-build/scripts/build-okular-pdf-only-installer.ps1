@@ -13,11 +13,12 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $workspaceRoot = Split-Path -Parent $repoRoot
+$windowsBuildRoot = Join-Path $workspaceRoot "windows_build"
 if (!$StageRoot) {
-    $StageRoot = Join-Path $workspaceRoot "dist\okular-pdf-only\app"
+    $StageRoot = Join-Path $windowsBuildRoot "dist\okular-pdf-only\app"
 }
 if (!$OutputDir) {
-    $OutputDir = Join-Path $workspaceRoot "dist"
+    $OutputDir = Join-Path $windowsBuildRoot "dist"
 }
 $StageRoot = [System.IO.Path]::GetFullPath($StageRoot)
 $OutputDir = [System.IO.Path]::GetFullPath($OutputDir)

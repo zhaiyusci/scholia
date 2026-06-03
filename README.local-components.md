@@ -34,21 +34,21 @@ PREFIX=$HOME/.local/opt/okular
 
 linux-build/scripts/install-poppler-data.sh $PREFIX
 
-cmake -S external/poppler -B build-poppler-local \
+cmake -S external/poppler -B ../linux_build/poppler-local \
   -DCMAKE_INSTALL_PREFIX=$PREFIX \
   -DPOPPLER_DATADIR=$PREFIX/share/poppler \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF
-cmake --build build-poppler-local
-cmake --install build-poppler-local
+cmake --build ../linux_build/poppler-local
+cmake --install ../linux_build/poppler-local
 
 PKG_CONFIG_PATH=$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig \
-cmake -S . -B build-local-poppler \
+cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH=$PREFIX \
   -DOKULAR_ENABLE_MICROTEX=ON \
   -DCMAKE_INSTALL_PREFIX=$PREFIX
-cmake --build build-local-poppler
-cmake --install build-local-poppler
+cmake --build ../linux_build/okular-local-poppler
+cmake --install ../linux_build/okular-local-poppler
 ```
 
 The user-facing launcher is `$HOME/.local/bin/okular`. It is a self-contained

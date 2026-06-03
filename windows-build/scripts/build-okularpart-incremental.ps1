@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string] $WorkspaceRoot = "",
+    [string] $LogRoot = "",
     [string] $CraftRoot = "C:\CraftRoot",
     [string] $CraftOkularSource = "",
     [string] $BuildDir = "C:\CraftRoot\build\kde\applications\okular\work\build",
@@ -19,12 +20,16 @@ if (!$WorkspaceRoot) {
     $WorkspaceRoot = Split-Path -Parent $repoRoot
 }
 $WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+if (!$LogRoot) {
+    $LogRoot = Join-Path (Split-Path -Parent $repoRoot) "windows_build"
+}
+$LogRoot = [System.IO.Path]::GetFullPath($LogRoot)
 
 $localOkular = Join-Path $WorkspaceRoot "okular"
 if (!$CraftOkularSource) {
     $CraftOkularSource = $localOkular
 }
-$logDir = Join-Path $WorkspaceRoot "build-logs"
+$logDir = Join-Path $LogRoot "build-logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $logPath = Join-Path $logDir "okularpart-incremental-$stamp.log"
@@ -40,6 +45,7 @@ try {
     Write-Host "Log: $logPath"
     Write-Host "Local Okular: $localOkular"
     Write-Host "Craft Okular source: $CraftOkularSource"
+    Write-Host "Log root: $LogRoot"
     Write-Host "Build dir: $BuildDir"
     Write-Host ""
 

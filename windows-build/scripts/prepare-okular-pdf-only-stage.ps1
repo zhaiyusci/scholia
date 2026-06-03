@@ -10,12 +10,13 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $workspaceRoot = Split-Path -Parent $repoRoot
+$windowsBuildRoot = Join-Path $workspaceRoot "windows_build"
 if (!$StageRoot) {
-    $StageRoot = Join-Path $workspaceRoot "dist\okular-pdf-only\app"
+    $StageRoot = Join-Path $windowsBuildRoot "dist\okular-pdf-only\app"
 }
 
 $resolvedStageRoot = [System.IO.Path]::GetFullPath($StageRoot)
-$allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot "dist"))
+$allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $windowsBuildRoot "dist"))
 if (!$resolvedStageRoot.StartsWith($allowedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to recreate stage outside $allowedRoot`: $resolvedStageRoot"
 }

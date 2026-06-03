@@ -3,6 +3,10 @@
 This directory contains the Windows build and packaging scripts for this Okular
 checkout. Run the commands below from the repository root.
 
+Windows build logs and package staging output live outside the source checkout,
+under the sibling `..\windows_build` directory. Do not create ad-hoc CMake build
+directories inside the repository root.
+
 ## Quick Command Map
 
 Use these commands from the repository root, unless noted otherwise.
@@ -11,6 +15,7 @@ Full Windows local build, PDF-only with MicroTeX:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okular-local.ps1 `
+  -WorkspaceRoot ..\windows_build `
   -PdfOnly `
   -MicroTeXSrc .\external\MicroTeX
 ```
@@ -36,7 +41,7 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 Expected installer output:
 
 ```text
-..\dist\Okular-PDF-26.07.70-patch<date>-Setup.exe
+..\windows_build\dist\Okular-PDF-26.07.70-patch<date>-Setup.exe
 ```
 
 Run the installed local build:
@@ -57,15 +62,18 @@ C:\CraftRoot\bin\okular.exe
 - Okular source: repository root, `.`
 - Poppler source: `external\poppler`
 - MicroTeX source: `external\MicroTeX`
+- Windows build workspace: `..\windows_build`
 - Craft root: `C:\CraftRoot`
 - Okular build dir: `C:\CraftRoot\build\kde\applications\okular\work\build`
+- Poppler build dir: `C:\CraftRoot\build\qt-libs\poppler\work\build`
 - Installed runtime:
   - `C:\CraftRoot\bin\okular.exe`
   - `C:\CraftRoot\bin\Okular6Core.dll`
   - `C:\CraftRoot\plugins\kf6\parts\okularpart.dll`
   - `C:\CraftRoot\plugins\okular_generators\okularGenerator_poppler.dll`
-- Build logs: `..\build-logs`
-- Package output: `..\dist`
+- Build logs: `..\windows_build\build-logs`
+- Package stage: `..\windows_build\dist\okular-pdf-only\app`
+- Package output: `..\windows_build\dist`
 
 ## Requirements
 
@@ -99,6 +107,7 @@ with MicroTeX enabled.
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okular-local.ps1 `
+  -WorkspaceRoot ..\windows_build `
   -PdfOnly `
   -MicroTeXSrc .\external\MicroTeX
 ```
@@ -114,6 +123,7 @@ Poppler:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okular-local.ps1 `
+  -WorkspaceRoot ..\windows_build `
   -SkipLocalPoppler `
   -PdfOnly `
   -MicroTeXSrc .\external\MicroTeX
