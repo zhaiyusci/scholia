@@ -137,6 +137,7 @@
   <Action name="annotation_add_image_note"/>
   <Action name="annotation_add_latex_note"/>
   <Action name="annotation_add_latex_inline_note"/>
+  <Action name="annotation_add_latex_callout"/>
   <Separator/>
   <Action name="annotation_settings_width"/>
   <Action name="annotation_settings_color"/>
@@ -156,5 +157,6 @@
     <Action name="annotation_add_image_note"/>
     <Action name="annotation_add_latex_note"/>
     <Action name="annotation_add_latex_inline_note"/>
+    <Action name="annotation_add_latex_callout"/>
 </ToolBar>
 </gui>

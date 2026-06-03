@@ -23,10 +23,13 @@
 
 #include <QDateTime>
 #include <QDebug>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QPolygon>
+#include <QStandardPaths>
+#include <QTextStream>
 #include <qevent.h>
 #include <qpainter.h>
 #include <qtooltip.h>
@@ -67,6 +70,69 @@ static Okular::TextAnnotation *calloutTextAnnotation(Okular::Annotation *annotat
     }
 
     return textAnnotation;
+}
+
+static const Okular::TextAnnotation *calloutTextAnnotation(const Okular::Annotation *annotation)
+{
+    return calloutTextAnnotation(const_cast<Okular::Annotation *>(annotation));
+}
+
+static bool isLatexCalloutStampAnnotation(const Okular::Annotation *annotation)
+{
+    return annotation && annotation->subType() == Okular::Annotation::AStamp && annotation->isOkularLatex() && annotation->isLatexCallout();
+}
+
+static QString annotationInteractionLogPath()
+{
+    QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    if (logDir.isEmpty()) {
+        logDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    }
+    if (logDir.isEmpty()) {
+        logDir = QDir::tempPath();
+    }
+    QDir().mkpath(logDir);
+    return QDir(logDir).filePath(QStringLiteral("okular-tex-debug.log"));
+}
+
+static void logLatexCalloutInteraction(const char *operation, const Okular::Annotation *annotation, const QStringList &details = QStringList())
+{
+    if (!OkularUiDebug().isDebugEnabled() || !isLatexCalloutStampAnnotation(annotation)) {
+        return;
+    }
+
+    const Okular::NormalizedRect rect = annotation->boundingRectangle();
+    QStringList fields = {QStringLiteral("LaTeX callout interaction; operation: %1").arg(QLatin1String(operation)),
+                          QStringLiteral("rect: %1,%2,%3,%4").arg(rect.left).arg(rect.top).arg(rect.right).arg(rect.bottom),
+                          QStringLiteral("flags: %1").arg(annotation->flags()),
+                          QStringLiteral("p0: %1,%2").arg(annotation->latexCalloutPoint(0).x).arg(annotation->latexCalloutPoint(0).y),
+                          QStringLiteral("p1: %1,%2").arg(annotation->latexCalloutPoint(1).x).arg(annotation->latexCalloutPoint(1).y),
+                          QStringLiteral("p2: %1,%2").arg(annotation->latexCalloutPoint(2).x).arg(annotation->latexCalloutPoint(2).y),
+                          QStringLiteral("tp0: %1,%2").arg(annotation->transformedLatexCalloutPoint(0).x).arg(annotation->transformedLatexCalloutPoint(0).y),
+                          QStringLiteral("tp1: %1,%2").arg(annotation->transformedLatexCalloutPoint(1).x).arg(annotation->transformedLatexCalloutPoint(1).y),
+                          QStringLiteral("tp2: %1,%2").arg(annotation->transformedLatexCalloutPoint(2).x).arg(annotation->transformedLatexCalloutPoint(2).y)};
+    fields << details;
+    const QString message = fields.join(QStringLiteral("; "));
+    qCDebug(OkularUiDebug).noquote() << message;
+
+    QFile logFile(annotationInteractionLogPath());
+    if (logFile.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        QTextStream stream(&logFile);
+        stream << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << " " << message << '\n';
+    }
+}
+
+static Okular::Annotation *calloutAnnotation(Okular::Annotation *annotation)
+{
+    if (calloutTextAnnotation(annotation) || isLatexCalloutStampAnnotation(annotation)) {
+        return annotation;
+    }
+    return nullptr;
+}
+
+static const Okular::Annotation *calloutAnnotation(const Okular::Annotation *annotation)
+{
+    return calloutAnnotation(const_cast<Okular::Annotation *>(annotation));
 }
 
 static QRect latexWidthHandleVisualRect(const QRect &hitRect)
@@ -113,18 +179,42 @@ static bool hasFinitePoint(const Okular::NormalizedPoint &point)
     return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-static bool hasUsableCalloutPoints(const Okular::TextAnnotation *annotation)
+static Okular::NormalizedPoint calloutPoint(const Okular::Annotation *annotation, int index, bool transformed)
+{
+    if (const auto *textAnnotation = calloutTextAnnotation(annotation)) {
+        return transformed ? textAnnotation->transformedInplaceCallout(index) : textAnnotation->inplaceCallout(index);
+    }
+    if (isLatexCalloutStampAnnotation(annotation)) {
+        return transformed ? annotation->transformedLatexCalloutPoint(index) : annotation->latexCalloutPoint(index);
+    }
+    return {};
+}
+
+static void setCalloutPoint(Okular::Annotation *annotation, const Okular::NormalizedPoint &point, int index)
+{
+    if (auto *textAnnotation = calloutTextAnnotation(annotation)) {
+        textAnnotation->setInplaceCallout(point, index);
+    } else if (isLatexCalloutStampAnnotation(annotation)) {
+        annotation->setLatexCalloutPoint(point, index);
+    }
+}
+
+static bool hasUsableCalloutPoints(const Okular::Annotation *annotation)
 {
     if (!annotation) {
         return false;
     }
 
+    bool hasNonZeroPoint = false;
     for (int i = 0; i < 3; ++i) {
-        if (!hasFinitePoint(annotation->inplaceCallout(i)) || !hasFinitePoint(annotation->transformedInplaceCallout(i))) {
+        const Okular::NormalizedPoint point = calloutPoint(annotation, i, false);
+        const Okular::NormalizedPoint transformedPoint = calloutPoint(annotation, i, true);
+        if (!hasFinitePoint(point) || !hasFinitePoint(transformedPoint)) {
             return false;
         }
+        hasNonZeroPoint = hasNonZeroPoint || point.x != 0.0 || point.y != 0.0;
     }
-    return true;
+    return hasNonZeroPoint;
 }
 
 static Okular::NormalizedPoint boundToPage(const Okular::NormalizedPoint &point)
@@ -643,6 +733,18 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
                             << "adjusts scale:" << adjustsVertically << "visible width:" << visibleWidthPoints << "visible height:" << visibleHeightPoints;
 
     double visualScale = latexAnnotationScale(annotation);
+    if ((!currentPdfSize.isValid() || currentPdfSize.isEmpty() || pdfFileName.isEmpty()) && !adjustsLayoutWidth) {
+        qCDebug(OkularUiDebug) << "Rebuilding missing LaTeX runtime appearance before resize; layout width:" << layoutWidthPoints << "scale:" << visualScale;
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(annotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints, annotation->isLatexCallout());
+        if (!rendered.ok) {
+            qCWarning(OkularUiDebug) << "LaTeX note resize appearance rebuild failed:" << rendered.errorMessage;
+            return false;
+        }
+        renderWarning = rendered.warning;
+        pdfFileName = rendered.pdfFileName;
+        currentPdfSize = rendered.pdfSizePoints;
+    }
+
     QSizeF currentVisualSize = latexVisualSizeForResize(annotation, page, currentPdfSize, layoutWidthPoints, visualScale);
     if (adjustsVertically) {
         if (!currentVisualSize.isValid() || currentVisualSize.isEmpty()) {
@@ -662,7 +764,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         }
 
         qCDebug(OkularUiDebug) << "Reflowing LaTeX note after horizontal resize; layout width:" << layoutWidthPoints << "scale:" << visualScale;
-        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(annotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints);
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(annotation->contents(), textColor, LatexNoteUtils::latexFontSize(), layoutWidthPoints, annotation->isLatexCallout());
         if (!rendered.ok) {
             qCWarning(OkularUiDebug) << "LaTeX note resize reflow failed:" << rendered.errorMessage;
             return false;
@@ -708,10 +810,10 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         const QColor fillColor = fillColorForLatexStampAnnotation(stampAnnotation, boxed);
         stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
         stampAnnotation->setStampImagePath(QString());
+        stampAnnotation->setLatexCallout(stampAnnotation->isLatexCallout());
         stampAnnotation->setLatexTextColor(textColor);
         stampAnnotation->setLatexFillColor(fillColor);
         stampAnnotation->setLatexBorderColor(borderColorForLatexStampAnnotation(stampAnnotation, boxed));
-        stampAnnotation->style().setColor(textColor);
         stampAnnotation->style().setWidth(boxed ? qMax(1.0, stampAnnotation->style().width()) : 0.0);
     }
     annotation->setOkularLatex(true);
@@ -1011,11 +1113,11 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
         return;
     }
     if (m_focusedAnnotation.annotation->canBeResized()) {
-        const Okular::TextAnnotation *calloutAnnotation = calloutTextAnnotation(m_focusedAnnotation.annotation);
-        if (hasUsableCalloutPoints(calloutAnnotation)) {
+        const Okular::Annotation *calloutAnn = calloutAnnotation(m_focusedAnnotation.annotation);
+        if (hasUsableCalloutPoints(calloutAnn)) {
             QPolygon calloutPolyline;
             for (int i = 0; i < 3; ++i) {
-                const Okular::NormalizedPoint point = calloutAnnotation->transformedInplaceCallout(i);
+                const Okular::NormalizedPoint point = calloutPoint(calloutAnn, i, true);
                 calloutPolyline << QPoint(qRound(point.x * m_focusedAnnotation.pageViewItem->uncroppedWidth()), qRound(point.y * m_focusedAnnotation.pageViewItem->uncroppedHeight()));
             }
 
@@ -1254,6 +1356,7 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
             m_hasPreviewBoundingRect = m_hasOriginalBoundingRect;
         }
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() | Okular::Annotation::BeingMoved);
+        logLatexCalloutInteraction("enter-moving", m_focusedAnnotation.annotation);
         updateViewport(m_focusedAnnotation);
         break;
     case StateResizing:
@@ -1268,6 +1371,7 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
             m_hasPreviewBoundingRect = m_hasOriginalBoundingRect;
         }
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() | Okular::Annotation::BeingResized);
+        logLatexCalloutInteraction("enter-resizing", m_focusedAnnotation.annotation, {QStringLiteral("handle: %1").arg(int(m_handle))});
         updateViewport(m_focusedAnnotation);
         break;
     case StateFocused:
@@ -1319,7 +1423,7 @@ QRect MouseAnnotation::getFullBoundingRect(const AnnotationDescription &ad) cons
             boundingRect = boundingRect.united(getHandleRect(RH_Left, ad));
             boundingRect = boundingRect.united(getHandleRect(RH_Right, ad));
         }
-        if (calloutTextAnnotation(ad.annotation)) {
+        if (calloutAnnotation(ad.annotation)) {
             boundingRect = boundingRect.united(getCalloutLineRect(ad));
             for (int i = 0; i < 3; ++i) {
                 boundingRect = boundingRect.united(getHandleRect(calloutHandleForIndex(i), ad));
@@ -1350,22 +1454,30 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         if (isUsableRect(normalizedRect)) {
             m_previewBoundingRect = normalizedRect;
             m_hasPreviewBoundingRect = true;
+            logLatexCalloutInteraction("move-preview", m_focusedAnnotation.annotation,
+                                       {QStringLiteral("delta: %1,%2").arg(delta.x).arg(delta.y),
+                                        QStringLiteral("preview: %1,%2,%3,%4").arg(normalizedRect.left).arg(normalizedRect.top).arg(normalizedRect.right).arg(normalizedRect.bottom)});
         }
         return;
 
     } else if (isResized()) {
         if (isCalloutHandle(m_handle)) {
-            Okular::TextAnnotation *textAnnotation = calloutTextAnnotation(m_focusedAnnotation.annotation);
+            Okular::Annotation *calloutAnn = calloutAnnotation(m_focusedAnnotation.annotation);
             const int pointIndex = calloutIndexForHandle(m_handle);
-            if (textAnnotation && pointIndex >= 0) {
-                Okular::NormalizedPoint point = textAnnotation->inplaceCallout(pointIndex);
+            if (calloutAnn && pointIndex >= 0) {
+                Okular::NormalizedPoint point = calloutPoint(calloutAnn, pointIndex, false);
                 point.x += normalizedRotatedMouseDelta.x();
                 point.y += normalizedRotatedMouseDelta.y();
                 point = boundToPage(point);
                 if (m_handle == RH_CalloutAnchor) {
-                    point = boundToCalloutBoxEdge(point, textAnnotation->boundingRectangle());
+                    point = boundToCalloutBoxEdge(point, calloutAnn->boundingRectangle());
                 }
-                textAnnotation->setInplaceCallout(point, pointIndex);
+                setCalloutPoint(calloutAnn, point, pointIndex);
+                logLatexCalloutInteraction("callout-point-preview", calloutAnn,
+                                           {QStringLiteral("handle: %1").arg(int(m_handle)),
+                                            QStringLiteral("index: %1").arg(pointIndex),
+                                            QStringLiteral("delta: %1,%2").arg(normalizedRotatedMouseDelta.x()).arg(normalizedRotatedMouseDelta.y()),
+                                            QStringLiteral("new point: %1,%2").arg(point.x).arg(point.y)});
             }
             return;
         }
@@ -1456,27 +1568,32 @@ void MouseAnnotation::finishCommand()
      * setFlags before translatePageAnnotation-/adjustPageAnnotation.
      */
     if (m_hasOriginalCalloutGeometry) {
-        Okular::TextAnnotation *textAnnotation = calloutTextAnnotation(m_focusedAnnotation.annotation);
+        Okular::Annotation *calloutAnn = calloutAnnotation(m_focusedAnnotation.annotation);
         const bool wasResized = isResized();
         Okular::NormalizedPoint finalCalloutPoints[3];
         bool moved = false;
-        if (textAnnotation) {
+        if (calloutAnn) {
             for (int i = 0; i < 3; ++i) {
-                finalCalloutPoints[i] = textAnnotation->inplaceCallout(i);
+                finalCalloutPoints[i] = calloutPoint(calloutAnn, i, false);
                 moved = moved || pointMoved(finalCalloutPoints[i], m_originalCalloutPoints[i]);
             }
         }
+        logLatexCalloutInteraction("finish-callout-before-restore", calloutAnn,
+                                   {QStringLiteral("was resized: %1").arg(wasResized),
+                                    QStringLiteral("moved: %1").arg(moved)});
 
         restoreOriginalCalloutGeometry(m_focusedAnnotation);
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~Okular::Annotation::BeingResized);
 
-        if (textAnnotation && wasResized && moved) {
-            m_document->prepareToModifyAnnotationProperties(textAnnotation);
+        if (calloutAnn && wasResized && moved) {
+            m_document->prepareToModifyAnnotationProperties(calloutAnn);
             for (int i = 0; i < 3; ++i) {
-                textAnnotation->setInplaceCallout(finalCalloutPoints[i], i);
+                setCalloutPoint(calloutAnn, finalCalloutPoints[i], i);
             }
-            textAnnotation->setModificationDate(QDateTime::currentDateTime());
-            m_document->modifyPageAnnotationProperties(m_focusedAnnotation.pageNumber, textAnnotation);
+            calloutAnn->setModificationDate(QDateTime::currentDateTime());
+            logLatexCalloutInteraction("finish-callout-before-modify", calloutAnn);
+            m_document->modifyPageAnnotationProperties(m_focusedAnnotation.pageNumber, calloutAnn);
+            logLatexCalloutInteraction("finish-callout-after-modify", calloutAnn);
         }
 
         m_hasOriginalCalloutGeometry = false;
@@ -1494,7 +1611,15 @@ void MouseAnnotation::finishCommand()
             if (wasMoved) {
                 const Okular::NormalizedPoint delta(finalBoundingRect.left - m_originalBoundingRect.left, finalBoundingRect.top - m_originalBoundingRect.top);
                 if (!isZeroDelta(delta)) {
+                    logLatexCalloutInteraction("finish-move-before-translate", m_focusedAnnotation.annotation,
+                                               {QStringLiteral("delta: %1,%2").arg(delta.x).arg(delta.y),
+                                                QStringLiteral("final rect: %1,%2,%3,%4")
+                                                    .arg(finalBoundingRect.left)
+                                                    .arg(finalBoundingRect.top)
+                                                    .arg(finalBoundingRect.right)
+                                                    .arg(finalBoundingRect.bottom)});
                     m_document->translatePageAnnotation(m_focusedAnnotation.pageNumber, m_focusedAnnotation.annotation, delta);
+                    logLatexCalloutInteraction("finish-move-after-translate", m_focusedAnnotation.annotation);
                 }
             } else if (wasResized) {
                 if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation)) {
@@ -1665,7 +1790,7 @@ MouseAnnotation::ResizeHandle MouseAnnotation::getHandleAt(const QPoint eventPos
     ResizeHandle selected = RH_None;
 
     if (ad.annotation->canBeResized()) {
-        if (calloutTextAnnotation(ad.annotation)) {
+        if (calloutAnnotation(ad.annotation)) {
             for (int i = 0; i < 3; ++i) {
                 const ResizeHandle handle = calloutHandleForIndex(i);
                 const QRect rect = getHandleRect(handle, ad);
@@ -1716,13 +1841,13 @@ MouseAnnotation::ResizeHandle MouseAnnotation::getHandleAt(const QPoint eventPos
 QRect MouseAnnotation::getHandleRect(ResizeHandle handle, const AnnotationDescription &ad) const
 {
     if (isCalloutHandle(handle)) {
-        const Okular::TextAnnotation *textAnnotation = calloutTextAnnotation(ad.annotation);
+        const Okular::Annotation *calloutAnn = calloutAnnotation(ad.annotation);
         const int pointIndex = calloutIndexForHandle(handle);
-        if (!hasUsableCalloutPoints(textAnnotation) || pointIndex < 0) {
+        if (!hasUsableCalloutPoints(calloutAnn) || pointIndex < 0) {
             return {};
         }
 
-        const Okular::NormalizedPoint point = textAnnotation->transformedInplaceCallout(pointIndex);
+        const Okular::NormalizedPoint point = calloutPoint(calloutAnn, pointIndex, true);
         const int left = qRound(point.x * ad.pageViewItem->uncroppedWidth()) - handleSizeHalf;
         const int top = qRound(point.y * ad.pageViewItem->uncroppedHeight()) - handleSizeHalf;
         return QRect(left, top, handleSize, handleSize);
@@ -1758,14 +1883,14 @@ QRect MouseAnnotation::getHandleRect(ResizeHandle handle, const AnnotationDescri
 
 QRect MouseAnnotation::getCalloutLineRect(const AnnotationDescription &ad) const
 {
-    const Okular::TextAnnotation *textAnnotation = calloutTextAnnotation(ad.annotation);
-    if (!hasUsableCalloutPoints(textAnnotation)) {
+    const Okular::Annotation *calloutAnn = calloutAnnotation(ad.annotation);
+    if (!hasUsableCalloutPoints(calloutAnn)) {
         return {};
     }
 
     QRect lineRect;
     for (int i = 0; i < 3; ++i) {
-        const Okular::NormalizedPoint point = textAnnotation->transformedInplaceCallout(i);
+        const Okular::NormalizedPoint point = calloutPoint(calloutAnn, i, true);
         const QPoint pagePoint(qRound(point.x * ad.pageViewItem->uncroppedWidth()), qRound(point.y * ad.pageViewItem->uncroppedHeight()));
         if (i == 0) {
             lineRect = QRect(pagePoint, QSize(1, 1));
@@ -1779,29 +1904,29 @@ QRect MouseAnnotation::getCalloutLineRect(const AnnotationDescription &ad) const
 
 void MouseAnnotation::rememberOriginalCalloutGeometry(const AnnotationDescription &ad)
 {
-    const Okular::TextAnnotation *textAnnotation = calloutTextAnnotation(ad.annotation);
-    if (!hasUsableCalloutPoints(textAnnotation)) {
+    const Okular::Annotation *calloutAnn = calloutAnnotation(ad.annotation);
+    if (!hasUsableCalloutPoints(calloutAnn)) {
         m_hasOriginalCalloutGeometry = false;
         return;
     }
 
     for (int i = 0; i < 3; ++i) {
-        m_originalCalloutPoints[i] = textAnnotation->inplaceCallout(i);
+        m_originalCalloutPoints[i] = calloutPoint(calloutAnn, i, false);
     }
-    m_originalCalloutBoundingRect = textAnnotation->boundingRectangle();
+    m_originalCalloutBoundingRect = calloutAnn->boundingRectangle();
     m_hasOriginalCalloutGeometry = true;
 }
 
 void MouseAnnotation::restoreOriginalCalloutGeometry(const AnnotationDescription &ad)
 {
-    Okular::TextAnnotation *textAnnotation = calloutTextAnnotation(ad.annotation);
-    if (!textAnnotation || !m_hasOriginalCalloutGeometry) {
+    Okular::Annotation *calloutAnn = calloutAnnotation(ad.annotation);
+    if (!calloutAnn || !m_hasOriginalCalloutGeometry) {
         return;
     }
 
-    textAnnotation->setBoundingRectangle(m_originalCalloutBoundingRect);
+    calloutAnn->setBoundingRectangle(m_originalCalloutBoundingRect);
     for (int i = 0; i < 3; ++i) {
-        textAnnotation->setInplaceCallout(m_originalCalloutPoints[i], i);
+        setCalloutPoint(calloutAnn, m_originalCalloutPoints[i], i);
     }
 }
 

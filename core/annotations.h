@@ -736,6 +736,31 @@ public:
     bool isOkularLatex() const;
 
     /**
+     * Marks this LaTeX-backed annotation as a stamp-based callout.
+     */
+    void setLatexCallout(bool callout);
+
+    /**
+     * Returns whether this LaTeX-backed annotation is a stamp-based callout.
+     */
+    bool isLatexCallout() const;
+
+    /**
+     * Sets one control point for a stamp-based LaTeX callout.
+     */
+    void setLatexCalloutPoint(const NormalizedPoint &point, int index);
+
+    /**
+     * Returns one control point for a stamp-based LaTeX callout.
+     */
+    NormalizedPoint latexCalloutPoint(int index) const;
+
+    /**
+     * Returns one transformed control point for a stamp-based LaTeX callout.
+     */
+    NormalizedPoint transformedLatexCalloutPoint(int index) const;
+
+    /**
      * Sets the LaTeX layout width in PDF points.
      *
      * A value less than or equal to 0 means natural content width.

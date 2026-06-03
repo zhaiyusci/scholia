@@ -841,6 +841,52 @@ bool Annotation::isOkularLatex() const
     return d->m_okularLatex;
 }
 
+void Annotation::setLatexCallout(bool callout)
+{
+    Q_D(Annotation);
+    d->m_latexCallout = callout;
+}
+
+bool Annotation::isLatexCallout() const
+{
+    Q_D(const Annotation);
+    return d->m_latexCallout;
+}
+
+void Annotation::setLatexCalloutPoint(const NormalizedPoint &point, int index)
+{
+    if (index < 0 || index > 2) {
+        return;
+    }
+
+    Q_D(Annotation);
+    d->m_latexCalloutPoints[index] = point;
+    d->resetTransformation();
+    if (d->m_page) {
+        d->transform(d->m_page->rotationMatrix());
+    }
+}
+
+NormalizedPoint Annotation::latexCalloutPoint(int index) const
+{
+    if (index < 0 || index > 2) {
+        return NormalizedPoint();
+    }
+
+    Q_D(const Annotation);
+    return d->m_latexCalloutPoints[index];
+}
+
+NormalizedPoint Annotation::transformedLatexCalloutPoint(int index) const
+{
+    if (index < 0 || index > 2) {
+        return NormalizedPoint();
+    }
+
+    Q_D(const Annotation);
+    return d->m_transformedLatexCalloutPoints[index];
+}
+
 void Annotation::setLatexLayoutWidth(double width)
 {
     Q_D(Annotation);
@@ -979,6 +1025,9 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     if (d->m_okularLatex) {
         e.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
     }
+    if (d->m_latexCallout) {
+        e.setAttribute(QStringLiteral("latexCallout"), QStringLiteral("1"));
+    }
     if (d->m_latexLayoutWidth > 0.0) {
         e.setAttribute(QStringLiteral("latexLayoutWidth"), QString::number(d->m_latexLayoutWidth, 'f', 3));
     }
@@ -1001,6 +1050,17 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     bE.setAttribute(QStringLiteral("t"), QString::number(d->m_boundary.top));
     bE.setAttribute(QStringLiteral("r"), QString::number(d->m_boundary.right));
     bE.setAttribute(QStringLiteral("b"), QString::number(d->m_boundary.bottom));
+
+    if (d->m_latexCallout) {
+        QDomElement calloutElement = document.createElement(QStringLiteral("latexCallout"));
+        e.appendChild(calloutElement);
+        calloutElement.setAttribute(QStringLiteral("ax"), QString::number(d->m_latexCalloutPoints[0].x));
+        calloutElement.setAttribute(QStringLiteral("ay"), QString::number(d->m_latexCalloutPoints[0].y));
+        calloutElement.setAttribute(QStringLiteral("bx"), QString::number(d->m_latexCalloutPoints[1].x));
+        calloutElement.setAttribute(QStringLiteral("by"), QString::number(d->m_latexCalloutPoints[1].y));
+        calloutElement.setAttribute(QStringLiteral("cx"), QString::number(d->m_latexCalloutPoints[2].x));
+        calloutElement.setAttribute(QStringLiteral("cy"), QString::number(d->m_latexCalloutPoints[2].y));
+    }
 
     // Sub-Node-2 - penStyle
     if (d->m_style.width() != 1 || d->m_style.lineStyle() != Solid || d->m_style.xCorners() != 0 || d->m_style.yCorners() != 0.0 || d->m_style.marks() != 3 || d->m_style.spaces() != 0) {
@@ -1110,33 +1170,50 @@ void AnnotationPrivate::annotationTransform(const QTransform &matrix)
 void AnnotationPrivate::transform(const QTransform &matrix)
 {
     m_transformedBoundary.transform(matrix);
+    for (NormalizedPoint &point : m_transformedLatexCalloutPoints) {
+        point.transform(matrix);
+    }
 }
 
 void AnnotationPrivate::baseTransform(const QTransform &matrix)
 {
     m_boundary.transform(matrix);
+    for (NormalizedPoint &point : m_latexCalloutPoints) {
+        point.transform(matrix);
+    }
 }
 
 void AnnotationPrivate::resetTransformation()
 {
     m_transformedBoundary = m_boundary;
+    for (int i = 0; i < 3; ++i) {
+        m_transformedLatexCalloutPoints[i] = m_latexCalloutPoints[i];
+    }
 }
 
 void AnnotationPrivate::translate(const NormalizedPoint &coord)
 {
+    const NormalizedRect oldBoundary = m_boundary;
     m_boundary.left = m_boundary.left + coord.x;
     m_boundary.right = m_boundary.right + coord.x;
     m_boundary.top = m_boundary.top + coord.y;
     m_boundary.bottom = m_boundary.bottom + coord.y;
+    if (m_latexCallout) {
+        m_latexCalloutPoints[2] = calloutPointOnAdjustedBoxEdge(m_latexCalloutPoints[2], oldBoundary, m_boundary);
+    }
 }
 
 void AnnotationPrivate::adjust(const NormalizedPoint &deltaCoord1, const NormalizedPoint &deltaCoord2)
 {
+    const NormalizedRect oldBoundary = m_boundary;
     m_boundary.left = m_boundary.left + qBound(-m_boundary.left, deltaCoord1.x, m_boundary.right - m_boundary.left);
     m_boundary.top = m_boundary.top + qBound(-m_boundary.top, deltaCoord1.y, m_boundary.bottom - m_boundary.top);
     ;
     m_boundary.right = m_boundary.right + qBound(m_boundary.left - m_boundary.right, deltaCoord2.x, 1. - m_boundary.right);
     m_boundary.bottom = m_boundary.bottom + qBound(m_boundary.top - m_boundary.bottom, deltaCoord2.y, 1. - m_boundary.bottom);
+    if (m_latexCallout) {
+        m_latexCalloutPoints[2] = calloutPointOnAdjustedBoxEdge(m_latexCalloutPoints[2], oldBoundary, m_boundary);
+    }
 }
 
 bool AnnotationPrivate::openDialogAfterCreation() const
@@ -1181,6 +1258,9 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     }
     if (e.hasAttribute(QStringLiteral("okularLatex"))) {
         m_okularLatex = e.attribute(QStringLiteral("okularLatex")).toInt() != 0;
+    }
+    if (e.hasAttribute(QStringLiteral("latexCallout"))) {
+        m_latexCallout = e.attribute(QStringLiteral("latexCallout")).toInt() != 0;
     }
     if (e.hasAttribute(QStringLiteral("latexLayoutWidth"))) {
         bool ok = false;
@@ -1242,6 +1322,13 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
             m_window.setHeight(ee.attribute(QStringLiteral("height")).toInt());
             m_window.setTitle(ee.attribute(QStringLiteral("title")));
             m_window.setSummary(ee.attribute(QStringLiteral("summary")));
+        } else if (ee.tagName() == QLatin1String("latexCallout")) {
+            m_latexCalloutPoints[0].x = ee.attribute(QStringLiteral("ax")).toDouble();
+            m_latexCalloutPoints[0].y = ee.attribute(QStringLiteral("ay")).toDouble();
+            m_latexCalloutPoints[1].x = ee.attribute(QStringLiteral("bx")).toDouble();
+            m_latexCalloutPoints[1].y = ee.attribute(QStringLiteral("by")).toDouble();
+            m_latexCalloutPoints[2].x = ee.attribute(QStringLiteral("cx")).toDouble();
+            m_latexCalloutPoints[2].y = ee.attribute(QStringLiteral("cy")).toDouble();
         }
     }
 
@@ -1266,6 +1353,9 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     }
 
     m_transformedBoundary = m_boundary;
+    for (int i = 0; i < 3; ++i) {
+        m_transformedLatexCalloutPoints[i] = m_latexCalloutPoints[i];
+    }
 }
 
 bool AnnotationPrivate::canBeResized() const

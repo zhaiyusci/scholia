@@ -66,6 +66,9 @@ public:
     QDateTime m_creationDate;
 
     bool m_okularLatex = false;
+    bool m_latexCallout = false;
+    NormalizedPoint m_latexCalloutPoints[3];
+    NormalizedPoint m_transformedLatexCalloutPoints[3];
     double m_latexLayoutWidth = 0.0;
     double m_latexScale = 1.0;
     QColor m_latexTextColor;

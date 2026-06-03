@@ -1,6 +1,6 @@
 ﻿# Required components for PDF-only Okular staging
-# Generated: 2026-05-29T16:13:16.2221859+08:00
-# StageRoot: ..\dist\okular-pdf-only\app
+# Generated: 2026-06-03T03:00:10.3710171+08:00
+# StageRoot: C:\Users\jairy\Documents\okular\dist\okular-pdf-only\app
 
 bin\avcodec-62.dll	DLL import required by heif.dll
 bin\avif.dll	DLL import required by kimg_avif.dll

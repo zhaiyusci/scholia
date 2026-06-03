@@ -333,6 +333,12 @@ Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRe
 
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints)
 {
+    return renderAppearancePdf(latexInput, textColor, fontSize, layoutWidthPoints, false);
+}
+
+RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, bool callout)
+{
+    Q_UNUSED(callout);
     RenderResult result;
     if (latexInput.trimmed().isEmpty()) {
         result.errorMessage = i18n("LaTeX source is empty.");
@@ -497,7 +503,7 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
         visualScale = 1.0;
     }
 
-    const RenderResult rendered = renderAppearancePdf(stampAnnotation->contents(), textColor, latexFontSize(), layoutWidthPoints);
+    const RenderResult rendered = renderAppearancePdf(stampAnnotation->contents(), textColor, latexFontSize(), layoutWidthPoints, stampAnnotation->isLatexCallout());
     if (!rendered.ok) {
         KMessageBox::error(parent, rendered.errorMessage, i18n("LaTeX rendering failed"));
         return false;
@@ -524,6 +530,7 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
         document->prepareToModifyAnnotationProperties(stampAnnotation);
     }
     stampAnnotation->setOkularLatex(true);
+    stampAnnotation->setLatexCallout(stampAnnotation->isLatexCallout());
     stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
     stampAnnotation->setStampImagePath(QString());
     stampAnnotation->setLatexAppearancePdfFileName(rendered.pdfFileName);
@@ -533,7 +540,6 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
     stampAnnotation->setLatexFillColor(fillColor);
     stampAnnotation->setLatexBorderColor(borderColor);
     stampAnnotation->style().setWidth(targetBorderWidth);
-    stampAnnotation->style().setColor(textColor);
     stampAnnotation->setBoundingRectangle(updatedRect);
     stampAnnotation->setModificationDate(QDateTime::currentDateTime());
     qCDebug(OkularUiDebug) << "Updating LaTeX stamp appearance; source path:" << rendered.pdfFileName << "layout width:" << layoutWidthPoints << "scale:" << visualScale

@@ -369,8 +369,16 @@ public:
         addInPlaceTextAnnotation(ann, i18n("Callout"), content, Okular::TextAnnotation::Callout);
 
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(ann);
+        const bool okularLatex = ta->isOkularLatex();
+        const double dragDistance = qAbs(point.x - startpoint.x) * xscale + qAbs(point.y - startpoint.y) * yscale;
+        if (okularLatex && dragDistance <= QApplication::startDragDistance()) {
+            point.x = qBound(0.0, startpoint.x + 0.18, 1.0);
+            point.y = qBound(0.0, startpoint.y + 0.18, 1.0);
+        }
         rect = calloutBoxRect(content);
-
+        if (okularLatex) {
+            ta->window().setSummary(i18n("LaTeX Callout"));
+        }
         const Okular::NormalizedPoint connection = calloutConnectionPoint(rect);
         Okular::NormalizedPoint elbow((startpoint.x + connection.x) / 2.0, connection.y);
         if (qAbs(startpoint.x - connection.x) < 0.02) {
@@ -398,10 +406,14 @@ public:
         if (typeString == QLatin1String("FreeText")) {
             addInPlaceTextAnnotation(ann, i18n("Inline Note"), QString(), Okular::TextAnnotation::Unknown);
         } else if (typeString == QLatin1String("Callout")) {
-            bool resok;
-            const QString content = QInputDialog::getMultiLineText(pageView, i18n("New Callout Note"), i18n("Text of the new note:"), QString(), &resok);
-            if (resok) {
-                addCalloutAnnotation(ann, content);
+            if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
+                addCalloutAnnotation(ann, QString());
+            } else {
+                bool resok;
+                const QString content = QInputDialog::getMultiLineText(pageView, i18n("New Callout Note"), i18n("Text of the new note:"), QString(), &resok);
+                if (resok) {
+                    addCalloutAnnotation(ann, content);
+                }
             }
         } else if (typeString == QLatin1String("Typewriter")) {
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
@@ -439,6 +451,7 @@ public:
             }
             if (latexStamp) {
                 sa->setOkularLatex(true);
+                sa->setLatexCallout(m_annotElement.attribute(QStringLiteral("latexCallout")).toInt() != 0);
                 sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
                 QColor textColor = m_annotElement.hasAttribute(QStringLiteral("textColor")) ? QColor(m_annotElement.attribute(QStringLiteral("textColor"))) : Qt::black;
                 if (!textColor.isValid() || textColor.alpha() == 0) {
@@ -523,6 +536,22 @@ public:
                 rect.right = rect.left + stampxscale;
                 rect.bottom = rect.top + stampyscale;
             }
+            if (latexStamp && sa->isLatexCallout()) {
+                double boxWidth = rect.width();
+                double boxHeight = rect.height();
+                if (!std::isfinite(boxWidth) || boxWidth <= 0.0) {
+                    boxWidth = 0.16;
+                }
+                if (!std::isfinite(boxHeight) || boxHeight <= 0.0) {
+                    boxHeight = 0.08;
+                }
+                const bool clickPlacement = ml <= QApplication::startDragDistance();
+                double left = clickPlacement ? startpoint.x + qMax(0.04, qMin(0.12, boxWidth * 0.7)) : point.x;
+                double top = clickPlacement ? startpoint.y + qMax(0.04, qMin(0.12, boxHeight * 0.9)) : point.y;
+                left = qBound(0.0, left, qMax(0.0, 1.0 - boxWidth));
+                top = qBound(0.0, top, qMax(0.0, 1.0 - boxHeight));
+                rect = Okular::NormalizedRect(left, top, left + boxWidth, top + boxHeight);
+            }
         }
         // create GeomAnnotation
         else if (typeString == QLatin1String("GeomSquare") || typeString == QLatin1String("GeomCircle")) {
@@ -572,6 +601,17 @@ public:
             rect.bottom = 1;
         }
         ann->setBoundingRectangle(rect);
+        if (latexStamp && ann->isLatexCallout()) {
+            const Okular::NormalizedPoint connection = calloutConnectionPoint(rect);
+            Okular::NormalizedPoint elbow((startpoint.x + connection.x) / 2.0, connection.y);
+            if (qAbs(startpoint.x - connection.x) < 0.02) {
+                elbow.x = connection.x;
+                elbow.y = (startpoint.y + connection.y) / 2.0;
+            }
+            ann->setLatexCalloutPoint(startpoint, 0);
+            ann->setLatexCalloutPoint(elbow, 1);
+            ann->setLatexCalloutPoint(connection, 2);
+        }
 
         // return annotation
         return QList<Okular::Annotation *>() << ann;
@@ -612,7 +652,14 @@ private:
         double boxWidth = 0.24;
         double boxHeight = 0.10;
 
-        if (!content.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
+        if (m_annotElement.attribute(QStringLiteral("okularLatex")).toInt() != 0 && !latexAppearancePdfFileName.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
+            const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
+            const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, 0.0);
+            if (visualSizePoints.isValid() && !visualSizePoints.isEmpty()) {
+                boxWidth = qBound(0.01, qMax(boxWidth, visualSizePoints.width() / pagewidth), 1.0);
+                boxHeight = qBound(0.01, qMax(boxHeight, visualSizePoints.height() / pageheight), 1.0);
+            }
+        } else if (!content.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
             QFont font;
             if (m_annotElement.hasAttribute(QStringLiteral("font"))) {
                 font.fromString(m_annotElement.attribute(QStringLiteral("font")));
@@ -1235,6 +1282,21 @@ public:
         return true;
     }
 
+    bool removeTool(const QString &type, const QString &name)
+    {
+        QDomElement toolElement = m_toolsDefinition.documentElement().firstChildElement();
+        while (!toolElement.isNull()) {
+            const QDomElement nextToolElement = toolElement.nextSiblingElement();
+            if (toolElement.attribute(QStringLiteral("type")) == type && toolElement.attribute(QStringLiteral("name")) == name) {
+                m_toolsDefinition.documentElement().removeChild(toolElement);
+                --m_toolsCount;
+                return true;
+            }
+            toolElement = nextToolElement;
+        }
+        return false;
+    }
+
     bool normalizeCalloutTool()
     {
         bool changed = false;
@@ -1398,8 +1460,9 @@ void PageViewAnnotator::reparseBuiltinToolsConfig()
     }
     m_builtinToolsDefinition->setTools(Okular::Settings::builtinAnnotationTools());
     const bool addedCalloutTool = m_builtinToolsDefinition->ensureToolXml(QStringLiteral("note-callout"), QString(), defaultCalloutToolXml());
+    const bool removedLegacyLatexCalloutTool = m_builtinToolsDefinition->removeTool(QStringLiteral("note-callout"), QStringLiteral("LaTeX Callout"));
     const bool normalizedCalloutTool = m_builtinToolsDefinition->normalizeCalloutTool();
-    if (addedCalloutTool || normalizedCalloutTool) {
+    if (addedCalloutTool || removedLegacyLatexCalloutTool || normalizedCalloutTool) {
         saveBuiltinAnnotationTools();
     }
 
@@ -1870,7 +1933,9 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     }
     annotationElement.removeAttribute(QStringLiteral("contents"));
     annotationElement.removeAttribute(QStringLiteral("okularLatex"));
+    annotationElement.removeAttribute(QStringLiteral("latexVariant"));
     annotationElement.removeAttribute(QStringLiteral("latexBoxed"));
+    annotationElement.removeAttribute(QStringLiteral("latexCallout"));
     annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
     annotationElement.removeAttribute(QStringLiteral("latexScale"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
@@ -1879,7 +1944,7 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     return stampToolId;
 }
 
-int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor)
+int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout)
 {
     const QString toolType = QStringLiteral("stamp");
     const int toolId = m_builtinToolsDefinition->findToolId(toolType);
@@ -1896,7 +1961,9 @@ int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile,
     annotationElement.removeAttribute(QStringLiteral("imagePath"));
     annotationElement.setAttribute(QStringLiteral("contents"), contents);
     annotationElement.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
-    annotationElement.setAttribute(QStringLiteral("latexBoxed"), boxed ? QStringLiteral("1") : QStringLiteral("0"));
+    annotationElement.setAttribute(QStringLiteral("latexVariant"), callout ? QStringLiteral("callout") : (boxed ? QStringLiteral("inline") : QStringLiteral("note")));
+    annotationElement.setAttribute(QStringLiteral("latexBoxed"), (boxed || callout) ? QStringLiteral("1") : QStringLiteral("0"));
+    annotationElement.setAttribute(QStringLiteral("latexCallout"), callout ? QStringLiteral("1") : QStringLiteral("0"));
     annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
     annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
@@ -1905,10 +1972,10 @@ int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile,
         targetTextColor = Qt::black;
     }
     annotationElement.setAttribute(QStringLiteral("textColor"), targetTextColor.name(QColor::HexArgb));
-    if (boxed) {
+    if (boxed || callout) {
         QColor targetFillColor = fillColor;
         if (!targetFillColor.isValid() || targetFillColor.alpha() == 0) {
-            targetFillColor = Qt::yellow;
+            targetFillColor = callout ? Qt::white : Qt::yellow;
         }
         QColor targetBorderColor = borderColor;
         if (!targetBorderColor.isValid() || targetBorderColor.alpha() == 0) {

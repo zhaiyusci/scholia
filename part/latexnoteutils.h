@@ -59,6 +59,7 @@ QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentPdfSizePoints, doub
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale = 1.0);
 
 RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints);
+RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, bool callout);
 bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          Okular::Document *document,
                                          int pageNumber,

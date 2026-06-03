@@ -69,6 +69,7 @@ public:
         , aSelectCustomStamp(nullptr)
         , aAddLatexNote(nullptr)
         , aAddLatexInlineNote(nullptr)
+        , aAddLatexCallout(nullptr)
         , aAddToQuickTools(nullptr)
         , aContinuousMode(nullptr)
         , aConstrainRatioAndAngle(nullptr)
@@ -115,6 +116,7 @@ public:
     QIcon toolIcon(const QString &type, const QString &name = QString()) const;
     QIcon imageNoteIcon() const;
     QIcon latexNoteIcon(bool boxed) const;
+    QIcon latexCalloutIcon() const;
     QIcon strokeColorIcon(const QColor &color, bool textColorIcon = false) const;
     QIcon fillColorIcon(const QColor &color) const;
     const QIcon widthIcon(double width);
@@ -125,7 +127,7 @@ public:
     void selectTool(const BuiltinToolSpec &toolSpec);
     void slotStampToolSelected(const QString &stamp);
     void slotSelectCustomStamp();
-    void slotAddLatexNote(bool boxed = false);
+    void slotAddLatexNote(bool boxed = false, bool callout = false);
     void slotQuickToolSelected(int favToolId);
     void slotSetColor(AnnotationColor colorType, const QColor &color = QColor());
     void slotSelectAnnotationFont();
@@ -151,6 +153,7 @@ public:
     QAction *aSelectCustomStamp;
     QAction *aAddLatexNote;
     QAction *aAddLatexInlineNote;
+    QAction *aAddLatexCallout;
     QAction *aAddToQuickTools;
     KToggleAction *aContinuousMode;
     KToggleAction *aConstrainRatioAndAngle;
@@ -258,6 +261,31 @@ QIcon AnnotationActionHandlerPrivate::latexNoteIcon(bool boxed) const
     p.setFont(font);
     p.setPen(QColor(120, 70, 160));
     p.drawText(QRectF(0, boxed ? 4 : 0, 32, 28), Qt::AlignCenter, QString::fromUtf8("\xcf\x80"));
+    return QIcon(pixmap);
+}
+
+QIcon AnnotationActionHandlerPrivate::latexCalloutIcon() const
+{
+    QPixmap pixmap(32 * qApp->devicePixelRatio(), 32 * qApp->devicePixelRatio());
+    pixmap.setDevicePixelRatio(qApp->devicePixelRatio());
+    pixmap.fill(Qt::transparent);
+
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+    const QColor purple(120, 70, 160);
+    p.setPen(QPen(purple, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p.drawLine(QPointF(4, 25), QPointF(12, 17));
+    p.drawLine(QPointF(12, 17), QPointF(17, 17));
+    p.setBrush(QColor(255, 255, 160, 180));
+    p.drawRoundedRect(QRectF(16, 7, 12, 15), 2, 2);
+
+    QFont font = qApp->font();
+    font.setItalic(true);
+    font.setBold(true);
+    font.setPointSize(13);
+    p.setFont(font);
+    p.setPen(purple);
+    p.drawText(QRectF(14, 5, 16, 18), Qt::AlignCenter, QString::fromUtf8("\xcf\x80"));
     return QIcon(pixmap);
 }
 
@@ -388,7 +416,17 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
     QDomElement annElement = engineElement.firstChildElement(QStringLiteral("annotation"));
     const bool latexStamp = annotType == QLatin1String("stamp") && annElement.attribute(QStringLiteral("okularLatex")).toInt() != 0;
     if (latexStamp) {
-        annotType = annElement.attribute(QStringLiteral("latexBoxed")).toInt() != 0 ? QStringLiteral("note-inline") : QStringLiteral("typewriter");
+        const QString latexVariant = annElement.attribute(QStringLiteral("latexVariant"));
+        if (latexVariant == QLatin1String("callout")) {
+            annotType = QStringLiteral("note-callout");
+        } else if (latexVariant == QLatin1String("inline")) {
+            annotType = QStringLiteral("note-inline");
+        } else if (latexVariant == QLatin1String("note")) {
+            annotType = QStringLiteral("typewriter");
+        } else {
+            annotType = annElement.attribute(QStringLiteral("latexCallout")).toInt() != 0 ? QStringLiteral("note-callout")
+                                                                                         : (annElement.attribute(QStringLiteral("latexBoxed")).toInt() != 0 ? QStringLiteral("note-inline") : QStringLiteral("typewriter"));
+        }
     }
 
     QColor color, innerColor, textColor, borderColor, engineColor;
@@ -721,22 +759,22 @@ void AnnotationActionHandlerPrivate::slotSelectCustomStamp()
     slotStampToolSelected(customStampFile);
 }
 
-void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed)
+void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
 {
     bool ok = false;
-    const QString title = boxed ? i18nc("@title:window", "Add LaTeX Inline Note") : i18nc("@title:window", "Add LaTeX Note");
+    const QString title = callout ? i18nc("@title:window", "Add LaTeX Callout") : (boxed ? i18nc("@title:window", "Add LaTeX Inline Note") : i18nc("@title:window", "Add LaTeX Note"));
     const QString latexInput = QInputDialog::getMultiLineText(nullptr, title, i18nc("@label:textbox", "LaTeX source:"), QString(), &ok).trimmed();
     if (!ok || latexInput.isEmpty()) {
         return;
     }
 
     QColor textColor = currentTextColor.isValid() && currentTextColor.alpha() != 0 ? currentTextColor : Qt::black;
-    QColor fillColor = boxed ? currentInnerColor : Qt::transparent;
-    if (boxed && (!fillColor.isValid() || fillColor.alpha() == 0)) {
-        fillColor = Qt::yellow;
+    QColor fillColor = (boxed || callout) ? currentInnerColor : Qt::transparent;
+    if ((boxed || callout) && (!fillColor.isValid() || fillColor.alpha() == 0)) {
+        fillColor = callout ? Qt::white : Qt::yellow;
     }
-    QColor borderColor = boxed ? currentColor : Qt::transparent;
-    if (boxed && (!borderColor.isValid() || borderColor.alpha() == 0)) {
+    QColor borderColor = (boxed || callout) ? currentColor : Qt::transparent;
+    if ((boxed || callout) && (!borderColor.isValid() || borderColor.alpha() == 0)) {
         borderColor = textColor;
     }
 
@@ -747,9 +785,9 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed)
     }
     LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
 
-    selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput, boxed, textColor, fillColor, borderColor);
+    selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput, boxed, textColor, fillColor, borderColor, callout);
     if (selectedBuiltinTool != -1) {
-        updateConfigActions(boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter"));
+        updateConfigActions(callout ? QStringLiteral("note-callout") : (boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter")));
     }
 }
 
@@ -910,6 +948,10 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aAddLatexInlineNote->setIcon(d->latexNoteIcon(true));
     d->aAddLatexInlineNote->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX with an inline-note background and border"));
     connect(d->aAddLatexInlineNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true); });
+    d->aAddLatexCallout = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Callout…"), this);
+    d->aAddLatexCallout->setIcon(d->latexCalloutIcon());
+    d->aAddLatexCallout->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX as a stamp-based callout note"));
+    connect(d->aAddLatexCallout, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true, true); });
     connect(d->aStamp->menu(), &QMenu::triggered, this, [this](QAction *action) {
         if (action->isCheckable()) {
             d->aStamp->setDefaultAction(action);
@@ -1025,6 +1067,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_add_image_note"), d->aSelectCustomStamp);
     ac->addAction(QStringLiteral("annotation_add_latex_note"), d->aAddLatexNote);
     ac->addAction(QStringLiteral("annotation_add_latex_inline_note"), d->aAddLatexInlineNote);
+    ac->addAction(QStringLiteral("annotation_add_latex_callout"), d->aAddLatexCallout);
     ac->addAction(QStringLiteral("annotation_favorites"), d->aQuickTools);
     ac->addAction(QStringLiteral("annotation_bookmark"), d->aAddToQuickTools);
     ac->addAction(QStringLiteral("annotation_settings_pin"), d->aContinuousMode);
@@ -1113,6 +1156,7 @@ void AnnotationActionHandler::setToolsEnabled(bool on)
     d->aSelectCustomStamp->setEnabled(on);
     d->aAddLatexNote->setEnabled(on);
     d->aAddLatexInlineNote->setEnabled(on);
+    d->aAddLatexCallout->setEnabled(on);
     d->aContinuousMode->setEnabled(on);
 }
 

@@ -12,6 +12,7 @@
 
 // qt/kde includes
 #include <cmath>
+#include <limits>
 
 #include <QDir>
 #include <QFileInfo>
@@ -60,6 +61,66 @@ static QPointF normPointToPointF(const Okular::NormalizedPoint &pt)
 static QRectF normRectToRectF(const Okular::NormalizedRect &rect)
 {
     return QRectF(QPointF(rect.left, rect.top), QPointF(rect.right, rect.bottom));
+}
+
+static QPointF normPointToPagePointF(const Okular::NormalizedPoint &point, const Poppler::Page *page)
+{
+    if (!page) {
+        return normPointToPointF(point);
+    }
+
+    const QSizeF pageSize = page->pageSizeF();
+    return QPointF(point.x * pageSize.width(), (1.0 - point.y) * pageSize.height());
+}
+
+static Okular::NormalizedPoint pagePointToNormPoint(const QPointF &point, const QSizeF &pageSize)
+{
+    if (pageSize.width() <= 0.0 || pageSize.height() <= 0.0) {
+        return {};
+    }
+
+    return {point.x() / pageSize.width(), 1.0 - point.y() / pageSize.height()};
+}
+
+static QRectF normRectToPageRectF(const Okular::NormalizedRect &rect, const Poppler::Page *page)
+{
+    if (!page) {
+        return normRectToRectF(rect);
+    }
+
+    const QSizeF pageSize = page->pageSizeF();
+    return QRectF(QPointF(rect.left * pageSize.width(), (1.0 - rect.bottom) * pageSize.height()), QPointF(rect.right * pageSize.width(), (1.0 - rect.top) * pageSize.height())).normalized();
+}
+
+static void setCustomColorProperty(Poppler::Annotation *annotation, const QString &prefix, const QColor &color)
+{
+    if (!annotation || !color.isValid()) {
+        return;
+    }
+
+    annotation->setCustomRealProperty(prefix + QStringLiteral("Red"), color.redF());
+    annotation->setCustomRealProperty(prefix + QStringLiteral("Green"), color.greenF());
+    annotation->setCustomRealProperty(prefix + QStringLiteral("Blue"), color.blueF());
+    annotation->setCustomRealProperty(prefix + QStringLiteral("Alpha"), color.alphaF());
+}
+
+static QColor customColorProperty(const Poppler::Annotation *annotation, const QString &prefix, const QColor &fallback = {})
+{
+    if (!annotation) {
+        return fallback;
+    }
+
+    const double alpha = annotation->customRealProperty(prefix + QStringLiteral("Alpha"), -1.0);
+    if (alpha < 0.0) {
+        return fallback;
+    }
+
+    QColor color;
+    color.setRgbF(qBound(0.0, annotation->customRealProperty(prefix + QStringLiteral("Red"), 0.0), 1.0),
+                  qBound(0.0, annotation->customRealProperty(prefix + QStringLiteral("Green"), 0.0), 1.0),
+                  qBound(0.0, annotation->customRealProperty(prefix + QStringLiteral("Blue"), 0.0), 1.0),
+                  qBound(0.0, alpha, 1.0));
+    return color;
 }
 
 // Poppler and Okular share the same flag values, but we don't want to export internal flags
@@ -517,7 +578,10 @@ static void updatePopplerAnnotationFromOkularAnnotation(const Okular::HighlightA
     pHighlightAnnotation->setHighlightQuads(pQuads);
 }
 
-static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation, Poppler::StampAnnotation *pStampAnnotation, const Poppler::Page *page)
+static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnotation *oStampAnnotation,
+                                                        Poppler::StampAnnotation *pStampAnnotation,
+                                                        const Poppler::Page *page,
+                                                        const Poppler::AnnotationAppearance *sourceAppearance = nullptr)
 {
     pStampAnnotation->setStampIconName(oStampAnnotation->isOkularLatex() ? QStringLiteral("latex-notes") : oStampAnnotation->stampIconName());
 #ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
@@ -528,6 +592,30 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
         pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexNoteScale"), oStampAnnotation->latexScale());
         pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexNoteLayoutWidth"), oStampAnnotation->latexLayoutWidth());
         pStampAnnotation->setCustomBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), oStampAnnotation->style().width() > 0.0);
+        setCustomColorProperty(pStampAnnotation, QStringLiteral("OkularLatexTextColor"), oStampAnnotation->latexTextColor());
+        pStampAnnotation->setCustomBoolProperty(QStringLiteral("OkularLatexCallout"), oStampAnnotation->isLatexCallout());
+        if (oStampAnnotation->isLatexCallout()) {
+            const QRectF boxRect = normRectToPageRectF(oStampAnnotation->boundingRectangle(), page);
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexBoxX1"), boxRect.left());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexBoxY1"), boxRect.top());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexBoxX2"), boxRect.right());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexBoxY2"), boxRect.bottom());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutAX"), oStampAnnotation->latexCalloutPoint(0).x);
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutAY"), oStampAnnotation->latexCalloutPoint(0).y);
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutBX"), oStampAnnotation->latexCalloutPoint(1).x);
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutBY"), oStampAnnotation->latexCalloutPoint(1).y);
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutCX"), oStampAnnotation->latexCalloutPoint(2).x);
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutCY"), oStampAnnotation->latexCalloutPoint(2).y);
+            const QPointF p0 = normPointToPagePointF(oStampAnnotation->latexCalloutPoint(0), page);
+            const QPointF p1 = normPointToPagePointF(oStampAnnotation->latexCalloutPoint(1), page);
+            const QPointF p2 = normPointToPagePointF(oStampAnnotation->latexCalloutPoint(2), page);
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutPageAX"), p0.x());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutPageAY"), p0.y());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutPageBX"), p1.x());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutPageBY"), p1.y());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutPageCX"), p2.x());
+            pStampAnnotation->setCustomRealProperty(QStringLiteral("OkularLatexCalloutPageCY"), p2.y());
+        }
         pStampAnnotation->setOkularLatexNoteFillColor(oStampAnnotation->latexFillColor());
         pStampAnnotation->setOkularLatexNoteBorderColor(oStampAnnotation->latexBorderColor());
 
@@ -549,6 +637,16 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
         } else {
             qCWarning(OkularPdfDebug) << "LaTeX Stamp appearance PDF is not available; path:" << pdfAppearanceFile;
         }
+#ifdef POPPLER_QT6_HAS_STAMP_APPEARANCE_FROM_CURRENT_APPEARANCE
+        {
+            if (sourceAppearance) {
+                pStampAnnotation->setAnnotationAppearance(*sourceAppearance);
+            }
+            const bool rebuiltAppearance = pStampAnnotation->setStampCustomPdfFromCurrentAppearance();
+            qCDebug(OkularPdfDebug) << "Rebuilt LaTeX stamp appearance from current AP:" << rebuiltAppearance;
+            return rebuiltAppearance;
+        }
+#endif
         return false;
     }
 #endif
@@ -854,8 +952,10 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
     }
 
     std::unique_ptr<Poppler::AnnotationAppearance> preservedAppearance;
+    QRectF preservedBoundary;
     if (ppl_ann->subType() == Poppler::Annotation::AStamp) {
         preservedAppearance = ppl_ann->annotationAppearance();
+        preservedBoundary = ppl_ann->boundary();
     } else if (ppl_ann->subType() == Poppler::Annotation::AText && okl_ann->subType() == Okular::Annotation::AText) {
         const Okular::TextAnnotation *okl_txtann = static_cast<const Okular::TextAnnotation *>(okl_ann);
         if (okl_txtann->isOkularLatex()) {
@@ -908,8 +1008,11 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
         const Okular::StampAnnotation *okl_stampann = static_cast<const Okular::StampAnnotation *>(okl_ann);
         Poppler::StampAnnotation *ppl_stampann = static_cast<Poppler::StampAnnotation *>(ppl_ann);
         std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(page);
-        const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get());
+        const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get(), preservedAppearance.get());
         if (!appearanceUpdated && preservedAppearance) {
+            if (okl_stampann->isOkularLatex() && okl_stampann->isLatexCallout() && preservedBoundary.isValid()) {
+                ppl_stampann->setBoundary(preservedBoundary);
+            }
             ppl_stampann->setAnnotationAppearance(*preservedAppearance);
         }
         break;
@@ -1308,11 +1411,17 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
         || popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexNoteLayoutWidth"), 0.0) > 0.0
         || popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), false);
     oStampAnn->setOkularLatex(isLatexStamp);
+    oStampAnn->setLatexCallout(popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatexCallout"), false));
+    if (oStampAnn->isLatexCallout()) {
+        oStampAnn->setLatexCalloutPoint({popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexCalloutAX"), 0.0), popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexCalloutAY"), 0.0)}, 0);
+        oStampAnn->setLatexCalloutPoint({popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexCalloutBX"), 0.0), popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexCalloutBY"), 0.0)}, 1);
+        oStampAnn->setLatexCalloutPoint({popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexCalloutCX"), 0.0), popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexCalloutCY"), 0.0)}, 2);
+    }
     oStampAnn->setLatexScale(popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexScale"), 1.0));
     oStampAnn->setLatexLayoutWidth(popplerAnnotation->customRealProperty(QStringLiteral("OkularLatexLayoutWidth"), 0.0));
     if (oStampAnn->isOkularLatex()) {
         oStampAnn->setStampIconName(QStringLiteral("latex-notes"));
-        oStampAnn->setLatexTextColor(popplerAnnotation->style().color());
+        oStampAnn->setLatexTextColor(customColorProperty(popplerAnnotation, QStringLiteral("OkularLatexTextColor"), Qt::black));
         oStampAnn->setLatexFillColor(popplerAnnotation->okularLatexNoteFillColor());
         oStampAnn->setLatexBorderColor(popplerAnnotation->okularLatexNoteBorderColor());
         oStampAnn->style().setWidth(popplerAnnotation->customBoolProperty(QStringLiteral("OkularLatexNoteBoxed"), false) ? 1.0 : 0.0);
@@ -1462,6 +1571,33 @@ Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::Annotation *p
             Poppler::StampAnnotation *pStampAnn = static_cast<Poppler::StampAnnotation *>(popplerAnnotation);
             QFileInfo stampIconFile {oStampAnn->stampImagePath()};
             oStampAnn->setFlags(okularAnnotation->flags() & ~Okular::Annotation::Flag::DenyWrite);
+#ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+            if (oStampAnn->isOkularLatex() && oStampAnn->isLatexCallout()) {
+                const double boxX1 = pStampAnn->customRealProperty(QStringLiteral("OkularLatexBoxX1"), std::numeric_limits<double>::quiet_NaN());
+                const double boxY1 = pStampAnn->customRealProperty(QStringLiteral("OkularLatexBoxY1"), std::numeric_limits<double>::quiet_NaN());
+                const double boxX2 = pStampAnn->customRealProperty(QStringLiteral("OkularLatexBoxX2"), std::numeric_limits<double>::quiet_NaN());
+                const double boxY2 = pStampAnn->customRealProperty(QStringLiteral("OkularLatexBoxY2"), std::numeric_limits<double>::quiet_NaN());
+                const QSizeF pageSize = popplerPage.pageSizeF();
+                if (std::isfinite(boxX1) && std::isfinite(boxY1) && std::isfinite(boxX2) && std::isfinite(boxY2) && pageSize.width() > 0.0 && pageSize.height() > 0.0) {
+                    oStampAnn->setBoundingRectangle(Okular::NormalizedRect(boxX1 / pageSize.width(), 1.0 - boxY2 / pageSize.height(), boxX2 / pageSize.width(), 1.0 - boxY1 / pageSize.height()));
+                }
+                const bool hasNormalizedCalloutPoints = (oStampAnn->latexCalloutPoint(0).x != 0.0 || oStampAnn->latexCalloutPoint(0).y != 0.0 || oStampAnn->latexCalloutPoint(1).x != 0.0
+                                                         || oStampAnn->latexCalloutPoint(1).y != 0.0 || oStampAnn->latexCalloutPoint(2).x != 0.0 || oStampAnn->latexCalloutPoint(2).y != 0.0);
+                if (!hasNormalizedCalloutPoints && pageSize.width() > 0.0 && pageSize.height() > 0.0) {
+                    const double ax = pStampAnn->customRealProperty(QStringLiteral("OkularLatexCalloutPageAX"), std::numeric_limits<double>::quiet_NaN());
+                    const double ay = pStampAnn->customRealProperty(QStringLiteral("OkularLatexCalloutPageAY"), std::numeric_limits<double>::quiet_NaN());
+                    const double bx = pStampAnn->customRealProperty(QStringLiteral("OkularLatexCalloutPageBX"), std::numeric_limits<double>::quiet_NaN());
+                    const double by = pStampAnn->customRealProperty(QStringLiteral("OkularLatexCalloutPageBY"), std::numeric_limits<double>::quiet_NaN());
+                    const double cx = pStampAnn->customRealProperty(QStringLiteral("OkularLatexCalloutPageCX"), std::numeric_limits<double>::quiet_NaN());
+                    const double cy = pStampAnn->customRealProperty(QStringLiteral("OkularLatexCalloutPageCY"), std::numeric_limits<double>::quiet_NaN());
+                    if (std::isfinite(ax) && std::isfinite(ay) && std::isfinite(bx) && std::isfinite(by) && std::isfinite(cx) && std::isfinite(cy)) {
+                        oStampAnn->setLatexCalloutPoint(pagePointToNormPoint(QPointF(ax, ay), pageSize), 0);
+                        oStampAnn->setLatexCalloutPoint(pagePointToNormPoint(QPointF(bx, by), pageSize), 1);
+                        oStampAnn->setLatexCalloutPoint(pagePointToNormPoint(QPointF(cx, cy), pageSize), 2);
+                    }
+                }
+            }
+#endif
             if (stampIconFile.exists() && stampIconFile.isFile()) {
                 setPopplerStampAnnotationCustomImage(&popplerPage, pStampAnn, oStampAnn);
             }
