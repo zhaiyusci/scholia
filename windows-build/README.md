@@ -3,6 +3,55 @@
 This directory contains the Windows build and packaging scripts for this Okular
 checkout. Run the commands below from the repository root.
 
+## Quick Command Map
+
+Use these commands from the repository root, unless noted otherwise.
+
+Full Windows local build, PDF-only with MicroTeX:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okular-local.ps1 `
+  -PdfOnly `
+  -MicroTeXSrc .\external\MicroTeX
+```
+
+Incremental rebuild after ordinary `okularpart` source edits:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okularpart-incremental.ps1 `
+  -SourceFiles part\latexrenderer.cpp
+```
+
+Prepare, smoke test, and package the PDF-only installer:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\prepare-okular-pdf-only-stage.ps1
+
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\smoke-test-okular-pdf-only-stage.ps1 `
+  -PdfPath .\autotests\data\file2.pdf
+
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okular-pdf-only-installer.ps1 -SkipStage
+```
+
+Expected installer output:
+
+```text
+..\dist\Okular-PDF-26.07.70-patch<date>-Setup.exe
+```
+
+Run the installed local build:
+
+```powershell
+C:\CraftRoot\bin\okular.exe
+```
+
+Run with TeX invocation logging enabled:
+
+```powershell
+$env:QT_LOGGING_RULES = 'org.kde.okular.ui.debug=true'
+C:\CraftRoot\bin\okular.exe
+```
+
 ## Layout
 
 - Okular source: repository root, `.`
@@ -56,6 +105,9 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 
 Use this after changing dependencies, Poppler, CMake options, or when the build
 directory should be treated as untrusted.
+
+This repository's Windows full build means PDF-only. Do not remove `-PdfOnly`
+for the normal Windows runtime or installer build.
 
 To rebuild Okular from scratch while reusing the already installed local
 Poppler:
@@ -116,6 +168,13 @@ Pass every changed `.cpp` that belongs to `okularpart`. If the change touches
 CMake configuration, generated headers, resources, Poppler, or MicroTeX, use the
 full build instead.
 
+For LaTeX note renderer changes, the usual incremental command is:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okularpart-incremental.ps1 `
+  -SourceFiles part\latexrenderer.cpp
+```
+
 ## Clean Okular Build Directory
 
 Use this only when a full Okular rebuild is needed. It removes Okular's Craft
@@ -142,6 +201,10 @@ Then run the full build command.
 
 The installer is built from a staged application tree, not directly from
 `C:\CraftRoot`.
+
+Always prepare a fresh stage before a release installer. `-SkipStage` is only
+for the final installer step after `prepare-okular-pdf-only-stage.ps1` and the
+smoke test have already passed.
 
 Prepare the stage:
 

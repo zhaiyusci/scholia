@@ -14,6 +14,70 @@ PREFIX=$HOME/.local/opt/okular
 
 Build that first using `README.local-linux-build.md`.
 
+## Quick Command Map
+
+Run these commands inside WSL/Linux from the repository root:
+
+```sh
+cd /path/to/okular
+```
+
+Build the default development AppImage. The default is PDF-only:
+
+```sh
+APPIMAGETOOL="$PWD/build-appimage/tools/appimagetool-x86_64.AppImage" \
+APPIMAGE_RUNTIME_FILE="$PWD/build-appimage/tools/runtime-x86_64" \
+VERSION=20260603 \
+linux-build/scripts/build-okular-appimage.sh
+```
+
+The script first refreshes:
+
+```text
+build-appimage/Okular.AppDir
+```
+
+Then writes:
+
+```text
+build-appimage/Okular-dev-<version>-x86_64.AppImage
+```
+
+To build only the final AppImage again after `Okular.AppDir` is already
+prepared:
+
+```sh
+SKIP_PREPARE_APPDIR=1 \
+APPIMAGETOOL="$PWD/build-appimage/tools/appimagetool-x86_64.AppImage" \
+APPIMAGE_RUNTIME_FILE="$PWD/build-appimage/tools/runtime-x86_64" \
+VERSION=20260603 \
+linux-build/scripts/build-okular-appimage.sh
+```
+
+Verify the result:
+
+```sh
+QT_QPA_PLATFORM=xcb \
+APPIMAGE_EXTRACT_AND_RUN=1 \
+./build-appimage/Okular-dev-20260603-x86_64.AppImage --version
+
+test -d build-appimage/Okular.AppDir/usr/share/poppler/cMap/Adobe-GB1
+test -f build-appimage/Okular.AppDir/usr/lib64/plugins/okular_generators/okularGenerator_poppler.so
+test -f build-appimage/Okular.AppDir/usr/lib64/plugins/platforms/libqxcb.so
+```
+
+Run under WSLg:
+
+```sh
+QT_QPA_PLATFORM=xcb \
+APPIMAGE_EXTRACT_AND_RUN=1 \
+./build-appimage/Okular-dev-20260603-x86_64.AppImage autotests/data/file1.pdf
+```
+
+`QT_QPA_PLATFORM=xcb` matters for the default AppImage because the conservative
+PDF-only package bundles the XCB platform plugin but does not bundle Wayland
+plugins unless `BUNDLE_WAYLAND=1` is set during AppDir preparation.
+
 ## Prepare an AppDir
 
 ```sh
@@ -154,11 +218,14 @@ run the Linux packaging step without network access:
 build-appimage/tools/appimagetool-x86_64.AppImage
 build-appimage/tools/runtime-x86_64
 
-SKIP_PREPARE_APPDIR=1 \
 APPIMAGETOOL="$PWD/build-appimage/tools/appimagetool-x86_64.AppImage" \
 APPIMAGE_RUNTIME_FILE="$PWD/build-appimage/tools/runtime-x86_64" \
 linux-build/scripts/build-okular-appimage.sh
 ```
+
+Add `SKIP_PREPARE_APPDIR=1` only when the existing `Okular.AppDir` has already
+been prepared successfully and only the final `appimagetool` step needs to be
+rerun.
 
 The output defaults to the build date:
 
@@ -231,6 +298,20 @@ If the host lacks FUSE support, run with:
 
 ```sh
 APPIMAGE_EXTRACT_AND_RUN=1 ./build-appimage/Okular-dev-*-x86_64.AppImage
+```
+
+Under WSLg, use XCB explicitly:
+
+```sh
+QT_QPA_PLATFORM=xcb APPIMAGE_EXTRACT_AND_RUN=1 \
+./build-appimage/Okular-dev-*-x86_64.AppImage /path/to/test.pdf
+```
+
+If Windows does not show the WSLg RemoteApp window even though the process is
+running, restart WSLg and try again:
+
+```powershell
+wsl.exe --shutdown
 ```
 
 ## Limits

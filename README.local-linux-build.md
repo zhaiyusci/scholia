@@ -20,6 +20,104 @@ related environment variables. The wrapper must not source files from the
 source or build tree; an installed command should only depend on the install
 prefix.
 
+## Quick Command Map
+
+Run these commands inside WSL/Linux from the repository root. If the checkout
+is stored on a Windows drive, use the corresponding `/mnt/<drive>/...` path, for
+example:
+
+```sh
+cd /mnt/c/path/to/okular
+```
+
+From PowerShell, enter the WSL distro with:
+
+```powershell
+wsl.exe -d openSUSE-Tumbleweed
+```
+
+Full local Linux build and install:
+
+```sh
+export PREFIX="$HOME/.local/opt/okular"
+git submodule update --init --recursive
+
+linux-build/scripts/install-poppler-data.sh "$PREFIX"
+
+cmake -S external/poppler -B build-poppler-local \
+  -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DPOPPLER_DATADIR="$PREFIX/share/poppler" \
+  -DENABLE_QT6=ON \
+  -DENABLE_QT5=OFF
+cmake --build build-poppler-local -j 8
+cmake --install build-poppler-local
+
+PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig" \
+cmake -S . -B build-local-poppler \
+  -DCMAKE_PREFIX_PATH="$PREFIX" \
+  -DOKULAR_ENABLE_MICROTEX=ON \
+  -DCMAKE_INSTALL_PREFIX="$PREFIX"
+cmake --build build-local-poppler -j 8
+cmake --install build-local-poppler
+```
+
+Create or refresh the launcher after installing:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+cat > "$HOME/.local/bin/okular" <<'EOF'
+#!/bin/sh
+prefix="${OKULAR_LOCAL_PREFIX:-$HOME/.local/opt/okular}"
+libdir="$prefix/lib64"
+if [ ! -d "$libdir" ]; then
+    libdir="$prefix/lib"
+fi
+
+export PATH="$prefix/bin${PATH:+:$PATH}"
+export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export XDG_CONFIG_DIRS="$prefix/etc/xdg:${XDG_CONFIG_DIRS:-/etc/xdg}"
+export QT_PLUGIN_PATH="$libdir/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+export QML2_IMPORT_PATH="$libdir/qml${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+export QT_QUICK_CONTROLS_STYLE_PATH="$libdir/qml/QtQuick/Controls.2${QT_QUICK_CONTROLS_STYLE_PATH:+:$QT_QUICK_CONTROLS_STYLE_PATH}"
+export MANPATH="$prefix/share/man:${MANPATH:-/usr/local/share/man:/usr/share/man}"
+export SASL_PATH="$libdir/sasl2:${SASL_PATH:-/usr/lib64/sasl2}"
+export POPPLER_DATADIR="$prefix/share/poppler"
+okular_default_logging_rules="kf.kio.workers.file.debug=false;kf.kio.workers.file.info=false"
+export QT_LOGGING_RULES="$okular_default_logging_rules${QT_LOGGING_RULES:+;$QT_LOGGING_RULES}"
+
+exec "$prefix/bin/okular" "$@"
+EOF
+chmod 755 "$HOME/.local/bin/okular"
+```
+
+Run the installed local build:
+
+```sh
+~/.local/bin/okular /path/to/test.pdf
+```
+
+Under WSLg, prefer XCB if a Qt 6 Wayland window appears but does not show up or
+does not become interactive on the Windows desktop:
+
+```sh
+QT_QPA_PLATFORM=xcb ~/.local/bin/okular /path/to/test.pdf
+```
+
+After pulling normal source changes, an incremental rebuild is usually enough:
+
+```sh
+export PREFIX="$HOME/.local/opt/okular"
+git submodule update --init --recursive
+linux-build/scripts/install-poppler-data.sh "$PREFIX"
+cmake --build build-poppler-local -j 8
+cmake --install build-poppler-local
+cmake --build build-local-poppler -j 8
+cmake --install build-local-poppler
+```
+
+Reconfigure from scratch if the Poppler submodule, CMake options, Qt/KF
+packages, MicroTeX source, or install prefix changed.
+
 ## Layout
 
 - Okular source: this repository
@@ -80,6 +178,24 @@ sudo zypper install \
 If `qt6-base-private-devel` conflicts with `libressl-devel`, let zypper switch
 the development SSL stack to the OpenSSL packages. The Qt private headers are
 required by Okular's current CMake configuration.
+
+WSLg exposes both Wayland and Xwayland. The local installed build can run on
+Wayland, but this development environment has also shown cases where Qt Wayland
+creates a window with size `0x0` or where the Windows-side RemoteApp window is
+not usable. In those cases, restart WSLg and force XCB:
+
+```powershell
+wsl.exe --shutdown
+```
+
+```sh
+QT_QPA_PLATFORM=xcb ~/.local/bin/okular /path/to/test.pdf
+```
+
+The Windows-side WSLg window is hosted by `msrdc.exe`, not by a native Windows
+`okular.exe` process. If a WSL GUI process is running but no window is visible,
+check Windows Task Manager or Alt-Tab for a title ending in
+`(openSUSE-Tumbleweed)`.
 
 ## Clean local build directories
 
