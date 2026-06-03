@@ -10,7 +10,7 @@ research-note workflows. The main differences are:
 
 * Interactive LaTeX note annotations:
   * adds a direct annotation action for LaTeX notes;
-  * renders LaTeX notes as vector PDF FreeText appearances;
+  * renders LaTeX notes as vector PDF stamp appearances;
   * supports source editing, configurable preamble/executable settings, color,
     width, reflow, warning display, and persistent layout/scale metadata;
   * keeps the intended physical font size, so a 10 pt LaTeX note is stored and
@@ -65,13 +65,9 @@ as LaTeX-backed. Style or layout fields such as `/OkularLatexScale`,
 primary identity test; they are properties of an annotation, not proof that it
 is LaTeX-backed.
 
-The PDF subtype and standard intent fields carry the annotation semantics:
-
-- `/Subtype /FreeText` is appropriate for visible text-note semantics.
-- `/Subtype /FreeText` with `/IT /FreeTextTypeWriter` is appropriate for
-  typewriter-style LaTeX text.
-- `/Subtype /FreeText` with `/IT /FreeTextCallout` is appropriate for LaTeX
-  callout notes.
+All LaTeX annotations in this fork are stored as stamp annotations. The PDF
+subtype is always `/Subtype /Stamp`; the LaTeX-specific behavior is carried by
+Okular metadata and by the stamp appearance stream.
 
 `/Contents` stores the editable LaTeX source shown in the popup note. `/AP /N`
 stores the rendered appearance that other PDF readers display. The appearance
@@ -83,18 +79,17 @@ not be required to reopen, display, or identify a saved LaTeX annotation. Saved
 PDFs must not depend on paths such as `~/.local/share/okular/latex-notes/*.pdf`
 or `C:/Users/.../okular/latex-notes/*.pdf`.
 
-Inline/typewriter/callout LaTeX annotations should use `FreeText`, not `Stamp`,
-because their PDF semantics are visible text notes:
+Plain, inline, typewriter-style, and callout LaTeX annotations should use
+`Stamp`, not `FreeText`:
 
 ```pdf
 <<
   /Type /Annot
-  /Subtype /FreeText
-  /IT /FreeText
+  /Subtype /Stamp
+  /Name /latex-notes
   /Rect [100 500 240 535]
 
   /Contents (x^2 + y^2)
-  /DA (/Helv 10 Tf 0 0 0 rg)
 
   /OkularLatex true
   /OkularLatexLayoutWidth 120
@@ -106,23 +101,35 @@ because their PDF semantics are visible text notes:
 >>
 ```
 
-For callout notes, the standard FreeText callout fields remain the source of
-the callout semantics:
+For callout notes, the saved annotation is still a stamp. Okular stores the
+callout leader geometry as custom metadata so the stamp can expose editable
+control points inside Okular, while other PDF readers still see a normal stamp
+appearance:
+
+External PDF editors such as Adobe Acrobat should be expected to treat a LaTeX
+callout as one stamp annotation. They can display, move, or resize the stamp
+appearance as a whole, but they generally cannot edit the Okular-specific
+leader points or drag the text box independently of the callout arrow. Okular
+reconstructs those controls from `/OkularLatexCallout*` metadata and then
+updates the stamp appearance after edits.
 
 ```pdf
 <<
   /Type /Annot
-  /Subtype /FreeText
-  /IT /FreeTextCallout
+  /Subtype /Stamp
+  /Name /latex-notes
   /Rect [80 460 260 540]
 
   /Contents (\frac{a}{b})
-  /DA (/Helv 10 Tf 0 0 0 rg)
-  /CL [90 480 130 520 150 520]
-  /LE /OpenArrow
-  /RD [3 3 3 3]
 
   /OkularLatex true
+  /OkularLatexCallout true
+  /OkularLatexCalloutAX 0.12
+  /OkularLatexCalloutAY 0.42
+  /OkularLatexCalloutBX 0.18
+  /OkularLatexCalloutBY 0.48
+  /OkularLatexCalloutCX 0.22
+  /OkularLatexCalloutCY 0.48
   /OkularLatexLayoutWidth 100
   /OkularLatexScale 1.0
 
@@ -132,10 +139,10 @@ the callout semantics:
 >>
 ```
 
-Boxes, callout leader lines, arrows, fills, borders, and padding are PDF
-appearance details. They should be drawn by the outer appearance Form XObject,
-not by the LaTeX source. The outer Form XObject may place an inner Form XObject
-containing only the rendered LaTeX content:
+Boxes, fills, borders, and padding are stamp appearance details. Callout leader
+lines and handles are Okular interaction geometry for LaTeX callout stamps and
+must not be baked into the LaTeX source. The outer Form XObject may place an
+inner Form XObject containing only the rendered LaTeX content:
 
 ```pdf
 21 0 obj
@@ -169,7 +176,7 @@ endobj
 The read-side recognition rule should therefore be:
 
 ```text
-annotation subtype is FreeText
+annotation subtype is Stamp
 and /OkularLatex is true
 and /Contents is non-empty
 ```
