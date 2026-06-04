@@ -3,10 +3,12 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+workspace_dir=$(CDPATH= cd -- "$repo_dir/.." && pwd)
+appimage_build_dir="${APPIMAGE_BUILD_DIR:-$workspace_dir/linux_build/appimage}"
 
-appdir="${APPDIR:-$repo_dir/build-appimage/Okular.AppDir}"
-output_dir="${APPIMAGE_OUTPUT_DIR:-$repo_dir/build-appimage}"
-tool_dir="${APPIMAGE_TOOL_DIR:-$repo_dir/build-appimage/tools}"
+appdir="${APPDIR:-$appimage_build_dir/Okular.AppDir}"
+output_dir="${APPIMAGE_OUTPUT_DIR:-$appimage_build_dir}"
+tool_dir="${APPIMAGE_TOOL_DIR:-$appimage_build_dir/tools}"
 version="${VERSION:-$(date +%Y%m%d)}"
 arch="${ARCH:-x86_64}"
 output="${APPIMAGE_OUTPUT:-$output_dir/Okular-dev-$version-$arch.AppImage}"

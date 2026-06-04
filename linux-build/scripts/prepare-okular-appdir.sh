@@ -3,9 +3,11 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_dir=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+workspace_dir=$(CDPATH= cd -- "$repo_dir/.." && pwd)
+appimage_build_dir="${APPIMAGE_BUILD_DIR:-$workspace_dir/linux_build/appimage}"
 
 prefix="${PREFIX:-$HOME/.local/opt/okular}"
-appdir="${APPDIR:-$repo_dir/build-appimage/Okular.AppDir}"
+appdir="${APPDIR:-$appimage_build_dir/Okular.AppDir}"
 pdf_only="${PDF_ONLY:-1}"
 bundle_qml="${BUNDLE_QML:-0}"
 bundle_breeze_icons="${BUNDLE_BREEZE_ICONS:-1}"
@@ -32,7 +34,7 @@ fi
 libdir_name=$(basename "$prefix_libdir")
 app_usr="$appdir/usr"
 app_libdir="$app_usr/$libdir_name"
-work_dir="$repo_dir/build-appimage"
+work_dir="$appimage_build_dir"
 
 qtpaths_bin="${QTPATHS:-}"
 if [ -z "$qtpaths_bin" ]; then

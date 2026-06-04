@@ -25,8 +25,8 @@ cd /path/to/okular
 Build the default development AppImage. The default is PDF-only:
 
 ```sh
-APPIMAGETOOL="$PWD/build-appimage/tools/appimagetool-x86_64.AppImage" \
-APPIMAGE_RUNTIME_FILE="$PWD/build-appimage/tools/runtime-x86_64" \
+APPIMAGETOOL="$PWD/../linux_build/appimage/tools/appimagetool-x86_64.AppImage" \
+APPIMAGE_RUNTIME_FILE="$PWD/../linux_build/appimage/tools/runtime-x86_64" \
 VERSION=20260603 \
 linux-build/scripts/build-okular-appimage.sh
 ```
@@ -34,13 +34,13 @@ linux-build/scripts/build-okular-appimage.sh
 The script first refreshes:
 
 ```text
-build-appimage/Okular.AppDir
+../linux_build/appimage/Okular.AppDir
 ```
 
 Then writes:
 
 ```text
-build-appimage/Okular-dev-<version>-x86_64.AppImage
+../linux_build/appimage/Okular-dev-<version>-x86_64.AppImage
 ```
 
 To build only the final AppImage again after `Okular.AppDir` is already
@@ -48,8 +48,8 @@ prepared:
 
 ```sh
 SKIP_PREPARE_APPDIR=1 \
-APPIMAGETOOL="$PWD/build-appimage/tools/appimagetool-x86_64.AppImage" \
-APPIMAGE_RUNTIME_FILE="$PWD/build-appimage/tools/runtime-x86_64" \
+APPIMAGETOOL="$PWD/../linux_build/appimage/tools/appimagetool-x86_64.AppImage" \
+APPIMAGE_RUNTIME_FILE="$PWD/../linux_build/appimage/tools/runtime-x86_64" \
 VERSION=20260603 \
 linux-build/scripts/build-okular-appimage.sh
 ```
@@ -59,11 +59,11 @@ Verify the result:
 ```sh
 QT_QPA_PLATFORM=xcb \
 APPIMAGE_EXTRACT_AND_RUN=1 \
-./build-appimage/Okular-dev-20260603-x86_64.AppImage --version
+../linux_build/appimage/Okular-dev-20260603-x86_64.AppImage --version
 
-test -d build-appimage/Okular.AppDir/usr/share/poppler/cMap/Adobe-GB1
-test -f build-appimage/Okular.AppDir/usr/lib64/plugins/okular_generators/okularGenerator_poppler.so
-test -f build-appimage/Okular.AppDir/usr/lib64/plugins/platforms/libqxcb.so
+test -d ../linux_build/appimage/Okular.AppDir/usr/share/poppler/cMap/Adobe-GB1
+test -f ../linux_build/appimage/Okular.AppDir/usr/lib64/plugins/okular_generators/okularGenerator_poppler.so
+test -f ../linux_build/appimage/Okular.AppDir/usr/lib64/plugins/platforms/libqxcb.so
 ```
 
 Run under WSLg:
@@ -71,7 +71,7 @@ Run under WSLg:
 ```sh
 QT_QPA_PLATFORM=xcb \
 APPIMAGE_EXTRACT_AND_RUN=1 \
-./build-appimage/Okular-dev-20260603-x86_64.AppImage autotests/data/file1.pdf
+../linux_build/appimage/Okular-dev-20260603-x86_64.AppImage autotests/data/file1.pdf
 ```
 
 `QT_QPA_PLATFORM=xcb` matters for the default AppImage because the conservative
@@ -89,7 +89,7 @@ linux-build/scripts/prepare-okular-appdir.sh
 The generated AppDir defaults to:
 
 ```sh
-build-appimage/Okular.AppDir
+../linux_build/appimage/Okular.AppDir
 ```
 
 The script copies:
@@ -144,7 +144,7 @@ APPIMAGETOOL=/path/to/appimagetool \
 linux-build/scripts/build-okular-appimage.sh
 ```
 
-By default the build script refreshes `build-appimage/Okular.AppDir` before
+By default the build script refreshes `../linux_build/appimage/Okular.AppDir` before
 running `appimagetool`. If `prepare-okular-appdir.sh` already completed and
 only the final AppImage step failed, reuse the existing AppDir:
 
@@ -167,7 +167,7 @@ DOWNLOAD_APPIMAGETOOL=1 linux-build/scripts/build-okular-appimage.sh
 ```
 
 `appimagetool` may also need the type2 AppImage runtime. The script looks for a
-runtime file first at `build-appimage/tools/runtime-x86_64` and then at
+runtime file first at `../linux_build/appimage/tools/runtime-x86_64` and then at
 `$HOME/.local/opt/appimagetool/runtime-x86_64`. To let the script download it:
 
 ```sh
@@ -215,11 +215,11 @@ For WSL builds where the Windows host downloads the tools, place them here and
 run the Linux packaging step without network access:
 
 ```sh
-build-appimage/tools/appimagetool-x86_64.AppImage
-build-appimage/tools/runtime-x86_64
+../linux_build/appimage/tools/appimagetool-x86_64.AppImage
+../linux_build/appimage/tools/runtime-x86_64
 
-APPIMAGETOOL="$PWD/build-appimage/tools/appimagetool-x86_64.AppImage" \
-APPIMAGE_RUNTIME_FILE="$PWD/build-appimage/tools/runtime-x86_64" \
+APPIMAGETOOL="$PWD/../linux_build/appimage/tools/appimagetool-x86_64.AppImage" \
+APPIMAGE_RUNTIME_FILE="$PWD/../linux_build/appimage/tools/runtime-x86_64" \
 linux-build/scripts/build-okular-appimage.sh
 ```
 
@@ -230,7 +230,7 @@ rerun.
 The output defaults to the build date:
 
 ```sh
-build-appimage/Okular-dev-<yyyymmdd>-x86_64.AppImage
+../linux_build/appimage/Okular-dev-<yyyymmdd>-x86_64.AppImage
 ```
 
 Override `VERSION` only when a reproducible or release-specific filename is
@@ -267,16 +267,16 @@ rendering on machines without `poppler-data`.
 Check the AppDir before building the AppImage:
 
 ```sh
-test -d build-appimage/Okular.AppDir/usr/share/poppler/cMap/Adobe-GB1
-test -f build-appimage/Okular.AppDir/usr/lib64/plugins/okular_generators/okularGenerator_poppler.so
-test -f build-appimage/Okular.AppDir/usr/lib64/plugins/platforms/libqxcb.so
+test -d ../linux_build/appimage/Okular.AppDir/usr/share/poppler/cMap/Adobe-GB1
+test -f ../linux_build/appimage/Okular.AppDir/usr/lib64/plugins/okular_generators/okularGenerator_poppler.so
+test -f ../linux_build/appimage/Okular.AppDir/usr/lib64/plugins/platforms/libqxcb.so
 ```
 
 Inspect unresolved dependencies:
 
 ```sh
-LD_LIBRARY_PATH=$PWD/build-appimage/Okular.AppDir/usr/lib64 \
-ldd build-appimage/Okular.AppDir/usr/bin/okular | rg 'not found|\.local/opt/okular'
+LD_LIBRARY_PATH=$PWD/../linux_build/appimage/Okular.AppDir/usr/lib64 \
+ldd ../linux_build/appimage/Okular.AppDir/usr/bin/okular | rg 'not found|\.local/opt/okular'
 ```
 
 The preparation script performs the same kind of check for all staged ELF files
@@ -285,26 +285,26 @@ and fails if anything still resolves through the local build prefix.
 Run the AppDir directly:
 
 ```sh
-build-appimage/Okular.AppDir/AppRun /path/to/test.pdf
+../linux_build/appimage/Okular.AppDir/AppRun /path/to/test.pdf
 ```
 
 Run the final AppImage:
 
 ```sh
-./build-appimage/Okular-dev-*-x86_64.AppImage /path/to/test.pdf
+../linux_build/appimage/Okular-dev-*-x86_64.AppImage /path/to/test.pdf
 ```
 
 If the host lacks FUSE support, run with:
 
 ```sh
-APPIMAGE_EXTRACT_AND_RUN=1 ./build-appimage/Okular-dev-*-x86_64.AppImage
+APPIMAGE_EXTRACT_AND_RUN=1 ../linux_build/appimage/Okular-dev-*-x86_64.AppImage
 ```
 
 Under WSLg, use XCB explicitly:
 
 ```sh
 QT_QPA_PLATFORM=xcb APPIMAGE_EXTRACT_AND_RUN=1 \
-./build-appimage/Okular-dev-*-x86_64.AppImage /path/to/test.pdf
+../linux_build/appimage/Okular-dev-*-x86_64.AppImage /path/to/test.pdf
 ```
 
 If Windows does not show the WSLg RemoteApp window even though the process is
