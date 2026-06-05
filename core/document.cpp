@@ -2915,6 +2915,20 @@ const DocumentSynopsis *Document::documentSynopsis() const
     return d->m_generator ? d->m_generator->generateDocumentSynopsis() : nullptr;
 }
 
+bool Document::setDocumentSynopsis(const DocumentSynopsis &synopsis, QString *errorText)
+{
+    if (!d->m_generator) {
+        return false;
+    }
+
+    const bool success = d->m_generator->setDocumentSynopsis(synopsis, errorText);
+    if (success) {
+        setHistoryClean(false);
+        foreachObserver(notifySetup(d->m_pagesVector, DocumentObserver::DocumentChanged));
+    }
+    return success;
+}
+
 void Document::startFontReading()
 {
     if (!d->m_generator || !d->m_generator->hasFeature(Generator::FontInfo) || d->m_fontThread) {

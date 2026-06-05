@@ -376,3 +376,28 @@ msgstr "输入密码"
 #, kde-format
 msgid "Enter password to open %1:"
 msgstr "输入密码以打开 %1："
+
+#: generator_pdf.cpp:1101
+#, kde-format
+msgid "PDF contents entries with web links cannot be edited yet."
+msgstr "暂不支持编辑带有网页链接的 PDF 目录项。"
+
+#: generator_pdf.cpp:1107
+#, kde-format
+msgid "PDF contents entries that open external files cannot be edited yet."
+msgstr "暂不支持编辑打开外部文件的 PDF 目录项。"
+
+#: generator_pdf.cpp:1113
+#, kde-format
+msgid "PDF contents entries that use named destinations cannot be edited yet."
+msgstr "暂不支持编辑使用命名目标的 PDF 目录项。"
+
+#: generator_pdf.cpp:1119 generator_pdf.cpp:1127
+#, kde-format
+msgid "Only PDF contents entries that point to document pages can be edited."
+msgstr "只能编辑指向本文档页面的 PDF 目录项。"
+
+#: generator_pdf.cpp:1181
+#, kde-format
+msgid "The PDF backend cannot edit this document's contents."
+msgstr "PDF 后端无法编辑此文档的目录。"

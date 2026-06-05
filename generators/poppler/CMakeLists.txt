@@ -43,6 +43,11 @@ kconfig_add_kcfg_files(okularGenerator_poppler_PART_SRCS GENERATE_MOC conf/pdfse
 
 okular_add_generator(okularGenerator_poppler ${okularGenerator_poppler_PART_SRCS})
 
+target_include_directories(okularGenerator_poppler PRIVATE
+    ${CMAKE_SOURCE_DIR}/external/poppler/qt6/src
+    ${CMAKE_BINARY_DIR}/../poppler-local
+    ${CMAKE_BINARY_DIR}/../poppler-local/poppler
+)
 target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Qt6 Qt6::Xml)
 if(POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
     target_compile_definitions(okularGenerator_poppler PRIVATE POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)

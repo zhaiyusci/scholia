@@ -11,6 +11,7 @@
 */
 
 #include <memory>
+#include <vector>
 
 #include "generator_pdf.h"
 
@@ -33,6 +34,7 @@
 #include <QTimeZone>
 #include <QTimer>
 #include <QXmlStreamReader>
+#include <QDomElement>
 
 #include <KAboutData>
 #include <KConfigDialog>
@@ -63,6 +65,10 @@
 #include "pdfsignatureutils.h"
 #include "popplerembeddedfile.h"
 #include "popplerversion.h"
+
+#include <Outline.h>
+#include <PDFDoc.h>
+#include "external/poppler/qt6/src/poppler-private.h"
 
 #include <functional>
 
@@ -1054,6 +1060,134 @@ const Okular::DocumentSynopsis *PDFGenerator::generateDocumentSynopsis()
 
     docSynopsisDirty = false;
     return &docSyn;
+}
+
+namespace
+{
+struct PopplerDocumentShim {
+    Poppler::DocumentData *m_doc = nullptr;
+};
+
+PDFDoc *popplerCoreDocument(Poppler::Document *document)
+{
+    if (!document) {
+        return nullptr;
+    }
+    // Poppler's Qt wrapper does not expose PDFDoc. In the current Qt6 wrapper
+    // Document has one data member, DocumentData *m_doc. Keep this local to the
+    // PDF generator; it should be replaced by a public Poppler Qt outline writer
+    // API if this feature is upstreamed.
+    auto *shim = reinterpret_cast<PopplerDocumentShim *>(document);
+    return shim->m_doc ? shim->m_doc->doc.get() : nullptr;
+}
+
+std::string pdfTextString(const QString &text)
+{
+    std::string result;
+    result.push_back(char(0xfe));
+    result.push_back(char(0xff));
+    for (const QChar ch : text) {
+        const ushort unicode = ch.unicode();
+        result.push_back(char((unicode >> 8) & 0xff));
+        result.push_back(char(unicode & 0xff));
+    }
+    return result;
+}
+
+bool synopsisElementToOutlineNode(const QDomElement &element, Outline::OutlineTreeNode *node, QString *errorText)
+{
+    if (element.hasAttribute(QStringLiteral("URL")) && !element.attribute(QStringLiteral("URL")).isEmpty()) {
+        if (errorText) {
+            *errorText = i18n("PDF contents entries with web links cannot be edited yet.");
+        }
+        return false;
+    }
+    if (element.hasAttribute(QStringLiteral("ExternalFileName")) && !element.attribute(QStringLiteral("ExternalFileName")).isEmpty()) {
+        if (errorText) {
+            *errorText = i18n("PDF contents entries that open external files cannot be edited yet.");
+        }
+        return false;
+    }
+    if (element.hasAttribute(QStringLiteral("ViewportName"))) {
+        if (errorText) {
+            *errorText = i18n("PDF contents entries that use named destinations cannot be edited yet.");
+        }
+        return false;
+    }
+    if (!element.hasAttribute(QStringLiteral("Viewport"))) {
+        if (errorText) {
+            *errorText = i18n("Only PDF contents entries that point to document pages can be edited.");
+        }
+        return false;
+    }
+
+    const Okular::DocumentViewport viewport(element.attribute(QStringLiteral("Viewport")));
+    if (!viewport.isValid() || viewport.pageNumber < 0) {
+        if (errorText) {
+            *errorText = i18n("Only PDF contents entries that point to document pages can be edited.");
+        }
+        return false;
+    }
+
+    node->title = pdfTextString(element.tagName());
+    node->destPageNum = viewport.pageNumber + 1;
+
+    for (QDomNode child = element.firstChild(); !child.isNull(); child = child.nextSibling()) {
+        const QDomElement childElement = child.toElement();
+        if (childElement.isNull()) {
+            continue;
+        }
+        Outline::OutlineTreeNode childNode;
+        if (!synopsisElementToOutlineNode(childElement, &childNode, errorText)) {
+            return false;
+        }
+        node->children.push_back(std::move(childNode));
+    }
+    return true;
+}
+
+bool synopsisToOutlineTree(const Okular::DocumentSynopsis &synopsis, std::vector<Outline::OutlineTreeNode> *nodes, QString *errorText)
+{
+    nodes->clear();
+    for (QDomNode child = synopsis.firstChild(); !child.isNull(); child = child.nextSibling()) {
+        const QDomElement childElement = child.toElement();
+        if (childElement.isNull()) {
+            continue;
+        }
+        Outline::OutlineTreeNode node;
+        if (!synopsisElementToOutlineNode(childElement, &node, errorText)) {
+            return false;
+        }
+        nodes->push_back(std::move(node));
+    }
+    return true;
+}
+}
+
+bool PDFGenerator::setDocumentSynopsis(const Okular::DocumentSynopsis &synopsis, QString *errorText)
+{
+    if (!pdfdoc) {
+        return false;
+    }
+
+    std::vector<Outline::OutlineTreeNode> outlineTree;
+    if (!synopsisToOutlineTree(synopsis, &outlineTree, errorText)) {
+        return false;
+    }
+
+    PDFDoc *coreDocument = popplerCoreDocument(pdfdoc.get());
+    if (!coreDocument || !coreDocument->getOutline()) {
+        if (errorText) {
+            *errorText = i18n("The PDF backend cannot edit this document's contents.");
+        }
+        return false;
+    }
+
+    QMutexLocker locker(userMutex());
+    coreDocument->getOutline()->setOutline(outlineTree);
+    docSyn = Okular::DocumentSynopsis(synopsis);
+    docSynopsisDirty = false;
+    return true;
 }
 
 static Okular::FontInfo::FontType convertPopplerFontInfoTypeToOkularFontInfoType(Poppler::FontInfo::Type type)

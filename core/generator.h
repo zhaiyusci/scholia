@@ -361,6 +361,14 @@ public:
     virtual const DocumentSynopsis *generateDocumentSynopsis();
 
     /**
+     * Replaces the document table of contents.
+     *
+     * The default implementation returns false. Generators that support
+     * modifying the native document outline can reimplement this.
+     */
+    virtual bool setDocumentSynopsis(const DocumentSynopsis &synopsis, QString *errorText);
+
+    /**
      * Returns the 'list of embedded fonts' object of the specified \p page
      * of the document.
      *

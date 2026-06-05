@@ -6329,3 +6329,43 @@ msgid ""
 "the blue width handle marks the requested layout width."
 msgstr ""
 "LaTeX 输出比布局宽度宽 %1 pt。批注会完整显示；蓝色宽度手柄标记请求的布局宽度。"
+
+#: part/part.cpp:817 part/part.cpp:3207
+#, kde-format
+msgid "Add Current Page to Contents"
+msgstr "将当前页添加到目录"
+
+#: part/part.cpp:3208 part/toc.cpp:301
+#, kde-format
+msgid "Rename Contents Entry"
+msgstr "重命名目录项"
+
+#: part/part.cpp:3209 part/toc.cpp:323
+#, kde-format
+msgid "Delete Contents Entry"
+msgstr "删除目录项"
+
+#: part/toc.cpp:258
+#, kde-format
+msgid "This document's contents cannot be edited."
+msgstr "无法编辑此文档的目录。"
+
+#: part/toc.cpp:258
+#, kde-format
+msgid "Edit Contents"
+msgstr "编辑目录"
+
+#: part/toc.cpp:279
+#, kde-format
+msgid "Add Contents Entry"
+msgstr "添加目录项"
+
+#: part/toc.cpp:279 part/toc.cpp:301
+#, kde-format
+msgid "Entry title:"
+msgstr "目录项标题："
+
+#: part/toc.cpp:323
+#, kde-format
+msgid "Delete the contents entry '%1' and its child entries?"
+msgstr "删除目录项“%1”及其子项吗？"

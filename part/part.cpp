@@ -810,6 +810,12 @@ void Part::setupViewerActions()
     ac->setDefaultShortcuts(reloadAction, KStandardShortcut::reload());
     m_reload = reloadAction;
 
+    m_addCurrentPageToContents = ac->addAction(QStringLiteral("tools_add_current_page_to_contents"));
+    m_addCurrentPageToContents->setText(i18n("Add Current Page to Contents"));
+    m_addCurrentPageToContents->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
+    m_addCurrentPageToContents->setEnabled(false);
+    connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
+
     m_closeFindBar = ac->addAction(QStringLiteral("close_find_bar"), this, SLOT(slotHideFindBar()));
     m_closeFindBar->setText(i18n("Close &Find Bar"));
     ac->setDefaultShortcut(m_closeFindBar, QKeySequence(Qt::Key_Escape));
@@ -1629,6 +1635,9 @@ bool Part::openFile()
     if (m_saveAs) {
         m_saveAs->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))));
     }
+    if (m_addCurrentPageToContents) {
+        m_addCurrentPageToContents->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && m_document->currentDocument().isLocalFile());
+    }
     Q_EMIT enablePrintAction(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_printPreview->setEnabled(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_showProperties->setEnabled(ok);
@@ -1920,14 +1929,14 @@ bool Part::queryClose()
 
 bool Part::closeUrl(bool promptToSave)
 {
-    if (promptToSave && !queryClose()) {
-        return false;
-    }
-
     if (m_swapInsteadOfOpening) {
         // If we're swapping the backing file, we don't want to close the
         // current one when openUrl() calls us internally
         return true; // pretend it worked
+    }
+
+    if (promptToSave && !queryClose()) {
+        return false;
     }
 
     m_document->setHistoryClean(true);
@@ -1947,6 +1956,9 @@ bool Part::closeUrl(bool promptToSave)
     }
     if (m_saveAs) {
         m_saveAs->setEnabled(false);
+    }
+    if (m_addCurrentPageToContents) {
+        m_addCurrentPageToContents->setEnabled(false);
     }
     m_printPreview->setEnabled(false);
     m_showProperties->setEnabled(false);
@@ -2942,8 +2954,7 @@ bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
         return false;
     }
     deleteTmpFileFunction();
-
-    m_document->setHistoryClean(true);
+    m_dirtyHandler->stop();
 
     if (m_document->isDocdataMigrationNeeded()) {
         m_document->docdataMigrationDone();
@@ -2957,9 +2968,6 @@ bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
         // this calls openFile internally, which in turn actually calls
         // m_document->swapBackingFile() instead of the regular loadDocument
         if (openUrl(saveUrl, true /* swapInsteadOfOpening */)) {
-            if (setModifiedAfterSave) {
-                m_document->setHistoryClean(false);
-            }
         } else {
             reloadedCorrectly = false;
         }
@@ -2995,6 +3003,13 @@ bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
     // Restore watcher
     if (url().isLocalFile()) {
         setFileToWatch(localFilePath());
+    }
+
+    if (reloadedCorrectly) {
+        m_document->setHistoryClean(!setModifiedAfterSave);
+        if (url().isLocalFile()) {
+            m_fileLastModified = QFileInfo(localFilePath()).lastModified();
+        }
     }
 
     return true;
@@ -3189,6 +3204,10 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
 
     QMenu popup;
     if (showTOCActions) {
+        popup.addAction(QIcon::fromTheme(QStringLiteral("list-add")), i18n("Add Current Page to Contents"), m_toc.data(), &TOC::addCurrentPageEntry);
+        popup.addAction(QIcon::fromTheme(QStringLiteral("edit-rename")), i18n("Rename Contents Entry"), m_toc.data(), &TOC::renameCurrentEntry);
+        popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete Contents Entry"), m_toc.data(), &TOC::deleteCurrentEntry);
+        popup.addSeparator();
         popup.addAction(i18n("Expand Whole Section"), m_toc.data(), &TOC::expandRecursively);
         popup.addAction(i18n("Collapse Whole Section"), m_toc.data(), &TOC::collapseRecursively);
         popup.addAction(i18n("Expand All"), m_toc.data(), &TOC::expandAll);

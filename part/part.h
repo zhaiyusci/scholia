@@ -443,6 +443,7 @@ private:
     KToggleFullScreenAction *m_showFullScreenAction;
     QAction *m_aboutBackend;
     QAction *m_reload;
+    QAction *m_addCurrentPageToContents = nullptr;
     QMenu *m_exportAsMenu;
 #if HAVE_PURPOSE
     Purpose::Menu *m_shareMenu;

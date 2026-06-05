@@ -263,6 +263,14 @@ public:
     const DocumentSynopsis *documentSynopsis() const;
 
     /**
+     * Replaces the native table of contents of the document.
+     *
+     * Returns false if the current generator does not support editing the
+     * native document outline, or if the supplied synopsis cannot be written.
+     */
+    bool setDocumentSynopsis(const DocumentSynopsis &synopsis, QString *errorText = nullptr);
+
+    /**
      * Starts the reading of the information about the fonts in the
      * document, if available.
      *

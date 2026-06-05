@@ -63,6 +63,7 @@ public:
     // [INHERITED] document information
     Okular::DocumentInfo generateDocumentInfo(const QSet<Okular::DocumentInfo::Key> &keys) const override;
     const Okular::DocumentSynopsis *generateDocumentSynopsis() override;
+    bool setDocumentSynopsis(const Okular::DocumentSynopsis &synopsis, QString *errorText) override;
     Okular::FontInfo::List fontsForPage(int page) override;
     const QList<Okular::EmbeddedFile *> *embeddedFiles() const override;
     PageLayout defaultPageLayout() const override;

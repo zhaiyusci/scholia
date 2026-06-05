@@ -363,6 +363,11 @@ const DocumentSynopsis *Generator::generateDocumentSynopsis()
     return nullptr;
 }
 
+bool Generator::setDocumentSynopsis(const DocumentSynopsis & /*synopsis*/, QString * /*errorText*/)
+{
+    return false;
+}
+
 FontInfo::List Generator::fontsForPage(int)
 {
     return FontInfo::List();

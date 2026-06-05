@@ -16,6 +16,8 @@
 
 class QModelIndex;
 class QTreeView;
+class QDomDocument;
+class QDomElement;
 class KTreeViewSearchLine;
 class TOCModel;
 
@@ -45,6 +47,9 @@ public:
     void finishReload();
 
 public Q_SLOTS:
+    void addCurrentPageEntry();
+    void renameCurrentEntry();
+    void deleteCurrentEntry();
     void expandRecursively();
     void collapseRecursively();
     void expandAll();
@@ -53,6 +58,7 @@ public Q_SLOTS:
 Q_SIGNALS:
     void hasTOC(bool has);
     void rightClick(const Okular::DocumentViewport &, const QPoint, const QString &);
+    void contentsModified();
 
 private Q_SLOTS:
     void slotExecuted(const QModelIndex &);
@@ -63,6 +69,10 @@ protected:
 
 private:
     QList<QModelIndex> expandedNodes(const QModelIndex &parent = QModelIndex()) const;
+    bool applySynopsis(const Okular::DocumentSynopsis &synopsis);
+    Okular::DocumentSynopsis synopsisFromModel() const;
+    QDomElement synopsisElementForIndex(QDomDocument &document, const QModelIndex &index) const;
+    QDomElement elementForIndexPath(QDomDocument &document, const QModelIndex &index) const;
 
     Okular::Document *m_document;
     QTreeView *m_treeView;
