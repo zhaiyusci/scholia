@@ -5990,3 +5990,342 @@ msgstr "忘记所有"
 #, kde-format
 msgid "Hide welcome screen"
 msgstr "隐藏欢迎屏幕"
+
+#: gui/guiutils.cpp:49 part/annotationpopup.cpp:667 part/pageviewannotator.cpp:380
+#, kde-format
+msgid "LaTeX Callout"
+msgstr "LaTeX 标注框"
+
+#: gui/guiutils.cpp:52 part/annotationpopup.cpp:669
+#, kde-format
+msgid "LaTeX Typewriter"
+msgstr "LaTeX 打字机"
+
+#: gui/guiutils.cpp:55 gui/guiutils.cpp:120 part/annotationpopup.cpp:671
+#, kde-format
+msgid "LaTeX Inline Note"
+msgstr "LaTeX 内联批注"
+
+#: gui/guiutils.cpp:120
+#, kde-format
+msgid "LaTeX Note"
+msgstr "LaTeX 批注"
+
+#: part/annotationactionhandler.cpp:765
+#, kde-format
+msgctxt "@title:window"
+msgid "Add LaTeX Callout"
+msgstr "添加 LaTeX 标注框"
+
+#: part/annotationactionhandler.cpp:765
+#, kde-format
+msgctxt "@title:window"
+msgid "Add LaTeX Inline Note"
+msgstr "添加 LaTeX 内联批注"
+
+#: part/annotationactionhandler.cpp:765
+#, kde-format
+msgctxt "@title:window"
+msgid "Add LaTeX Note"
+msgstr "添加 LaTeX 批注"
+
+#: part/annotationactionhandler.cpp:766
+#, kde-format
+msgctxt "@label:textbox"
+msgid "LaTeX source:"
+msgstr "LaTeX 源码："
+
+#: part/annotationactionhandler.cpp:877
+#, kde-format
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Callout"
+msgstr "标注框"
+
+#: part/annotationactionhandler.cpp:943
+#, kde-format
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add LaTeX Note…"
+msgstr "添加 LaTeX 批注..."
+
+#: part/annotationactionhandler.cpp:945
+#, kde-format
+msgctxt "@info:tooltip"
+msgid "Add rendered LaTeX as a movable annotation"
+msgstr "将渲染后的 LaTeX 添加为可移动批注"
+
+#: part/annotationactionhandler.cpp:947
+#, kde-format
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add LaTeX Inline Note…"
+msgstr "添加 LaTeX 内联批注..."
+
+#: part/annotationactionhandler.cpp:949
+#, kde-format
+msgctxt "@info:tooltip"
+msgid "Add rendered LaTeX with an inline-note background and border"
+msgstr "将渲染后的 LaTeX 添加为带背景和边框的内联批注"
+
+#: part/annotationactionhandler.cpp:951
+#, kde-format
+msgctxt "@action:intoolbar Annotation tool"
+msgid "Add LaTeX Callout…"
+msgstr "添加 LaTeX 标注框..."
+
+#: part/annotationactionhandler.cpp:953
+#, kde-format
+msgctxt "@info:tooltip"
+msgid "Add rendered LaTeX as a stamp-based callout note"
+msgstr "将渲染后的 LaTeX 添加为基于图章的标注框批注"
+
+#: part/annotationpopup.cpp:441 part/annotationpopup.cpp:518
+#, kde-format
+msgctxt "@action:inmenu"
+msgid "Convert to LaTeX Note"
+msgstr "转换为 LaTeX 批注"
+
+#: part/annotationpopup.cpp:595
+#, kde-format
+msgctxt "@action:inmenu"
+msgid "Remove Inline Note Frame"
+msgstr "移除内联批注边框"
+
+#: part/annotationpopup.cpp:595
+#, kde-format
+msgctxt "@action:inmenu"
+msgid "Use Inline Note Frame"
+msgstr "使用内联批注边框"
+
+#: part/annotationpopup.cpp:600
+#, kde-format
+msgctxt "@action:inmenu"
+msgid "Set LaTeX Note Width…"
+msgstr "设置 LaTeX 批注宽度..."
+
+#: part/annotationpopup.cpp:604
+#, kde-format
+msgctxt "@action:inmenu"
+msgid "Fit LaTeX Note to Content"
+msgstr "使 LaTeX 批注适应内容"
+
+#: part/annotationpopup.cpp:608
+#, kde-format
+msgctxt "@action:inmenu"
+msgid "Reset LaTeX Note Scale"
+msgstr "重置 LaTeX 批注缩放"
+
+#: part/annotationpopup.cpp:612
+#, kde-format
+msgctxt "@action:inmenu"
+msgid "Convert LaTeX Note to Plain Text"
+msgstr "将 LaTeX 批注转换为纯文本"
+
+#: part/annotationpopup.cpp:699
+#, kde-format
+msgctxt "@title:window"
+msgid "Set LaTeX Note Width"
+msgstr "设置 LaTeX 批注宽度"
+
+#: part/annotationpopup.cpp:700
+#, kde-format
+msgctxt "@label:spinbox"
+msgid "Width (% of page):"
+msgstr "宽度（占页面百分比）："
+
+#: part/annotationpopup.cpp:871 part/editannottooldialog.cpp:90
+#: part/pageviewannotator.cpp:369 part/pageviewannotator.cpp:2025
+#, kde-format
+msgid "Callout"
+msgstr "标注框"
+
+#: part/dlggeneral.cpp:232
+#, kde-format
+msgctxt "@title:group Config dialog, general page"
+msgid "Preview options:"
+msgstr "预览选项："
+
+#: part/dlggeneral.cpp:240
+#, kde-format
+msgctxt "@info:tooltip Config dialog, general page"
+msgid ""
+"Defines the initial width of the link preview pane as a percentage of the "
+"reading area."
+msgstr "将链接预览窗格的初始宽度定义为阅读区域的百分比。"
+
+#: part/dlggeneral.cpp:249
+#, kde-format
+msgctxt "@info:tooltip Config dialog, general page"
+msgid ""
+"Defines the initial height of the link preview pane as a percentage of the "
+"reading area."
+msgstr "将链接预览窗格的初始高度定义为阅读区域的百分比。"
+
+#: part/latexnoteutils.cpp:63
+#, kde-format
+msgid "Cannot find xelatex or lualatex executable."
+msgstr "找不到 xelatex 或 lualatex 可执行程序。"
+
+#: part/latexnoteutils.cpp:67
+#, kde-format
+msgid "LaTeX rendering failed:\n%1"
+msgstr ""
+"LaTeX 渲染失败：\n"
+"%1"
+
+#: part/latexnoteutils.cpp:71
+#, kde-format
+msgid "Cannot find pdftocairo executable."
+msgstr "找不到 pdftocairo 可执行程序。"
+
+#: part/latexnoteutils.cpp:73
+#, kde-format
+msgid "A problem occurred during the execution of the 'pdftocairo' command."
+msgstr "执行“pdftocairo”命令时出错。"
+
+#: part/latexnoteutils.cpp:75
+#, kde-format
+msgid "MicroTeX fallback failed:\n%1"
+msgstr ""
+"MicroTeX 回退失败：\n"
+"%1"
+
+#: part/latexnoteutils.cpp:344
+#, kde-format
+msgid "LaTeX source is empty."
+msgstr "LaTeX 源码为空。"
+
+#: part/latexnoteutils.cpp:367 part/latexnoteutils.cpp:439
+#: part/latexnoteutils.cpp:514 part/annotationpopup.cpp:642
+#, kde-format
+msgid "Could not load the rendered LaTeX note PDF."
+msgstr "无法加载渲染后的 LaTeX 批注 PDF。"
+
+#: part/latexnoteutils.cpp:374
+#, kde-format
+msgid "Could not create a temporary directory for LaTeX note appearances."
+msgstr "无法为 LaTeX 批注外观创建临时目录。"
+
+#: part/latexnoteutils.cpp:385 part/latexnoteutils.cpp:391
+#, kde-format
+msgid "Could not save the rendered LaTeX note PDF."
+msgstr "无法保存渲染后的 LaTeX 批注 PDF。"
+
+#: part/latexrenderer.cpp:705
+#, kde-format
+msgid ""
+"LaTeX output is wider than the layout width. The note is shown fully; the "
+"blue width handle marks the requested layout width. Rendered width is %1 pt, "
+"layout width is %2 pt."
+msgstr ""
+"LaTeX 输出宽于布局宽度。批注会完整显示；蓝色宽度手柄标记请求的布局宽度。"
+"渲染宽度为 %1 pt，布局宽度为 %2 pt。"
+
+#: part/latexrenderer.cpp:719
+#, kde-format
+msgid "MicroTeX resource directory was not found."
+msgstr "找不到 MicroTeX 资源目录。"
+
+#: part/latexrenderer.cpp:732
+#, kde-format
+msgid "MicroTeX did not return a render object."
+msgstr "MicroTeX 未返回渲染对象。"
+
+#: part/latexrenderer.cpp:755
+#, kde-format
+msgid "Could not create a temporary PDF file for MicroTeX output."
+msgstr "无法为 MicroTeX 输出创建临时 PDF 文件。"
+
+#: part/latexrenderer.cpp:770
+#, kde-format
+msgid "Could not paint MicroTeX output into a PDF file."
+msgstr "无法将 MicroTeX 输出绘制到 PDF 文件。"
+
+#: part/latexrenderer.cpp:786
+#, kde-format
+msgid "MicroTeX produced an empty PDF file."
+msgstr "MicroTeX 生成了空的 PDF 文件。"
+
+#: part/latexrenderer.cpp:794
+#, kde-format
+msgid ""
+"Rendered with MicroTeX fallback. LaTeX preamble and external packages are not "
+"supported by MicroTeX."
+msgstr ""
+"已使用 MicroTeX 回退渲染。MicroTeX 不支持 LaTeX 导言区和外部宏包。"
+
+#: part/latexrenderer.cpp:809
+#, kde-format
+msgid "MicroTeX fallback failed: %1"
+msgstr "MicroTeX 回退失败：%1"
+
+#: part/latexrenderer.cpp:812
+#, kde-format
+msgid "MicroTeX fallback failed with an unknown error."
+msgstr "MicroTeX 回退失败，错误未知。"
+
+#: part/latexrenderer.cpp:848
+#, kde-format
+msgid ""
+"LaTeX output is wider than the layout width. The note is shown fully; the "
+"blue width handle marks the requested layout width:\n"
+"%1"
+msgstr ""
+"LaTeX 输出宽于布局宽度。批注会完整显示；蓝色宽度手柄标记请求的布局宽度：\n"
+"%1"
+
+#: part/latexrenderer.cpp:862
+#, kde-format
+msgid "LaTeX produced a loose layout:\n%1"
+msgstr ""
+"LaTeX 生成了松散布局：\n"
+"%1"
+
+#: part/latexrenderer.cpp:1013
+#, kde-format
+msgid "Unknown LaTeX error."
+msgstr "未知 LaTeX 错误。"
+
+#: part/latexrenderer.cpp:1016
+#, kde-format
+msgctxt "LaTeX error with compiler context"
+msgid "%1 (%2)"
+msgstr "%1（%2）"
+
+#: part/latexrenderer.cpp:1039 part/latexrenderer.cpp:1058
+#, kde-format
+msgid "The formula contains unsupported LaTeX commands."
+msgstr "公式包含不支持的 LaTeX 命令。"
+
+#: part/latexrenderer.cpp:1093
+#, kde-format
+msgid "MicroTeX rendering is not available in this Okular build."
+msgstr "此 Okular 构建不支持 MicroTeX 渲染。"
+
+#: part/pageview.cpp:254
+#, kde-format
+msgctxt "@action:button Go to the current link preview position"
+msgid "Go to Preview"
+msgstr "转到预览"
+
+#: part/pageview.cpp:5395
+#, kde-format
+msgid "Show Link Preview"
+msgstr "显示链接预览"
+
+#: part/pageviewannotator.cpp:413
+#, kde-format
+msgid "New Callout Note"
+msgstr "新建标注框批注"
+
+#: part/pageviewannotator.cpp:1876
+#, kde-format
+msgctxt "Annotation tool"
+msgid "Callout Annotation (drag from the target to the text box)"
+msgstr "标注框批注（从目标拖动到文本框）"
+
+#: part/pageviewmouseannotation.cpp:641
+#, kde-format
+msgid ""
+"LaTeX output is %1 pt wider than the layout width. The note is shown fully; "
+"the blue width handle marks the requested layout width."
+msgstr ""
+"LaTeX 输出比布局宽度宽 %1 pt。批注会完整显示；蓝色宽度手柄标记请求的布局宽度。"

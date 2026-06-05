@@ -716,7 +716,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         if (!microtexInitialized) {
             const QString resRoot = microtexResourceRoot();
             if (resRoot.isEmpty()) {
-                latexOutput = QStringLiteral("MicroTeX resource directory was not found.");
+                latexOutput = i18n("MicroTeX resource directory was not found.");
                 return LatexRenderer::MicrotexFailed;
             }
             tex::LaTeX::init(resRoot.toStdString());
@@ -729,7 +729,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         const QString microtexSource = preprocessMicrotexSource(latexSource);
         std::unique_ptr<tex::TeXRender> render(tex::LaTeX::parse(microtexSource.toStdWString(), layoutWidth, fontSize, fontSize / 3.0f, microtexColor(textColor)));
         if (!render) {
-            latexOutput = QStringLiteral("MicroTeX did not return a render object.");
+            latexOutput = i18n("MicroTeX did not return a render object.");
             return LatexRenderer::MicrotexFailed;
         }
 
@@ -752,7 +752,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         QTemporaryFile tempFile(QDir(latexRuntimeTempPath()).filePath(QStringLiteral("okular_microtex-XXXXXX.pdf")));
         tempFile.setAutoRemove(false);
         if (!tempFile.open()) {
-            latexOutput = QStringLiteral("Could not create a temporary PDF file for MicroTeX output.");
+            latexOutput = i18n("Could not create a temporary PDF file for MicroTeX output.");
             return LatexRenderer::MicrotexFailed;
         }
         const QString tempFileName = tempFile.fileName();
@@ -767,7 +767,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         QPainter painter(&writer);
         if (!painter.isActive()) {
             QFile::remove(tempFileName);
-            latexOutput = QStringLiteral("Could not paint MicroTeX output into a PDF file.");
+            latexOutput = i18n("Could not paint MicroTeX output into a PDF file.");
             return LatexRenderer::MicrotexFailed;
         }
 
@@ -783,7 +783,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
 
         if (!QFileInfo::exists(tempFileName) || QFileInfo(tempFileName).size() <= 0) {
             QFile::remove(tempFileName);
-            latexOutput = QStringLiteral("MicroTeX produced an empty PDF file.");
+            latexOutput = i18n("MicroTeX produced an empty PDF file.");
             return LatexRenderer::MicrotexFailed;
         }
 
@@ -791,7 +791,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         fileList << tempFileName;
         qCDebug(OkularUiDebug) << "MicroTeX render finished; output PDF:" << pdfFileName << "bytes:" << QFileInfo(pdfFileName).size();
         QStringList outputLines;
-        outputLines << QStringLiteral("Rendered with MicroTeX fallback. LaTeX preamble and external packages are not supported by MicroTeX.");
+        outputLines << i18n("Rendered with MicroTeX fallback. LaTeX preamble and external packages are not supported by MicroTeX.");
         if (fixedWidth) {
             const int availableWidth = requestedWidth;
             const int renderedWidth = qCeil(qMax(static_cast<double>(render->getWidth()), vectorRect.right()));
@@ -806,10 +806,10 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         latexOutput = outputLines.join(QLatin1Char('\n'));
         return LatexRenderer::NoError;
     } catch (const std::exception &e) {
-        latexOutput = QStringLiteral("MicroTeX fallback failed: %1").arg(QString::fromLocal8Bit(e.what()));
+        latexOutput = i18n("MicroTeX fallback failed: %1", QString::fromLocal8Bit(e.what()));
         return LatexRenderer::MicrotexFailed;
     } catch (...) {
-        latexOutput = QStringLiteral("MicroTeX fallback failed with an unknown error.");
+        latexOutput = i18n("MicroTeX fallback failed with an unknown error.");
         return LatexRenderer::MicrotexFailed;
     }
 }
@@ -1036,7 +1036,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     }
     if (!securityCheck(formula)) {
         fileName.clear();
-        latexOutput = QStringLiteral("The formula contains unsupported LaTeX commands.");
+        latexOutput = i18n("The formula contains unsupported LaTeX commands.");
         return LatexFailed;
     }
 
@@ -1055,7 +1055,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
     }
     if (!securityCheck(formula)) {
         pdfFileName.clear();
-        latexOutput = QStringLiteral("The formula contains unsupported LaTeX commands.");
+        latexOutput = i18n("The formula contains unsupported LaTeX commands.");
         return LatexFailed;
     }
 
@@ -1090,7 +1090,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         return microtexError;
 #else
         pdfFileName->clear();
-        latexOutput = QStringLiteral("MicroTeX rendering is not available in this Okular build.");
+        latexOutput = i18n("MicroTeX rendering is not available in this Okular build.");
         return MicrotexFailed;
 #endif
     };
