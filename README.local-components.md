@@ -18,6 +18,15 @@ MicroTeX is consumed directly by Okular when configuring with:
 ```
 
 If `MICROTEX_SRC` is not set, Okular first looks at `external/MicroTeX`.
+This fork uses the submodule MicroTeX as a source dependency, not as a system
+library. Okular calls MicroTeX's text-mode entry point for LaTeX note fallback
+rendering, so note text starts outside math mode and `$...`, `$$...$$`,
+`\(...\)`, and `\[...\]` enter math mode explicitly. The forked MicroTeX text
+mode is expected to preserve TeX-like single-paragraph text behavior: normal
+formatting commands such as `\textbf{...}` and `\textit{...}` keep TeX text
+fonts and word spacing, consecutive spaces are collapsed, and line breaks are
+treated as a single inter-word space. Notes are intended to be short, usually no
+more than one paragraph.
 
 Poppler is different: Okular still consumes Poppler through `find_package(Poppler)`.
 Build and install the Poppler submodule to a local prefix first, then configure Okular with that prefix in `CMAKE_PREFIX_PATH`.

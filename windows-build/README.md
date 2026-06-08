@@ -129,6 +129,14 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
   -MicroTeXSrc .\external\MicroTeX
 ```
 
+The full-build script also makes sure Okular's Craft work directory contains a
+`poppler-local` junction pointing at the local Poppler build directory. The PDF
+generator includes private Poppler headers from `external\poppler`, and those
+headers need generated files such as `config.h` from the Poppler build tree.
+Keep that link in place when reusing a local Poppler build; otherwise the PDF
+generator may fail to compile even though `poppler.dll` and `poppler-qt6.dll`
+are already installed.
+
 Verify the configured options:
 
 ```powershell
@@ -266,6 +274,12 @@ it is not a reason to compile twice.
 MicroTeX rendering does not require `pdfcrop.exe` or a system TeX distribution.
 If Okular is in Auto mode and no system TeX executable is found, it falls back
 to MicroTeX when the runtime was built with `OKULAR_ENABLE_MICROTEX=ON`.
+Okular uses MicroTeX's text-mode entry point for note fallback rendering. Plain
+text is parsed outside math mode; `$...`, `$$...$$`, `\(...\)`, and `\[...\]`
+enter math mode explicitly. The forked MicroTeX text mode follows the
+single-paragraph behavior expected for notes: `\textbf{...}` and
+`\textit{...}` use TeX text fonts, consecutive spaces collapse to one space,
+and line breaks are treated as one inter-word space.
 
 To log TeX rendering calls, start Okular with:
 

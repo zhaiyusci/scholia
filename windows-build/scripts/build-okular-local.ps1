@@ -35,6 +35,32 @@ function Invoke-Craft([string[]] $CraftArgs) {
     return $LASTEXITCODE
 }
 
+function Ensure-PopplerLocalBuildLink([string] $CraftRoot) {
+    $popplerBuild = Join-Path $CraftRoot "build\qt-libs\poppler\work\build"
+    $okularWork = Join-Path $CraftRoot "build\kde\applications\okular\work"
+    $popplerLocal = Join-Path $okularWork "poppler-local"
+
+    if (!(Test-Path -LiteralPath (Join-Path $popplerBuild "config.h"))) {
+        throw "Missing Poppler build config.h: $popplerBuild. Build local Poppler first, or rerun without -SkipLocalPoppler."
+    }
+
+    if (Test-Path -LiteralPath $popplerLocal) {
+        $item = Get-Item -LiteralPath $popplerLocal -Force
+        if ($item.LinkType -eq "Junction" -or $item.LinkType -eq "SymbolicLink") {
+            $target = @($item.Target)[0]
+            if ([System.IO.Path]::GetFullPath($target) -eq [System.IO.Path]::GetFullPath($popplerBuild)) {
+                Write-Host "Poppler local build link already exists: $popplerLocal -> $popplerBuild"
+                return
+            }
+        }
+        throw "Poppler local build path already exists and is not the expected link: $popplerLocal"
+    }
+
+    New-Item -ItemType Directory -Force -Path $okularWork | Out-Null
+    New-Item -ItemType Junction -Path $popplerLocal -Target $popplerBuild | Out-Null
+    Write-Host "Created Poppler local build link: $popplerLocal -> $popplerBuild"
+}
+
 $logDir = Join-Path $WorkspaceRoot "build-logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -99,6 +125,9 @@ try {
         }
         Write-Host ""
     }
+
+    Ensure-PopplerLocalBuildLink $CraftRoot
+    Write-Host ""
 
     Write-Host "Building Okular from source..."
     $okularArgs = @("--no-cache") + $craftOptions + @("--ignoreInstalled", "kde/applications/okular")
