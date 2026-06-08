@@ -5,6 +5,7 @@
 #include "latexnoteutils.h"
 
 #include <cmath>
+#include <memory>
 
 #include <KLocalizedString>
 #include <KMessageBox>
@@ -90,36 +91,43 @@ QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, in
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
+QString latexTemporaryPath()
+{
+    QString tempPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (tempPath.isEmpty()) {
+        tempPath = QDir::tempPath();
+    }
+#ifdef Q_OS_UNIX
+    const QString homePath = QDir::homePath();
+    if (!homePath.isEmpty()) {
+        const QString absoluteTempPath = QDir(tempPath).absolutePath();
+        const QString absoluteHomePath = QDir(homePath).absolutePath();
+        if (absoluteTempPath == absoluteHomePath || absoluteTempPath.startsWith(absoluteHomePath + QLatin1Char('/'))) {
+            tempPath = QStringLiteral("/tmp");
+        }
+    }
+#endif
+    QDir().mkpath(tempPath);
+    return tempPath;
+}
+
 QTemporaryDir *latexAppearanceSessionRoot()
 {
-    static QTemporaryDir *sessionRoot = []() {
-        QString baseLocation = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-        if (baseLocation.isEmpty()) {
-            baseLocation = QDir::tempPath();
-        }
-        QDir().mkpath(baseLocation);
-
-        auto *runtimeDir = new QTemporaryDir(QDir(baseLocation).filePath(QStringLiteral("okular-latex-appearances-XXXXXX")));
-        if (runtimeDir->isValid()) {
-            runtimeDir->setAutoRemove(true);
-            return runtimeDir;
-        }
-
-        delete runtimeDir;
-        auto *fallbackDir = new QTemporaryDir(QDir(QDir::tempPath()).filePath(QStringLiteral("okular-latex-appearances-XXXXXX")));
-        fallbackDir->setAutoRemove(true);
-        return fallbackDir;
+    static const std::unique_ptr<QTemporaryDir> sessionRoot = []() {
+        const QString baseLocation = latexTemporaryPath();
+        auto tempDir = std::make_unique<QTemporaryDir>(QDir(baseLocation).filePath(QStringLiteral("okular-latex-appearances-XXXXXX")));
+        tempDir->setAutoRemove(true);
+        return tempDir;
     }();
-    return sessionRoot;
+
+    return sessionRoot.get();
 }
 
 QDir latexAppearanceSessionDir()
 {
     QTemporaryDir *sessionRoot = latexAppearanceSessionRoot();
     if (!sessionRoot || !sessionRoot->isValid()) {
-        QDir fallbackDir(QDir::tempPath());
-        fallbackDir.mkpath(QStringLiteral("okular-latex-appearances/latex-notes"));
-        return QDir(fallbackDir.filePath(QStringLiteral("okular-latex-appearances/latex-notes")));
+        return QDir(QDir(latexTemporaryPath()).filePath(QStringLiteral("okular-latex-appearances-unavailable/latex-notes")));
     }
 
     QDir rootDir(sessionRoot->path());
@@ -380,14 +388,14 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
     if (QFile::exists(appearancePdfFileName)) {
         QFile::remove(appearancePdfFileName);
     }
-    if (temporaryPdfFile.isEmpty() || !QFile::copy(temporaryPdfFile, appearancePdfFileName)) {
-        qCWarning(OkularUiDebug) << "Could not copy rendered LaTeX note PDF; from:" << temporaryPdfFile << "to:" << appearancePdfFileName;
+    if (temporaryPdfFile.isEmpty() || (!QFile::rename(temporaryPdfFile, appearancePdfFileName) && !QFile::copy(temporaryPdfFile, appearancePdfFileName))) {
+        qCWarning(OkularUiDebug) << "Could not move rendered LaTeX note PDF; from:" << temporaryPdfFile << "to:" << appearancePdfFileName;
         result.errorMessage = i18n("Could not save the rendered LaTeX note PDF.");
         return result;
     }
 
     if (!QFile::exists(appearancePdfFileName)) {
-        qCWarning(OkularUiDebug) << "Copied LaTeX note appearance PDF is missing; target:" << appearancePdfFileName;
+        qCWarning(OkularUiDebug) << "LaTeX note appearance PDF is missing; target:" << appearancePdfFileName;
         result.errorMessage = i18n("Could not save the rendered LaTeX note PDF.");
         return result;
     }

@@ -138,12 +138,22 @@ void logTexInvocation(const char *operation, const QString &backend, const QStri
     }
 }
 
-QString latexRuntimeTempPath()
+QString latexTemporaryPath()
 {
-    QString tempPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    QString tempPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
     if (tempPath.isEmpty()) {
         tempPath = QDir::tempPath();
     }
+#ifdef Q_OS_UNIX
+    const QString homePath = QDir::homePath();
+    if (!homePath.isEmpty()) {
+        const QString absoluteTempPath = QDir(tempPath).absolutePath();
+        const QString absoluteHomePath = QDir(homePath).absolutePath();
+        if (absoluteTempPath == absoluteHomePath || absoluteTempPath.startsWith(absoluteHomePath + QLatin1Char('/'))) {
+            tempPath = QStringLiteral("/tmp");
+        }
+    }
+#endif
     QDir().mkpath(tempPath);
     return tempPath;
 }
@@ -749,7 +759,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         const double width = qMax(1.0, std::ceil(paddedContentWidth));
         const double height = qMax(1.0, std::ceil(paddedContentHeight));
 
-        QTemporaryFile tempFile(QDir(latexRuntimeTempPath()).filePath(QStringLiteral("okular_microtex-XXXXXX.pdf")));
+        QTemporaryFile tempFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("okular_microtex-XXXXXX.pdf")));
         tempFile.setAutoRemove(false);
         if (!tempFile.open()) {
             latexOutput = i18n("Could not create a temporary PDF file for MicroTeX output.");
@@ -1099,7 +1109,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         return renderWithMicrotex("configured-microtex");
     }
 
-    QTemporaryFile *tempFile = new QTemporaryFile(QDir(latexRuntimeTempPath()).filePath(QStringLiteral("okular_kdelatex-XXXXXX.tex")));
+    QTemporaryFile *tempFile = new QTemporaryFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("okular_kdelatex-XXXXXX.tex")));
     if (!tempFile->open()) {
         delete tempFile;
         return LatexNotFound;
