@@ -28,7 +28,7 @@ class LatexRenderer;
 
 class KTextEdit;
 class MovableTitle;
-class QMenu;
+class QCloseEvent;
 
 class AnnotWindow : public QFrame
 {
@@ -62,21 +62,22 @@ private:
     int m_prevAnchorPos;
     QString m_lastLatexNoteCompileSource;
 
+    void commitWindowText();
     void updateLatexNoteAppearance();
 
 public Q_SLOTS:
     void renderLatex(bool render);
 
 protected:
+    void closeEvent(QCloseEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void moveEvent(QMoveEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private Q_SLOTS:
-    void slotUpdateUndoAndRedoInContextMenu(QMenu *menu);
     void slotOptionBtn();
-    void slotsaveWindowText();
+    void slotWindowTextChanged();
     void slotHandleContentsChangedByUndoRedo(Okular::Annotation *annot, const QString &contents, int cursorPos, int anchorPos);
 
 Q_SIGNALS:
