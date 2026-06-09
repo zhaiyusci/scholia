@@ -44,6 +44,8 @@ kconfig_add_kcfg_files(okularGenerator_poppler_PART_SRCS GENERATE_MOC conf/pdfse
 okular_add_generator(okularGenerator_poppler ${okularGenerator_poppler_PART_SRCS})
 
 target_include_directories(okularGenerator_poppler PRIVATE
+    ${CMAKE_SOURCE_DIR}/external/poppler
+    ${CMAKE_SOURCE_DIR}/external/poppler/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/qt6/src
     ${CMAKE_BINARY_DIR}/../poppler-local
     ${CMAKE_BINARY_DIR}/../poppler-local/poppler
