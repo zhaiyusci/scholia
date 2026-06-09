@@ -1,0 +1,91 @@
+#!/bin/sh
+set -eu
+
+prefix="${OKULAR_LOCAL_PREFIX:-$HOME/.local/opt/okular}"
+bindir="$prefix/bin"
+
+if [ ! -x "$bindir/okular" ]; then
+    echo "okular wrapper: $bindir/okular is not executable" >&2
+    exit 127
+fi
+
+pick_dir() {
+    for dir in "$@"; do
+        if [ -d "$dir" ]; then
+            printf '%s\n' "$dir"
+            return 0
+        fi
+    done
+    return 1
+}
+
+pick_libdir() {
+    for dir in "$prefix/lib" "$prefix/lib64"; do
+        if [ -e "$dir/libOkular6Core.so" ] || [ -e "$dir/libpoppler.so" ]; then
+            printf '%s\n' "$dir"
+            return 0
+        fi
+    done
+    pick_dir "$prefix/lib" "$prefix/lib64"
+}
+
+prepend_path() {
+    var_name="$1"
+    path_value="$2"
+    current_value="$(eval "printf '%s' \"\${$var_name-}\"")"
+
+    if [ -n "$current_value" ]; then
+        export "$var_name=$path_value:$current_value"
+    else
+        export "$var_name=$path_value"
+    fi
+}
+
+libdir="$(pick_libdir)"
+other_libdir=
+case "$libdir" in
+    "$prefix/lib") other_libdir="$prefix/lib64" ;;
+    "$prefix/lib64") other_libdir="$prefix/lib" ;;
+esac
+
+plugindir="$(pick_dir "$libdir/plugins" "$prefix/lib/plugins" "$prefix/lib64/plugins" || true)"
+qmldir="$(pick_dir "$libdir/qml" "$prefix/lib/qml" "$prefix/lib64/qml" || true)"
+
+prepend_path PATH "$bindir"
+prepend_path LD_LIBRARY_PATH "$libdir"
+if [ -n "$other_libdir" ] && [ -d "$other_libdir" ]; then
+    prepend_path LD_LIBRARY_PATH "$other_libdir"
+fi
+
+export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export XDG_CONFIG_DIRS="$prefix/etc/xdg:${XDG_CONFIG_DIRS:-/etc/xdg}"
+export MANPATH="$prefix/share/man:${MANPATH:-/usr/local/share/man:/usr/share/man}"
+
+if [ -n "$plugindir" ]; then
+    prepend_path QT_PLUGIN_PATH "$plugindir"
+    if [ -d "$plugindir/platforms" ]; then
+        export QT_QPA_PLATFORM_PLUGIN_PATH="$plugindir/platforms"
+    fi
+fi
+
+if [ -n "$qmldir" ]; then
+    prepend_path QML2_IMPORT_PATH "$qmldir"
+    prepend_path QT_QUICK_CONTROLS_STYLE_PATH "$qmldir/QtQuick/Controls.2"
+fi
+
+if [ -d "$prefix/share/qt6/translations" ]; then
+    prepend_path QT_TRANSLATION_PATH "$prefix/share/qt6/translations"
+fi
+
+if [ -d "$prefix/share/poppler" ]; then
+    export POPPLER_DATADIR="$prefix/share/poppler"
+fi
+
+if [ -d "$libdir/sasl2" ]; then
+    export SASL_PATH="$libdir/sasl2${SASL_PATH:+:$SASL_PATH}"
+fi
+
+okular_default_logging_rules="kf.kio.workers.file.debug=false;kf.kio.workers.file.info=false"
+export QT_LOGGING_RULES="$okular_default_logging_rules${QT_LOGGING_RULES:+;$QT_LOGGING_RULES}"
+
+exec "$bindir/okular" "$@"
