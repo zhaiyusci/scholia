@@ -45,25 +45,27 @@ linux-build/scripts/install-poppler-data.sh $PREFIX
 
 cmake -S external/poppler -B ../linux_build/poppler-local \
   -DCMAKE_INSTALL_PREFIX=$PREFIX \
+  -DCMAKE_INSTALL_LIBDIR=lib \
   -DPOPPLER_DATADIR=$PREFIX/share/poppler \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF
 cmake --build ../linux_build/poppler-local
 cmake --install ../linux_build/poppler-local
 
-PKG_CONFIG_PATH=$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig \
+PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig \
 cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH=$PREFIX \
   -DOKULAR_ENABLE_MICROTEX=ON \
+  -DCMAKE_INSTALL_LIBDIR=lib \
+  -DKDE_INSTALL_LIBDIR=lib \
   -DCMAKE_INSTALL_PREFIX=$PREFIX
 cmake --build ../linux_build/okular-local-poppler
 cmake --install ../linux_build/okular-local-poppler
 ```
 
-The user-facing launcher is `$HOME/.local/bin/okular`. It is a self-contained
-wrapper that exports the local prefix environment before executing
-`$HOME/.local/opt/okular/bin/okular`, so the local plugins, data files, and
-Poppler libraries are found without replacing the system Okular package. It
-must not source files from the source or build tree. It should export
-`POPPLER_DATADIR=$HOME/.local/opt/okular/share/poppler` so the local Poppler
-does not depend on system CMap data.
+The user-facing launcher is `$HOME/.local/bin/okular`. Install it from
+`linux-build/scripts/okular-wrapper`; it exports the local prefix environment
+before executing `$HOME/.local/opt/okular/bin/okular`, so the local plugins,
+data files, and Poppler libraries are found without replacing the system Okular
+package. It should export `POPPLER_DATADIR=$HOME/.local/opt/okular/share/poppler`
+so the local Poppler does not depend on system CMap data.

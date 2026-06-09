@@ -50,47 +50,47 @@ linux-build/scripts/install-poppler-data.sh "$PREFIX"
 
 cmake -S external/poppler -B ../linux_build/poppler-local \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DCMAKE_INSTALL_LIBDIR=lib \
   -DPOPPLER_DATADIR="$PREFIX/share/poppler" \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF
 cmake --build ../linux_build/poppler-local -j 8
 cmake --install ../linux_build/poppler-local
 
-PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig" \
+PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig" \
 cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
   -DOKULAR_ENABLE_MICROTEX=ON \
+  -DCMAKE_INSTALL_LIBDIR=lib \
+  -DKDE_INSTALL_LIBDIR=lib \
   -DCMAKE_INSTALL_PREFIX="$PREFIX"
 cmake --build ../linux_build/okular-local-poppler -j 8
 cmake --install ../linux_build/okular-local-poppler
+```
+
+The same local build workflow is also available as a script:
+
+```sh
+linux-build/scripts/build-okular-local.sh
+```
+
+For a build-only pass that does not install Okular:
+
+```sh
+linux-build/scripts/build-okular-local.sh --no-okular-install
+```
+
+For a configure-only dependency dry run:
+
+```sh
+linux-build/scripts/build-okular-local.sh --configure-only
 ```
 
 Create or refresh the launcher after installing:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-cat > "$HOME/.local/bin/okular" <<'EOF'
-#!/bin/sh
-prefix="${OKULAR_LOCAL_PREFIX:-$HOME/.local/opt/okular}"
-libdir="$prefix/lib64"
-if [ ! -d "$libdir" ]; then
-    libdir="$prefix/lib"
-fi
-
-export PATH="$prefix/bin${PATH:+:$PATH}"
-export XDG_DATA_DIRS="$prefix/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export XDG_CONFIG_DIRS="$prefix/etc/xdg:${XDG_CONFIG_DIRS:-/etc/xdg}"
-export QT_PLUGIN_PATH="$libdir/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
-export QML2_IMPORT_PATH="$libdir/qml${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
-export QT_QUICK_CONTROLS_STYLE_PATH="$libdir/qml/QtQuick/Controls.2${QT_QUICK_CONTROLS_STYLE_PATH:+:$QT_QUICK_CONTROLS_STYLE_PATH}"
-export MANPATH="$prefix/share/man:${MANPATH:-/usr/local/share/man:/usr/share/man}"
-export SASL_PATH="$libdir/sasl2:${SASL_PATH:-/usr/lib64/sasl2}"
-export POPPLER_DATADIR="$prefix/share/poppler"
-okular_default_logging_rules="kf.kio.workers.file.debug=false;kf.kio.workers.file.info=false"
-export QT_LOGGING_RULES="$okular_default_logging_rules${QT_LOGGING_RULES:+;$QT_LOGGING_RULES}"
-
-exec "$prefix/bin/okular" "$@"
-EOF
+install -m 0755 linux-build/scripts/okular-wrapper "$HOME/.local/bin/okular"
 chmod 755 "$HOME/.local/bin/okular"
 ```
 
@@ -240,6 +240,7 @@ prefix:
 ```sh
 cmake -S external/poppler -B ../linux_build/poppler-local \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+  -DCMAKE_INSTALL_LIBDIR=lib \
   -DPOPPLER_DATADIR="$PREFIX/share/poppler" \
   -DENABLE_QT6=ON \
   -DENABLE_QT5=OFF
@@ -248,10 +249,11 @@ cmake --build ../linux_build/poppler-local -j 8
 cmake --install ../linux_build/poppler-local
 ```
 
-This installs the Poppler core and Qt 6 wrapper under
-`$PREFIX/lib64` on the current Linux setup. `POPPLER_DATADIR` must point into
-the same local prefix so the installed Okular does not rely on the system
-`poppler-data` package.
+This installs the Poppler core and Qt 6 wrapper under `$PREFIX/lib`. The local
+Linux scripts intentionally pin `CMAKE_INSTALL_LIBDIR=lib` because the install
+prefix is private to this checkout and should not inherit distribution-specific
+`lib64` defaults. `POPPLER_DATADIR` must point into the same local prefix so the
+installed Okular does not rely on the system `poppler-data` package.
 
 The Poppler build may regenerate files under `external/poppler`, such as
 `poppler/*Widths.pregenerated.c` and `utils/po/pdfsig.pot`, especially when
@@ -265,10 +267,12 @@ explicitly so CMake and pkg-config prefer the local Poppler over the system
 copy:
 
 ```sh
-PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig" \
+PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig" \
 cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
   -DOKULAR_ENABLE_MICROTEX=ON \
+  -DCMAKE_INSTALL_LIBDIR=lib \
+  -DKDE_INSTALL_LIBDIR=lib \
   -DCMAKE_INSTALL_PREFIX="$PREFIX"
 
 cmake --build ../linux_build/okular-local-poppler -j 8
@@ -289,63 +293,43 @@ Create or update the user command wrapper:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
-cat > "$HOME/.local/bin/okular" <<EOF
-#!/bin/sh
-prefix="\${OKULAR_LOCAL_PREFIX:-\$HOME/.local/opt/okular}"
-libdir="\$prefix/lib64"
-if [ ! -d "\$libdir" ]; then
-    libdir="\$prefix/lib"
-fi
-
-export PATH="\$prefix/bin\${PATH:+:\$PATH}"
-export XDG_DATA_DIRS="\$prefix/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export XDG_CONFIG_DIRS="\$prefix/etc/xdg:\${XDG_CONFIG_DIRS:-/etc/xdg}"
-export QT_PLUGIN_PATH="\$libdir/plugins\${QT_PLUGIN_PATH:+:\$QT_PLUGIN_PATH}"
-export QML2_IMPORT_PATH="\$libdir/qml\${QML2_IMPORT_PATH:+:\$QML2_IMPORT_PATH}"
-export QT_QUICK_CONTROLS_STYLE_PATH="\$libdir/qml/QtQuick/Controls.2\${QT_QUICK_CONTROLS_STYLE_PATH:+:\$QT_QUICK_CONTROLS_STYLE_PATH}"
-export MANPATH="\$prefix/share/man:\${MANPATH:-/usr/local/share/man:/usr/share/man}"
-export SASL_PATH="\$libdir/sasl2:\${SASL_PATH:-/usr/lib64/sasl2}"
-export POPPLER_DATADIR="\$prefix/share/poppler"
-okular_default_logging_rules="kf.kio.workers.file.debug=false;kf.kio.workers.file.info=false"
-export QT_LOGGING_RULES="\$okular_default_logging_rules\${QT_LOGGING_RULES:+;\$QT_LOGGING_RULES}"
-
-exec "\$prefix/bin/okular" "\$@"
-EOF
-chmod 755 "$HOME/.local/bin/okular"
+install -m 0755 linux-build/scripts/okular-wrapper "$HOME/.local/bin/okular"
 ```
 
 This wrapper keeps the install isolated while still allowing `okular` to be
 resolved from the normal user `PATH`. It intentionally does not use
 `../linux_build/okular-local-poppler/prefix.sh`, because the source tree should be removable
-after installation. It also sets `POPPLER_DATADIR` so relocatable bundles such
-as AppImages can point Poppler at their bundled CMap and Unicode mapping data.
+after installation. It detects the installed library, plugin, and QML
+directories from the prefix, preserves the system `/usr/share` data path, and
+sets `POPPLER_DATADIR` so relocatable bundles such as AppImages can point
+Poppler at their bundled CMap and Unicode mapping data.
 
 ## Verify
 
 Check that the Poppler generator links against the local prefix:
 
 ```sh
-ldd "$PREFIX/lib64/plugins/okular_generators/okularGenerator_poppler.so" \
+ldd "$PREFIX/lib/plugins/okular_generators/okularGenerator_poppler.so" \
   | rg 'local/opt/okular|poppler'
 ```
 
 Expected local links include:
 
 ```text
-libpoppler-qt6.so.3 => $HOME/.local/opt/okular/lib64/libpoppler-qt6.so.3
-libpoppler.so.157 => $HOME/.local/opt/okular/lib64/libpoppler.so.157
+libpoppler-qt6.so.3 => $HOME/.local/opt/okular/lib/libpoppler-qt6.so.3
+libpoppler.so.157 => $HOME/.local/opt/okular/lib/libpoppler.so.157
 ```
 
 Check the installed Okular plugin runpath:
 
 ```sh
-readelf -d "$PREFIX/lib64/plugins/kf6/parts/okularpart.so" | rg 'RPATH|RUNPATH'
+readelf -d "$PREFIX/lib/plugins/kf6/parts/okularpart.so" | rg 'RPATH|RUNPATH'
 ```
 
 Expected result:
 
 ```text
-Library runpath: [$HOME/.local/opt/okular/lib64]
+Library runpath: [$HOME/.local/opt/okular/lib]
 ```
 
 Check the CMake cache if there is any doubt about which Poppler was selected:
@@ -360,7 +344,7 @@ Check that Poppler was compiled to use the bundled poppler-data directory:
 
 ```sh
 rg 'POPPLER_DATADIR' ../linux_build/poppler-local/config.h
-strings "$PREFIX/lib64/libpoppler.so.157" | rg "$PREFIX/share/poppler"
+strings "$PREFIX/lib/libpoppler.so.157" | rg "$PREFIX/share/poppler"
 test -d "$PREFIX/share/poppler/cMap/Adobe-GB1"
 ```
 

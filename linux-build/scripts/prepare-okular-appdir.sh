@@ -27,9 +27,9 @@ if [ ! -d "$prefix/share/poppler/cMap/Adobe-GB1" ]; then
     "$script_dir/install-poppler-data.sh" "$prefix"
 fi
 
-prefix_libdir="$prefix/lib64"
+prefix_libdir="$prefix/lib"
 if [ ! -d "$prefix_libdir" ]; then
-    prefix_libdir="$prefix/lib"
+    prefix_libdir="$prefix/lib64"
 fi
 libdir_name=$(basename "$prefix_libdir")
 app_usr="$appdir/usr"
@@ -278,9 +278,9 @@ case "$this" in
 esac
 appdir=$(CDPATH= cd -- "$(dirname -- "$this")" && pwd)
 prefix="$appdir/usr"
-libdir="$prefix/lib64"
+libdir="$prefix/lib"
 if [ ! -d "$libdir" ]; then
-    libdir="$prefix/lib"
+    libdir="$prefix/lib64"
 fi
 
 export PATH="$prefix/bin${PATH:+:$PATH}"
