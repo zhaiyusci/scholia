@@ -8,7 +8,6 @@
 #include "annotations_p.h"
 
 // qt/kde includes
-#include <QApplication>
 #include <QColor>
 #include <QFile>
 #include <QIcon>
@@ -1427,6 +1426,9 @@ public:
     TextAnnotation::TextType m_textType;
     QString m_textIcon;
     QFont m_textFont;
+    bool m_hasTextFont = false;
+    QString m_textFontName;
+    double m_textFontPointSize = 10.0;
     QColor m_textColor;
     QColor m_inplaceBorderColor;
     int m_inplaceAlign;
@@ -1456,6 +1458,9 @@ void TextAnnotation::setTextType(TextType textType)
 {
     Q_D(TextAnnotation);
     d->m_textType = textType;
+    if (textType == InPlace && !d->m_hasTextFont && d->m_textFontName.isEmpty()) {
+        d->m_textFontName = QStringLiteral("Helvetica");
+    }
 }
 
 TextAnnotation::TextType TextAnnotation::textType() const
@@ -1480,6 +1485,59 @@ void TextAnnotation::setTextFont(const QFont &font)
 {
     Q_D(TextAnnotation);
     d->m_textFont = font;
+    d->m_hasTextFont = true;
+    d->m_textFontName.clear();
+    if (font.pointSizeF() > 0) {
+        d->m_textFontPointSize = font.pointSizeF();
+    }
+}
+
+void TextAnnotation::setTextFontName(const QString &fontName)
+{
+    Q_D(TextAnnotation);
+    d->m_textFontName = fontName;
+    d->m_textFont = QFont();
+    d->m_hasTextFont = false;
+}
+
+void TextAnnotation::setTextFontPointSize(double pointSize)
+{
+    Q_D(TextAnnotation);
+    if (pointSize <= 0) {
+        return;
+    }
+    d->m_textFontPointSize = pointSize;
+    if (d->m_hasTextFont) {
+        d->m_textFont.setPointSizeF(pointSize);
+    }
+}
+
+void TextAnnotation::clearTextFont()
+{
+    Q_D(TextAnnotation);
+    d->m_textFont = QFont();
+    d->m_hasTextFont = false;
+}
+
+bool TextAnnotation::hasTextFont() const
+{
+    Q_D(const TextAnnotation);
+    return d->m_hasTextFont;
+}
+
+QString TextAnnotation::textFontName() const
+{
+    Q_D(const TextAnnotation);
+    return d->m_textFontName;
+}
+
+double TextAnnotation::textFontPointSize() const
+{
+    Q_D(const TextAnnotation);
+    if (d->m_hasTextFont && d->m_textFont.pointSizeF() > 0) {
+        return d->m_textFont.pointSizeF();
+    }
+    return d->m_textFontPointSize;
 }
 
 QFont TextAnnotation::textFont() const
@@ -1592,8 +1650,11 @@ void TextAnnotation::store(QDomNode &node, QDomDocument &document) const
     if (!d->m_textIcon.isEmpty()) {
         textElement.setAttribute(QStringLiteral("icon"), d->m_textIcon);
     }
-    if (d->m_textFont != QApplication::font()) {
+    if (d->m_hasTextFont) {
         textElement.setAttribute(QStringLiteral("font"), d->m_textFont.toString());
+    } else if (!d->m_textFontName.isEmpty()) {
+        textElement.setAttribute(QStringLiteral("fontName"), d->m_textFontName);
+        textElement.setAttribute(QStringLiteral("fontSize"), QString::number(d->m_textFontPointSize));
     }
     if (d->m_textColor.isValid()) {
         textElement.setAttribute(QStringLiteral("fontColor"), d->m_textColor.name());
@@ -1708,6 +1769,19 @@ void TextAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
         }
         if (e.hasAttribute(QStringLiteral("font"))) {
             m_textFont.fromString(e.attribute(QStringLiteral("font")));
+            m_hasTextFont = true;
+            m_textFontName.clear();
+            if (m_textFont.pointSizeF() > 0) {
+                m_textFontPointSize = m_textFont.pointSizeF();
+            }
+        } else if (e.hasAttribute(QStringLiteral("fontName"))) {
+            m_textFontName = e.attribute(QStringLiteral("fontName"));
+        }
+        if (e.hasAttribute(QStringLiteral("fontSize"))) {
+            const double fontSize = e.attribute(QStringLiteral("fontSize")).toDouble();
+            if (fontSize > 0) {
+                m_textFontPointSize = fontSize;
+            }
         }
         if (e.hasAttribute(QStringLiteral("fontColor"))) {
             m_textColor = QColor(e.attribute(QStringLiteral("fontColor")));

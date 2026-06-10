@@ -13,7 +13,6 @@
 #include <KLocalizedString>
 
 #include <KConfigGroup>
-#include <QApplication>
 #include <QDialogButtonBox>
 #include <QDomDocument>
 #include <QGroupBox>
@@ -161,8 +160,11 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         if (ta->inplaceAlignment() != 0) {
             annotationElement.setAttribute(QStringLiteral("align"), ta->inplaceAlignment());
         }
-        if (ta->textFont() != QApplication::font()) {
+        if (ta->hasTextFont()) {
             annotationElement.setAttribute(QStringLiteral("font"), ta->textFont().toString());
+        } else if (!ta->textFontName().isEmpty()) {
+            annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName());
+            annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
         }
     } else if (toolType == ToolCallout) {
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(m_stubann);
@@ -179,8 +181,11 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         if (ta->inplaceAlignment() != 0) {
             annotationElement.setAttribute(QStringLiteral("align"), ta->inplaceAlignment());
         }
-        if (ta->textFont() != QApplication::font()) {
+        if (ta->hasTextFont()) {
             annotationElement.setAttribute(QStringLiteral("font"), ta->textFont().toString());
+        } else if (!ta->textFontName().isEmpty()) {
+            annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName());
+            annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
         }
     } else if (toolType == ToolInk) {
         toolElement.setAttribute(QStringLiteral("type"), QStringLiteral("ink"));
@@ -285,8 +290,11 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         annotationElement.setAttribute(QStringLiteral("color"), color);
         annotationElement.setAttribute(QStringLiteral("textColor"), textColor);
         annotationElement.setAttribute(QStringLiteral("width"), width);
-        if (ta->textFont() != QApplication::font()) {
+        if (ta->hasTextFont()) {
             annotationElement.setAttribute(QStringLiteral("font"), ta->textFont().toString());
+        } else if (!ta->textFontName().isEmpty()) {
+            annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName());
+            annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
         }
     }
 
@@ -314,6 +322,7 @@ void EditAnnotToolDialog::createStubAnnotation()
     } else if (toolType == ToolNoteInline) {
         Okular::TextAnnotation *ta = new Okular::TextAnnotation();
         ta->setTextType(Okular::TextAnnotation::InPlace);
+        ta->setTextFontName(QStringLiteral("Helvetica"));
         ta->style().setWidth(1.0);
         ta->style().setColor(Qt::yellow);
         ta->setInplaceBorderColor(Qt::red);
@@ -323,6 +332,7 @@ void EditAnnotToolDialog::createStubAnnotation()
         Okular::TextAnnotation *ta = new Okular::TextAnnotation();
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->setInplaceIntent(Okular::TextAnnotation::Callout);
+        ta->setTextFontName(QStringLiteral("Helvetica"));
         ta->style().setWidth(1.0);
         ta->style().setColor(Qt::white);
         ta->setInplaceBorderColor(Qt::black);
@@ -360,6 +370,7 @@ void EditAnnotToolDialog::createStubAnnotation()
         Okular::TextAnnotation *ta = new Okular::TextAnnotation();
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->setInplaceIntent(Okular::TextAnnotation::TypeWriter);
+        ta->setTextFontName(QStringLiteral("Helvetica"));
         ta->style().setWidth(0.0);
         ta->style().setColor(QColor(255, 255, 255, 0));
         ta->setTextColor(Qt::black);
@@ -433,6 +444,11 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
             QFont f;
             f.fromString(annotationElement.attribute(QStringLiteral("font")));
             ta->setTextFont(f);
+        } else if (annotationElement.hasAttribute(QStringLiteral("fontName"))) {
+            ta->setTextFontName(annotationElement.attribute(QStringLiteral("fontName")));
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("fontSize"))) {
+            ta->setTextFontPointSize(annotationElement.attribute(QStringLiteral("fontSize")).toDouble());
         }
     } else if (annotType == QLatin1String("note-linked")) {
         setToolType(ToolNoteLinked);
@@ -448,6 +464,11 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
             QFont f;
             f.fromString(annotationElement.attribute(QStringLiteral("font")));
             ta->setTextFont(f);
+        } else if (annotationElement.hasAttribute(QStringLiteral("fontName"))) {
+            ta->setTextFontName(annotationElement.attribute(QStringLiteral("fontName")));
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("fontSize"))) {
+            ta->setTextFontPointSize(annotationElement.attribute(QStringLiteral("fontSize")).toDouble());
         }
         if (annotationElement.hasAttribute(QStringLiteral("borderColor"))) {
             ta->setInplaceBorderColor(QColor(annotationElement.attribute(QStringLiteral("borderColor"))));
@@ -517,6 +538,11 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
             QFont f;
             f.fromString(annotationElement.attribute(QStringLiteral("font")));
             ta->setTextFont(f);
+        } else if (annotationElement.hasAttribute(QStringLiteral("fontName"))) {
+            ta->setTextFontName(annotationElement.attribute(QStringLiteral("fontName")));
+        }
+        if (annotationElement.hasAttribute(QStringLiteral("fontSize"))) {
+            ta->setTextFontPointSize(annotationElement.attribute(QStringLiteral("fontSize")).toDouble());
         }
         if (annotationElement.hasAttribute(QStringLiteral("textColor"))) {
             ta->setTextColor(QColor(annotationElement.attribute(QStringLiteral("textColor"))));

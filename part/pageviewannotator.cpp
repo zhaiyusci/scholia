@@ -292,6 +292,7 @@ public:
         ta->setContents(m_annotElement.hasAttribute(QStringLiteral("contents")) ? m_annotElement.attribute(QStringLiteral("contents")) : content);
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->setInplaceIntent(inplaceIntent);
+        ta->setTextFontName(QStringLiteral("Helvetica"));
         const bool okularLatex = m_annotElement.attribute(QStringLiteral("okularLatex")).toInt() != 0;
         if (okularLatex) {
             ta->setOkularLatex(true);
@@ -320,6 +321,11 @@ public:
             }
             f.fromString(fontString);
             ta->setTextFont(f);
+        } else if (m_annotElement.hasAttribute(QStringLiteral("fontName"))) {
+            ta->setTextFontName(m_annotElement.attribute(QStringLiteral("fontName")));
+        }
+        if (m_annotElement.hasAttribute(QStringLiteral("fontSize"))) {
+            ta->setTextFontPointSize(m_annotElement.attribute(QStringLiteral("fontSize")).toDouble());
         }
         // set font color
         if (m_annotElement.hasAttribute(QStringLiteral("textColor"))) {
@@ -1349,6 +1355,37 @@ public:
         return changed;
     }
 
+    bool normalizeTextToolFonts()
+    {
+        bool changed = false;
+        QDomElement toolElement = m_toolsDefinition.documentElement().firstChildElement();
+        while (!toolElement.isNull()) {
+            QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
+            QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+            if (isTextAnnotationTool(annotationElement)) {
+                if (annotationElement.hasAttribute(QStringLiteral("font"))) {
+                    if (isLegacyDefaultToolFont(annotationElement.attribute(QStringLiteral("font")))) {
+                        annotationElement.removeAttribute(QStringLiteral("font"));
+                        annotationElement.setAttribute(QStringLiteral("fontName"), QStringLiteral("Helvetica"));
+                        if (!annotationElement.hasAttribute(QStringLiteral("fontSize"))) {
+                            annotationElement.setAttribute(QStringLiteral("fontSize"), QStringLiteral("10"));
+                        }
+                        changed = true;
+                    }
+                } else if (!annotationElement.hasAttribute(QStringLiteral("fontName"))) {
+                    annotationElement.setAttribute(QStringLiteral("fontName"), QStringLiteral("Helvetica"));
+                    annotationElement.setAttribute(QStringLiteral("fontSize"), QStringLiteral("10"));
+                    changed = true;
+                } else if (!annotationElement.hasAttribute(QStringLiteral("fontSize"))) {
+                    annotationElement.setAttribute(QStringLiteral("fontSize"), QStringLiteral("10"));
+                    changed = true;
+                }
+            }
+            toolElement = toolElement.nextSiblingElement();
+        }
+        return changed;
+    }
+
     bool updateTool(QDomElement newToolElement, int toolId)
     {
         QDomElement toolElement = tool(toolId);
@@ -1393,6 +1430,26 @@ public:
     }
 
 private:
+    static bool isTextAnnotationTool(const QDomElement &annotationElement)
+    {
+        const QString type = annotationElement.attribute(QStringLiteral("type"));
+        return type == QLatin1String("Typewriter") || type == QLatin1String("FreeText") || type == QLatin1String("Callout");
+    }
+
+    static bool isLegacyDefaultToolFont(QString fontString)
+    {
+        if (fontString.count(QStringLiteral("\\\\,")) > 9) {
+            fontString.replace(QStringLiteral("\\\\,"), QStringLiteral(","));
+        }
+
+        QFont font;
+        font.fromString(fontString);
+        const QString family = font.family();
+        return family == QLatin1String("Noto Sans") || family == QLatin1String("Microsoft YaHei") || family == QLatin1String("Microsoft YaHei UI")
+            || family.contains(QLatin1String("YaHei"), Qt::CaseInsensitive) || fontString.contains(QLatin1String("Noto Sans"), Qt::CaseInsensitive)
+            || fontString.contains(QLatin1String("Microsoft YaHei"), Qt::CaseInsensitive) || fontString.contains(QLatin1String("YaHei"), Qt::CaseInsensitive);
+    }
+
     int nextToolId() const
     {
         int highestId = 0;
@@ -1417,7 +1474,7 @@ static QString defaultCalloutToolXml()
     return QStringLiteral("<tool id=\"15\" type=\"note-callout\" name=\"Callout\">"
                           "<engine type=\"PickPoint\" color=\"#000000\">"
                           "<annotation type=\"Callout\" color=\"#ffffffff\" borderColor=\"#ff000000\" textColor=\"#ff000000\" width=\"1\" "
-                          "font=\"Noto Sans,10,-1,5,50,0,0,0,0,0,Regular\"/>"
+                          "fontName=\"Helvetica\" fontSize=\"10\"/>"
                           "</engine>"
                           "</tool>");
 }
@@ -1463,7 +1520,8 @@ void PageViewAnnotator::reparseBuiltinToolsConfig()
     const bool addedCalloutTool = m_builtinToolsDefinition->ensureToolXml(QStringLiteral("note-callout"), QString(), defaultCalloutToolXml());
     const bool removedLegacyLatexCalloutTool = m_builtinToolsDefinition->removeTool(QStringLiteral("note-callout"), QStringLiteral("LaTeX Callout"));
     const bool normalizedCalloutTool = m_builtinToolsDefinition->normalizeCalloutTool();
-    if (addedCalloutTool || removedLegacyLatexCalloutTool || normalizedCalloutTool) {
+    const bool normalizedTextToolFonts = m_builtinToolsDefinition->normalizeTextToolFonts();
+    if (addedCalloutTool || removedLegacyLatexCalloutTool || normalizedCalloutTool || normalizedTextToolFonts) {
         saveBuiltinAnnotationTools();
     }
 
@@ -1479,6 +1537,10 @@ void PageViewAnnotator::reparseQuickToolsConfig()
         m_quickToolsDefinition = new AnnotationTools();
     }
     m_quickToolsDefinition->setTools(Okular::Settings::quickAnnotationTools());
+    if (m_quickToolsDefinition->normalizeTextToolFonts()) {
+        Okular::Settings::setQuickAnnotationTools(m_quickToolsDefinition->toStringList());
+        Okular::Settings::self()->save();
+    }
 
     if (m_actionHandler) {
         m_actionHandler->reparseQuickToolsConfig();
@@ -2370,7 +2432,20 @@ void PageViewAnnotator::setAnnotationOpacity(double opacity)
 
 void PageViewAnnotator::setAnnotationFont(const QFont &font)
 {
-    currentAnnotationElement().setAttribute(QStringLiteral("font"), font.toString());
+    QDomElement annotationElement = currentAnnotationElement();
+    annotationElement.removeAttribute(QStringLiteral("fontName"));
+    annotationElement.removeAttribute(QStringLiteral("fontSize"));
+    annotationElement.setAttribute(QStringLiteral("font"), font.toString());
+    saveBuiltinAnnotationTools();
+    selectLastTool();
+}
+
+void PageViewAnnotator::setAnnotationFontName(const QString &fontName, double pointSize)
+{
+    QDomElement annotationElement = currentAnnotationElement();
+    annotationElement.removeAttribute(QStringLiteral("font"));
+    annotationElement.setAttribute(QStringLiteral("fontName"), fontName);
+    annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(pointSize));
     saveBuiltinAnnotationTools();
     selectLastTool();
 }

@@ -10,22 +10,30 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QBitmap>
+#include <QCheckBox>
 #include <QColorDialog>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDomDocument>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QFont>
-#include <QFontDialog>
 #include <QHash>
 #include <QInputDialog>
 #include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <QStringList>
+#include <QVBoxLayout>
 #include <QWidget>
 
 // kde includes
 #include <KActionCollection>
+#include <KFontRequester>
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <KParts/MainWindow>
@@ -44,6 +52,53 @@
 #include "pageviewannotator.h"
 #include "settings.h"
 #include "toggleactionmenu.h"
+
+static const QStringList &pdfBase14FontNames()
+{
+    static const QStringList names {
+        QStringLiteral("Times-Roman"),
+        QStringLiteral("Times-Bold"),
+        QStringLiteral("Times-Italic"),
+        QStringLiteral("Times-BoldItalic"),
+        QStringLiteral("Helvetica"),
+        QStringLiteral("Helvetica-Bold"),
+        QStringLiteral("Helvetica-Oblique"),
+        QStringLiteral("Helvetica-BoldOblique"),
+        QStringLiteral("Courier"),
+        QStringLiteral("Courier-Bold"),
+        QStringLiteral("Courier-Oblique"),
+        QStringLiteral("Courier-BoldOblique"),
+        QStringLiteral("Symbol"),
+        QStringLiteral("ZapfDingbats"),
+    };
+    return names;
+}
+
+static QString normalizedPdfBase14FontName(const QString &fontName)
+{
+    const QString name = fontName.startsWith(QLatin1Char('/')) ? fontName.mid(1) : fontName;
+    if (pdfBase14FontNames().contains(name)) {
+        return name;
+    }
+
+    static const QHash<QString, QString> aliases {
+        {QStringLiteral("Helv"), QStringLiteral("Helvetica")},
+        {QStringLiteral("HeBo"), QStringLiteral("Helvetica-Bold")},
+        {QStringLiteral("HeOb"), QStringLiteral("Helvetica-Oblique")},
+        {QStringLiteral("HeBO"), QStringLiteral("Helvetica-BoldOblique")},
+        {QStringLiteral("Cour"), QStringLiteral("Courier")},
+        {QStringLiteral("CoBo"), QStringLiteral("Courier-Bold")},
+        {QStringLiteral("CoOb"), QStringLiteral("Courier-Oblique")},
+        {QStringLiteral("CoBO"), QStringLiteral("Courier-BoldOblique")},
+        {QStringLiteral("TiRo"), QStringLiteral("Times-Roman")},
+        {QStringLiteral("TiBo"), QStringLiteral("Times-Bold")},
+        {QStringLiteral("TiIt"), QStringLiteral("Times-Italic")},
+        {QStringLiteral("TiBI"), QStringLiteral("Times-BoldItalic")},
+        {QStringLiteral("Symb"), QStringLiteral("Symbol")},
+        {QStringLiteral("ZaDb"), QStringLiteral("ZapfDingbats")},
+    };
+    return aliases.value(name, QStringLiteral("Helvetica"));
+}
 
 class AnnotationActionHandlerPrivate
 {
@@ -90,6 +145,9 @@ public:
         , currentInnerColor(QColor())
         , currentTextColor(QColor())
         , currentFont(QFont())
+        , currentFontName(QStringLiteral("Helvetica"))
+        , currentFontPointSize(10.0)
+        , currentUsesCustomFont(false)
         , currentWidth(-1)
         , selectedBuiltinTool(-1)
         , textToolsEnabled(false)
@@ -176,6 +234,9 @@ public:
     QColor currentInnerColor;
     QColor currentTextColor;
     QFont currentFont;
+    QString currentFontName;
+    double currentFontPointSize;
+    bool currentUsesCustomFont;
     double currentWidth;
 
     int selectedBuiltinTool;
@@ -459,8 +520,19 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
         currentTextColor = QColor();
     }
 
+    currentFontName = normalizedPdfBase14FontName(annElement.attribute(QStringLiteral("fontName"), QStringLiteral("Helvetica")));
+    currentFontPointSize = annElement.attribute(QStringLiteral("fontSize"), QStringLiteral("10")).toDouble();
+    if (currentFontPointSize <= 0) {
+        currentFontPointSize = 10.0;
+    }
+    currentUsesCustomFont = false;
+    currentFont = QFont(QStringLiteral("Helvetica"));
     if (annElement.hasAttribute(QStringLiteral("font"))) {
         currentFont.fromString(annElement.attribute(QStringLiteral("font")));
+        if (currentFont.pointSizeF() > 0) {
+            currentFontPointSize = currentFont.pointSizeF();
+        }
+        currentUsesCustomFont = true;
     }
 
     // if the width value is not a default one, insert a new action in the width list
@@ -824,10 +896,60 @@ void AnnotationActionHandlerPrivate::slotSetColor(AnnotationColor colorType, con
 
 void AnnotationActionHandlerPrivate::slotSelectAnnotationFont()
 {
-    bool ok;
-    QFont selectedFont = QFontDialog::getFont(&ok, currentFont);
-    if (ok) {
-        currentFont = selectedFont;
+    QDialog dialog(qobject_cast<QWidget *>(annotator->parent()));
+    dialog.setWindowTitle(i18nc("@title:window", "Select annotation font"));
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
+    QFormLayout *formLayout = new QFormLayout;
+    mainLayout->addLayout(formLayout);
+
+    QCheckBox *usePdfFont = new QCheckBox(i18nc("@option:check", "Use PDF base font"), &dialog);
+    usePdfFont->setChecked(!currentUsesCustomFont);
+    formLayout->addRow(QString(), usePdfFont);
+
+    QComboBox *pdfFontName = new QComboBox(&dialog);
+    for (const QString &fontName : pdfBase14FontNames()) {
+        pdfFontName->addItem(fontName, fontName);
+    }
+    const int pdfFontIndex = pdfFontName->findData(normalizedPdfBase14FontName(currentFontName));
+    pdfFontName->setCurrentIndex(pdfFontIndex >= 0 ? pdfFontIndex : pdfFontName->findData(QStringLiteral("Helvetica")));
+    pdfFontName->setEnabled(!currentUsesCustomFont);
+    formLayout->addRow(i18n("PDF font:"), pdfFontName);
+
+    QDoubleSpinBox *pdfFontSize = new QDoubleSpinBox(&dialog);
+    pdfFontSize->setRange(1.0, 200.0);
+    pdfFontSize->setDecimals(1);
+    pdfFontSize->setSingleStep(1.0);
+    pdfFontSize->setValue(currentFontPointSize);
+    pdfFontSize->setEnabled(!currentUsesCustomFont);
+    formLayout->addRow(i18n("PDF font size:"), pdfFontSize);
+
+    KFontRequester *customFont = new KFontRequester(&dialog);
+    customFont->setFont(currentUsesCustomFont ? currentFont : QFont(QStringLiteral("Helvetica")));
+    customFont->setEnabled(currentUsesCustomFont);
+    formLayout->addRow(i18n("Custom font:"), customFont);
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    mainLayout->addWidget(buttonBox);
+
+    QObject::connect(usePdfFont, &QCheckBox::toggled, pdfFontName, &QComboBox::setEnabled);
+    QObject::connect(usePdfFont, &QCheckBox::toggled, pdfFontSize, &QDoubleSpinBox::setEnabled);
+    QObject::connect(usePdfFont, &QCheckBox::toggled, customFont, &KFontRequester::setDisabled);
+    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    if (usePdfFont->isChecked()) {
+        currentFontName = pdfFontName->currentData().toString();
+        currentFontPointSize = pdfFontSize->value();
+        currentUsesCustomFont = false;
+        annotator->setAnnotationFontName(currentFontName, currentFontPointSize);
+    } else {
+        currentFont = customFont->font();
+        currentUsesCustomFont = true;
         annotator->setAnnotationFont(currentFont);
     }
 }

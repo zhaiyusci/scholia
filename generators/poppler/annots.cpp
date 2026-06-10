@@ -742,7 +742,12 @@ static QRectF freeTextLayoutBoundaryFromOkularAnnotation(const Okular::TextAnnot
 static void updatePopplerFreeTextPropertiesFromOkularAnnotation(const Okular::TextAnnotation *oTextAnnotation, Poppler::TextAnnotation *pTextAnnotation)
 {
     pTextAnnotation->setTextIcon(oTextAnnotation->textIcon());
-    pTextAnnotation->setTextFont(oTextAnnotation->textFont());
+    if (oTextAnnotation->hasTextFont()) {
+        pTextAnnotation->setTextFont(oTextAnnotation->textFont());
+    } else if (!oTextAnnotation->textFontName().isEmpty()) {
+        pTextAnnotation->setTextFontName(oTextAnnotation->textFontName());
+        pTextAnnotation->setTextFontPointSize(oTextAnnotation->textFontPointSize());
+    }
     pTextAnnotation->setTextColor(oTextAnnotation->textColor());
     pTextAnnotation->setOkularBorderColor(oTextAnnotation->inplaceBorderColor());
     pTextAnnotation->setInplaceAlign(static_cast<Poppler::TextAnnotation::InplaceAlignPosition>(oTextAnnotation->inplaceAlignment()));
@@ -1573,7 +1578,11 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::TextAn
 
     oTextAnn->setTextType(popplerToOkular(popplerAnnotation->textType()));
     oTextAnn->setTextIcon(popplerAnnotation->textIcon());
-    oTextAnn->setTextFont(popplerAnnotation->textFont());
+    const QString textFontName = popplerAnnotation->textFontName();
+    if (!textFontName.isEmpty()) {
+        oTextAnn->setTextFontName(textFontName);
+    }
+    oTextAnn->setTextFontPointSize(popplerAnnotation->textFontPointSize());
     oTextAnn->setTextColor(popplerAnnotation->textColor());
     oTextAnn->setInplaceBorderColor(popplerAnnotation->okularBorderColor());
     // this works because we use the same 0:left, 1:center, 2:right meaning both in poppler and okular

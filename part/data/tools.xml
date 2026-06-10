@@ -24,19 +24,25 @@ Annotation
   Typewriter
     [textColor]     {RGB HEX}
     [opacity]       {decimal in range [0, 1]}
-    [font]          {string as returned by QFont::toString()}
+    [fontName]      {PDF Base 14 font name}
+    [fontSize]      {font size in points for fontName}
+    [font]          {string as returned by QFont::toString() for a custom system font}
   FreeText
     [textColor]     {RGB HEX}
     [borderColor]   {RGB HEX}
     [color]         {RGB HEX}
     [opacity]       {decimal in range [0, 1]}
-    [font]          {string as returned by QFont::toString()}
+    [fontName]      {PDF Base 14 font name}
+    [fontSize]      {font size in points for fontName}
+    [font]          {string as returned by QFont::toString() for a custom system font}
   Callout
     [textColor]     {RGB HEX}
     [borderColor]   {RGB HEX}
     [color]         {RGB HEX}
     [opacity]       {decimal in range [0, 1]}
-    [font]          {string as returned by QFont::toString()}
+    [fontName]      {PDF Base 14 font name}
+    [fontSize]      {font size in points for fontName}
+    [font]          {string as returned by QFont::toString() for a custom system font}
   Text
     [color]         {RGB HEX}
     [opacity]       {decimal in range [0, 1]}
@@ -88,13 +94,13 @@ Annotation
     <tool id="5" type="typewriter">
         <engine type="PickPoint" block="true">
             <annotation type="Typewriter" color="#00ffffff" textColor="#000000" width="0"
-                        font="Noto Sans,10,-1,5,50,0,0,0,0,0,Regular"/>
+                        fontName="Helvetica" fontSize="10"/>
         </engine>
     </tool>
     <tool id="6" type="note-inline">
         <engine type="PickPoint" color="#ffff00" hoverIcon="tool-note-inline" block="true">
             <annotation type="FreeText" color="#ffffff00" borderColor="#ffff0000" textColor="#ff000000"
-                        font="Noto Sans,10,-1,5,50,0,0,0,0,0,Regular"/>
+                        fontName="Helvetica" fontSize="10"/>
         </engine>
     </tool>
     <tool id="7" type="note-linked">
@@ -140,7 +146,7 @@ Annotation
     <tool id="15" type="note-callout" name="Callout">
         <engine type="PickPoint" color="#000000">
             <annotation type="Callout" color="#ffffffff" borderColor="#ff000000" textColor="#ff000000" width="1"
-                        font="Noto Sans,10,-1,5,50,0,0,0,0,0,Regular"/>
+                        fontName="Helvetica" fontSize="10"/>
         </engine>
     </tool>
 </annotatingTools>

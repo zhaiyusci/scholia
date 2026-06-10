@@ -17,11 +17,13 @@
 #include <KMessageWidget>
 #include <QCheckBox>
 #include <QDebug>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QGuiApplication>
+#include <QHash>
 #include <QIcon>
 #include <QLabel>
 #include <QLayout>
@@ -30,6 +32,7 @@
 #include <QPair>
 #include <QSize>
 #include <QSpinBox>
+#include <QStringList>
 #include <QVariant>
 
 #include "core/annotations.h"
@@ -41,6 +44,53 @@
 #include "gui/pagepainter.h"
 
 #define FILEATTACH_ICONSIZE 48
+
+static const QStringList &pdfBase14FontNames()
+{
+    static const QStringList names {
+        QStringLiteral("Times-Roman"),
+        QStringLiteral("Times-Bold"),
+        QStringLiteral("Times-Italic"),
+        QStringLiteral("Times-BoldItalic"),
+        QStringLiteral("Helvetica"),
+        QStringLiteral("Helvetica-Bold"),
+        QStringLiteral("Helvetica-Oblique"),
+        QStringLiteral("Helvetica-BoldOblique"),
+        QStringLiteral("Courier"),
+        QStringLiteral("Courier-Bold"),
+        QStringLiteral("Courier-Oblique"),
+        QStringLiteral("Courier-BoldOblique"),
+        QStringLiteral("Symbol"),
+        QStringLiteral("ZapfDingbats"),
+    };
+    return names;
+}
+
+static QString normalizedPdfBase14FontName(const QString &fontName)
+{
+    const QString name = fontName.startsWith(QLatin1Char('/')) ? fontName.mid(1) : fontName;
+    if (pdfBase14FontNames().contains(name)) {
+        return name;
+    }
+
+    static const QHash<QString, QString> aliases {
+        {QStringLiteral("Helv"), QStringLiteral("Helvetica")},
+        {QStringLiteral("HeBo"), QStringLiteral("Helvetica-Bold")},
+        {QStringLiteral("HeOb"), QStringLiteral("Helvetica-Oblique")},
+        {QStringLiteral("HeBO"), QStringLiteral("Helvetica-BoldOblique")},
+        {QStringLiteral("Cour"), QStringLiteral("Courier")},
+        {QStringLiteral("CoBo"), QStringLiteral("Courier-Bold")},
+        {QStringLiteral("CoOb"), QStringLiteral("Courier-Oblique")},
+        {QStringLiteral("CoBO"), QStringLiteral("Courier-BoldOblique")},
+        {QStringLiteral("TiRo"), QStringLiteral("Times-Roman")},
+        {QStringLiteral("TiBo"), QStringLiteral("Times-Bold")},
+        {QStringLiteral("TiIt"), QStringLiteral("Times-Italic")},
+        {QStringLiteral("TiBI"), QStringLiteral("Times-BoldItalic")},
+        {QStringLiteral("Symb"), QStringLiteral("Symbol")},
+        {QStringLiteral("ZaDb"), QStringLiteral("ZapfDingbats")},
+    };
+    return aliases.value(name, QStringLiteral("Helvetica"));
+}
 
 PixmapPreviewSelector::PixmapPreviewSelector(QWidget *parent, PreviewPosition position)
     : QWidget(parent)
@@ -316,7 +366,15 @@ void TextAnnotationWidget::applyChanges()
         m_textAnn->setTextIcon(m_pixmapSelector->icon());
     } else if (m_textAnn->textType() == Okular::TextAnnotation::InPlace) {
         Q_ASSERT(m_fontReq);
-        m_textAnn->setTextFont(m_fontReq->font());
+        Q_ASSERT(m_defaultFont);
+        if (m_defaultFont->isChecked()) {
+            Q_ASSERT(m_pdfFontName);
+            Q_ASSERT(m_pdfFontSize);
+            m_textAnn->setTextFontName(m_pdfFontName->currentData().toString());
+            m_textAnn->setTextFontPointSize(m_pdfFontSize->value());
+        } else {
+            m_textAnn->setTextFont(m_fontReq->font());
+        }
         if (!isTypewriter()) {
             Q_ASSERT(m_textAlign && m_spinWidth && m_textColorBn && m_borderColorBn);
             m_textAnn->setInplaceAlignment(m_textAlign->currentIndex());
@@ -379,9 +437,39 @@ void TextAnnotationWidget::addPixmapSelector(QWidget *widget, QFormLayout *forml
 
 void TextAnnotationWidget::addFontRequester(QWidget *widget, QFormLayout *formlayout)
 {
+    m_defaultFont = new QCheckBox(widget);
+    m_defaultFont->setText(i18nc("@option:check", "Use PDF base font"));
+    m_defaultFont->setChecked(!m_textAnn->hasTextFont());
+    formlayout->addRow(QString(), m_defaultFont);
+
+    m_pdfFontName = new QComboBox(widget);
+    for (const QString &fontName : pdfBase14FontNames()) {
+        m_pdfFontName->addItem(fontName, fontName);
+    }
+    const QString pdfFontName = normalizedPdfBase14FontName(m_textAnn->textFontName());
+    const int pdfFontIndex = m_pdfFontName->findData(pdfFontName);
+    m_pdfFontName->setCurrentIndex(pdfFontIndex >= 0 ? pdfFontIndex : m_pdfFontName->findData(QStringLiteral("Helvetica")));
+    m_pdfFontName->setEnabled(!m_textAnn->hasTextFont());
+    formlayout->addRow(i18n("PDF font:"), m_pdfFontName);
+
+    m_pdfFontSize = new QDoubleSpinBox(widget);
+    m_pdfFontSize->setRange(1.0, 200.0);
+    m_pdfFontSize->setDecimals(1);
+    m_pdfFontSize->setSingleStep(1.0);
+    m_pdfFontSize->setValue(m_textAnn->textFontPointSize());
+    m_pdfFontSize->setEnabled(!m_textAnn->hasTextFont());
+    formlayout->addRow(i18n("PDF font size:"), m_pdfFontSize);
+
     m_fontReq = new KFontRequester(widget);
-    formlayout->addRow(i18n("Font:"), m_fontReq);
-    m_fontReq->setFont(m_textAnn->textFont());
+    formlayout->addRow(i18n("Custom font:"), m_fontReq);
+    m_fontReq->setFont(m_textAnn->hasTextFont() ? m_textAnn->textFont() : QFont(QStringLiteral("Helvetica")));
+    m_fontReq->setEnabled(m_textAnn->hasTextFont());
+    connect(m_defaultFont, &QCheckBox::toggled, m_pdfFontName, &QComboBox::setEnabled);
+    connect(m_defaultFont, &QCheckBox::toggled, m_pdfFontSize, &QDoubleSpinBox::setEnabled);
+    connect(m_defaultFont, &QCheckBox::toggled, m_fontReq, &KFontRequester::setDisabled);
+    connect(m_defaultFont, &QCheckBox::toggled, this, &AnnotationWidget::dataChanged);
+    connect(m_pdfFontName, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &AnnotationWidget::dataChanged);
+    connect(m_pdfFontSize, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &AnnotationWidget::dataChanged);
     connect(m_fontReq, &KFontRequester::fontSelected, this, &AnnotationWidget::dataChanged);
 }
 

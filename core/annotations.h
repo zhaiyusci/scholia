@@ -975,6 +975,42 @@ public:
     void setTextFont(const QFont &font);
 
     /**
+     * Sets the PDF font name used by this text annotation.
+     *
+     * This stores the font name from the annotation default appearance, such as
+     * Helvetica, without resolving it to a platform fallback font.
+     */
+    void setTextFontName(const QString &fontName);
+
+    /**
+     * Sets the text annotation font size in points without changing the PDF font name.
+     */
+    void setTextFontPointSize(double pointSize);
+
+    /**
+     * Clears the explicitly set text annotation font.
+     *
+     * When no font is explicitly set, generators should use the document or
+     * backend default instead of serializing the application font as a PDF font.
+     */
+    void clearTextFont();
+
+    /**
+     * Returns whether the text annotation has an explicitly set font.
+     */
+    bool hasTextFont() const;
+
+    /**
+     * Returns the PDF font name used by this text annotation.
+     */
+    QString textFontName() const;
+
+    /**
+     * Returns the text annotation font size in points.
+     */
+    double textFontPointSize() const;
+
+    /**
      * Returns the font of the text annotation.
      */
     QFont textFont() const;

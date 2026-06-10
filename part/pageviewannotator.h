@@ -131,6 +131,7 @@ public:
     void setAnnotationTextColor(const QColor &color);
     void setAnnotationOpacity(double opacity);
     void setAnnotationFont(const QFont &font);
+    void setAnnotationFontName(const QString &fontName, double pointSize);
 
 public Q_SLOTS:
     void setContinuousMode(bool enabled);

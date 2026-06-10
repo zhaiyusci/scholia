@@ -142,6 +142,9 @@ private:
 
     Okular::TextAnnotation *m_textAnn;
     PixmapPreviewSelector *m_pixmapSelector {nullptr};
+    QCheckBox *m_defaultFont {nullptr};
+    QComboBox *m_pdfFontName {nullptr};
+    QDoubleSpinBox *m_pdfFontSize {nullptr};
     KFontRequester *m_fontReq {nullptr};
     KColorButton *m_textColorBn {nullptr};
     KColorButton *m_borderColorBn {nullptr};

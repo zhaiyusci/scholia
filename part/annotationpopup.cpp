@@ -652,7 +652,12 @@ void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
     for (int i = 0; i < 3; ++i) {
         latexTextAnnotation->setInplaceCallout(textAnnotation->inplaceCallout(i), i);
     }
-    latexTextAnnotation->setTextFont(textAnnotation->textFont());
+    if (textAnnotation->hasTextFont()) {
+        latexTextAnnotation->setTextFont(textAnnotation->textFont());
+    } else if (!textAnnotation->textFontName().isEmpty()) {
+        latexTextAnnotation->setTextFontName(textAnnotation->textFontName());
+        latexTextAnnotation->setTextFontPointSize(textAnnotation->textFontPointSize());
+    }
     latexTextAnnotation->setTextColor(textColor);
     latexTextAnnotation->setInplaceBorderColor(latexBorderColorForTextAnnotation(textAnnotation));
     latexTextAnnotation->setContents(latexInput);
