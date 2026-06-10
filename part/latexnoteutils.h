@@ -45,6 +45,7 @@ bool annotationIsLatex(const Okular::Annotation *annotation);
 QColor colorForLatexAnnotation(const Okular::Annotation *annotation);
 int latexFontSize();
 int convertedTextFontSize();
+QString defaultLatexAppearancePdfFileName();
 
 double pageWidthInPoints(const Okular::Page *page);
 double pageHeightInPoints(const Okular::Page *page);

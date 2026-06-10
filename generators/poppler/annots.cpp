@@ -28,6 +28,7 @@
 
 #include <core/annotations.h>
 #include <core/area.h>
+#include <core/latexnotegeometry.h>
 
 #include "debug_pdf.h"
 #include "generator_pdf.h"
@@ -374,8 +375,7 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
         return options;
     }
 
-    constexpr double latexPaddingPoints = 6.0;
-    constexpr double frameInset = latexPaddingPoints / 2.0;
+    const double contentInset = Okular::LatexNoteGeometry::contentInsetPoints();
 
     const double scale = std::isfinite(annotation->latexScale()) && annotation->latexScale() > 0.0 ? annotation->latexScale() : 1.0;
     const QRectF boxRectPoints = normRectToPageRectF(annotation->boundingRectangle(), page);
@@ -405,10 +405,11 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
 
     options.appearanceScale = scale;
     options.outerSize = outerSizePoints;
+    options.contentOffset = QPointF(contentInset, contentInset);
     if (annotation->latexNoteType() == Okular::Annotation::LatexNoteBoxed || annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout) {
         options.frameRect = QRectF(frameX, frameY, frameWidth, frameHeight);
         options.alignContentToFrameTopLeft = true;
-        options.contentFrameInset = frameInset;
+        options.contentFrameInset = contentInset;
         options.borderWidth = annotation->latexNoteType() == Okular::Annotation::LatexNoteCallout ? qMax(1.0, borderWidth) : borderWidth;
         options.fillColor = annotation->latexFillColor();
         options.borderColor = annotation->latexBorderColor().isValid() ? annotation->latexBorderColor() : QColor(Qt::black);

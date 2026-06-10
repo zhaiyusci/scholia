@@ -4,4 +4,7 @@
         <file>part.rc</file>
         <file>part-viewermode.rc</file>
     </qresource>
+    <qresource prefix="/okular">
+        <file>data/latex-default-note.pdf</file>
+    </qresource>
 </RCC>

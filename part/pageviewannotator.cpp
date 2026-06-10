@@ -1991,7 +1991,11 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
     annotationElement.setAttribute(QStringLiteral("latexVariant"), callout ? QStringLiteral("callout") : (boxed ? QStringLiteral("inline") : QStringLiteral("note")));
     annotationElement.setAttribute(QStringLiteral("latexBoxed"), (boxed || callout) ? QStringLiteral("1") : QStringLiteral("0"));
     annotationElement.setAttribute(QStringLiteral("latexCallout"), callout ? QStringLiteral("1") : QStringLiteral("0"));
-    annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
+    if (pdfAppearanceFile.isEmpty()) {
+        annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
+    } else {
+        annotationElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), pdfAppearanceFile);
+    }
     annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     QColor targetTextColor = textColor;

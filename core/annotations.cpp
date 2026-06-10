@@ -2700,6 +2700,7 @@ public:
     {
     }
     void setAnnotationProperties(const QDomNode &node) override;
+    bool openDialogAfterCreation() const override;
     bool canBeResized() const override;
     AnnotationPrivate *getNewAnnotationPrivate() override;
 
@@ -2800,6 +2801,11 @@ void StampAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
 bool StampAnnotationPrivate::canBeResized() const
 {
     return true;
+}
+
+bool StampAnnotationPrivate::openDialogAfterCreation() const
+{
+    return m_okularLatex;
 }
 
 AnnotationPrivate *StampAnnotationPrivate::getNewAnnotationPrivate()

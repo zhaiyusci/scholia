@@ -22,7 +22,6 @@
 #include <QFormLayout>
 #include <QFont>
 #include <QHash>
-#include <QInputDialog>
 #include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
@@ -833,13 +832,7 @@ void AnnotationActionHandlerPrivate::slotSelectCustomStamp()
 
 void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
 {
-    bool ok = false;
-    const QString title = callout ? i18nc("@title:window", "Add LaTeX Callout") : (boxed ? i18nc("@title:window", "Add LaTeX Inline Note") : i18nc("@title:window", "Add LaTeX Note"));
-    const QString latexInput = QInputDialog::getMultiLineText(nullptr, title, i18nc("@label:textbox", "LaTeX source:"), QString(), &ok).trimmed();
-    if (!ok || latexInput.isEmpty()) {
-        return;
-    }
-
+    const QString latexInput = QStringLiteral("\\LaTeX");
     QColor textColor = currentTextColor.isValid() && currentTextColor.alpha() != 0 ? currentTextColor : Qt::black;
     QColor fillColor = (boxed || callout) ? currentInnerColor : Qt::transparent;
     if ((boxed || callout) && (!fillColor.isValid() || fillColor.alpha() == 0)) {
@@ -850,14 +843,7 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
         borderColor = textColor;
     }
 
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(latexInput, textColor, LatexNoteUtils::latexFontSize(), 0.0);
-    if (!rendered.ok) {
-        KMessageBox::error(nullptr, rendered.errorMessage, i18n("LaTeX rendering failed"));
-        return;
-    }
-    LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
-
-    selectedBuiltinTool = annotator->selectLatexStampTool(rendered.pdfFileName, latexInput, boxed, textColor, fillColor, borderColor, callout);
+    selectedBuiltinTool = annotator->selectLatexStampTool(LatexNoteUtils::defaultLatexAppearancePdfFileName(), latexInput, boxed, textColor, fillColor, borderColor, callout);
     if (selectedBuiltinTool != -1) {
         updateConfigActions(callout ? QStringLiteral("note-callout") : (boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter")));
     }
@@ -1062,17 +1048,17 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aSelectCustomStamp->setToolTip(i18nc("@info:tooltip", "Add an image as a movable annotation"));
     d->aStamp->addAction(d->aSelectCustomStamp);
     connect(d->aSelectCustomStamp, &QAction::triggered, this, [this]() { d->slotSelectCustomStamp(); });
-    d->aAddLatexNote = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Note…"), this);
+    d->aAddLatexNote = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Note"), this);
     d->aAddLatexNote->setIcon(d->latexNoteIcon(false));
-    d->aAddLatexNote->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX as a movable annotation"));
+    d->aAddLatexNote->setToolTip(i18nc("@info:tooltip", "Add a movable LaTeX annotation"));
     connect(d->aAddLatexNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(); });
-    d->aAddLatexInlineNote = new QAction(QIcon::fromTheme(QStringLiteral("note")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Inline Note…"), this);
+    d->aAddLatexInlineNote = new QAction(QIcon::fromTheme(QStringLiteral("note")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Inline Note"), this);
     d->aAddLatexInlineNote->setIcon(d->latexNoteIcon(true));
-    d->aAddLatexInlineNote->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX with an inline-note background and border"));
+    d->aAddLatexInlineNote->setToolTip(i18nc("@info:tooltip", "Add a LaTeX annotation with an inline-note background and border"));
     connect(d->aAddLatexInlineNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true); });
-    d->aAddLatexCallout = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Callout…"), this);
+    d->aAddLatexCallout = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Callout"), this);
     d->aAddLatexCallout->setIcon(d->latexCalloutIcon());
-    d->aAddLatexCallout->setToolTip(i18nc("@info:tooltip", "Add rendered LaTeX as a stamp-based callout note"));
+    d->aAddLatexCallout->setToolTip(i18nc("@info:tooltip", "Add a stamp-based LaTeX callout note"));
     connect(d->aAddLatexCallout, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true, true); });
     connect(d->aStamp->menu(), &QMenu::triggered, this, [this](QAction *action) {
         if (action->isCheckable()) {

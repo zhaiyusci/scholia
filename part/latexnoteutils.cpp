@@ -20,6 +20,7 @@
 
 #include "core/annotations.h"
 #include "core/document.h"
+#include "core/latexnotegeometry.h"
 #include "core/page.h"
 #include "core/utils.h"
 #include "gui/debug_ui.h"
@@ -79,8 +80,6 @@ QString latexErrorMessage(GuiUtils::LatexRenderer::Error errorCode, const QStrin
     }
     return QString();
 }
-
-constexpr double latexFreeTextPaddingPoints = 6.0;
 
 QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &sourcePreamble, const QString &backendName)
 {
@@ -222,6 +221,32 @@ int convertedTextFontSize()
     return qBound(1, Okular::Settings::latexTextAnnotationFontSize(), 72);
 }
 
+QString defaultLatexAppearancePdfFileName()
+{
+    QDir dataDir = latexAppearanceSessionDir();
+    if (!dataDir.exists()) {
+        qCWarning(OkularUiDebug) << "Could not create a temporary directory for the default LaTeX note appearance.";
+        return QString();
+    }
+
+    const QString targetFileName = dataDir.filePath(QStringLiteral("latex-default-note.pdf"));
+    if (QFile::exists(targetFileName)) {
+        return targetFileName;
+    }
+
+    QFile resourceFile(QStringLiteral(":/okular/data/latex-default-note.pdf"));
+    if (!resourceFile.exists()) {
+        qCWarning(OkularUiDebug) << "Default LaTeX note appearance resource is missing.";
+        return QString();
+    }
+    if (!resourceFile.copy(targetFileName)) {
+        qCWarning(OkularUiDebug) << "Could not copy the default LaTeX note appearance to:" << targetFileName << "error:" << resourceFile.errorString();
+        return QString();
+    }
+
+    return targetFileName;
+}
+
 double rectWidthInPoints(const Okular::NormalizedRect &rect, const Okular::Page *page)
 {
     const double pageWidth = pageWidthInPoints(page);
@@ -258,15 +283,12 @@ double annotationWidthInPoints(const Okular::Annotation *annotation, const Okula
 
 double latexTextAnnotationPaddingPoints()
 {
-    return latexFreeTextPaddingPoints;
+    return Okular::LatexNoteGeometry::paddingPoints();
 }
 
 double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double scale)
 {
-    if (!std::isfinite(visibleWidthPoints) || visibleWidthPoints <= 0.0 || !std::isfinite(scale) || scale <= 0.0) {
-        return 0.0;
-    }
-    return qMax(1.0, visibleWidthPoints / scale - latexFreeTextPaddingPoints);
+    return Okular::LatexNoteGeometry::layoutWidthForVisibleWidth(visibleWidthPoints, scale);
 }
 
 double scaleForLatexTextAnnotation(const Okular::TextAnnotation *annotation)
@@ -294,11 +316,7 @@ double layoutWidthForLatexTextAnnotation(const Okular::TextAnnotation *annotatio
 
 QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentPdfSizePoints, double layoutWidthPoints)
 {
-    if (!contentPdfSizePoints.isValid() || contentPdfSizePoints.isEmpty()) {
-        return contentPdfSizePoints;
-    }
-
-    return QSizeF(qMax(layoutWidthPoints, contentPdfSizePoints.width() + latexFreeTextPaddingPoints), contentPdfSizePoints.height() + latexFreeTextPaddingPoints);
+    return Okular::LatexNoteGeometry::visualSizeForContent(contentPdfSizePoints, layoutWidthPoints);
 }
 
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale)
