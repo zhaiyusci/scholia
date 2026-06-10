@@ -110,8 +110,8 @@ public:
     int selectBuiltinToolByType(const QString &toolType, const QString &toolName, ShowTip showTip);
     // selects a stamp tool and sets the stamp symbol
     int selectStampTool(const QString &stampSymbol);
-    // selects a FreeText tool backed by a rendered LaTeX appearance
-    int selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout = false);
+    // selects a Stamp tool backed by a rendered LaTeX appearance
+    int selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout = false);
     // selects the active quick tool
     void selectQuickTool(int toolId);
     // selects the last used tool

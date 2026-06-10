@@ -172,14 +172,14 @@ void AnnotationTest::testLatexRuntimePathIsNotSerialized()
 
     QDomNode textNode = textAnnotation.getAnnotationPropertiesDomNode();
     const QDomElement textBase = textNode.toElement().elementsByTagName(QStringLiteral("base")).item(0).toElement();
-    QCOMPARE(textBase.attribute(QStringLiteral("okularLatex")), QStringLiteral("1"));
-    QCOMPARE(textBase.attribute(QStringLiteral("latexLayoutWidth")), QStringLiteral("123.000"));
-    QCOMPARE(textBase.attribute(QStringLiteral("latexScale")), QStringLiteral("1.250000"));
+    QVERIFY(!textBase.hasAttribute(QStringLiteral("okularLatex")));
+    QVERIFY(!textBase.hasAttribute(QStringLiteral("latexLayoutWidth")));
+    QVERIFY(!textBase.hasAttribute(QStringLiteral("latexScale")));
     QVERIFY(!textBase.hasAttribute(QStringLiteral("latexAppearancePdfFileName")));
 
     QDomNode runtimeNode = textAnnotation.getAnnotationPropertiesDomNode(true);
     const QDomElement runtimeBase = runtimeNode.toElement().elementsByTagName(QStringLiteral("base")).item(0).toElement();
-    QCOMPARE(runtimeBase.attribute(QStringLiteral("latexAppearancePdfFileName")), QStringLiteral("/tmp/okular-latex-appearances/latex-notes/runtime.pdf"));
+    QVERIFY(!runtimeBase.hasAttribute(QStringLiteral("latexAppearancePdfFileName")));
 }
 
 void AnnotationTest::testLatexStampPropertiesRoundTrip()

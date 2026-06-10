@@ -725,8 +725,8 @@ public:
     /**
      * Marks this annotation as backed by editable LaTeX source.
      *
-     * The PDF writer stores this as /OkularLatex true. The annotation subtype
-     * remains the standard PDF subtype, for example Stamp or FreeText.
+     * The PDF writer stores this as /OkularLatex true for Stamp annotations.
+     * FreeText annotations do not carry Okular LaTeX metadata.
      */
     void setOkularLatex(bool latex);
 

@@ -152,20 +152,8 @@ namespace LatexNoteUtils
 {
 const Okular::TextAnnotation *annotationAsLatexTextAnnotation(const Okular::Annotation *annotation)
 {
-    if (!annotation || annotation->subType() != Okular::Annotation::AText || annotation->contents().trimmed().isEmpty() || !annotation->isOkularLatex()) {
-        return nullptr;
-    }
-
-    const auto *textAnnotation = static_cast<const Okular::TextAnnotation *>(annotation);
-    if (textAnnotation->textType() != Okular::TextAnnotation::InPlace) {
-        return nullptr;
-    }
-
-    if (!isFiniteUsableRect(textAnnotation->boundingRectangle())) {
-        return nullptr;
-    }
-
-    return textAnnotation;
+    Q_UNUSED(annotation);
+    return nullptr;
 }
 
 Okular::TextAnnotation *annotationAsLatexTextAnnotation(Okular::Annotation *annotation)

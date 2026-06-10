@@ -98,25 +98,6 @@ bool clipboardFormatVersionSupported(const QDomElement &root)
     return versionIsNumber && clipboardFormatVersion == AnnotationPopup::annotationClipboardFormatVersion;
 }
 
-Okular::TextAnnotation *convertibleTextAnnotation(Okular::Annotation *annotation)
-{
-    if (!annotation || annotation->subType() != Okular::Annotation::AText) {
-        return nullptr;
-    }
-
-    auto *textAnnotation = static_cast<Okular::TextAnnotation *>(annotation);
-    if (textAnnotation->textType() != Okular::TextAnnotation::InPlace || textAnnotation->contents().trimmed().isEmpty() || textAnnotation->isOkularLatex()) {
-        return nullptr;
-    }
-
-    const Okular::NormalizedRect rect = textAnnotation->boundingRectangle();
-    if (!std::isfinite(rect.left) || !std::isfinite(rect.top) || !std::isfinite(rect.right) || !std::isfinite(rect.bottom) || rect.width() <= 0.0) {
-        return nullptr;
-    }
-
-    return textAnnotation;
-}
-
 Okular::TextAnnotation *latexTextAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationAsLatexTextAnnotation(annotation);
@@ -437,12 +418,6 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
             connect(action, &QAction::triggered, menu, [this, pair] { doCopyAnnotationText(pair); });
         }
 
-        if (onlyOne && convertibleTextAnnotation(pair.annotation)) {
-            action = menu->addAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:inmenu", "Convert to LaTeX Note"));
-            action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
-            connect(action, &QAction::triggered, menu, [this, pair] { doConvertTextAnnotationToLatex(pair); });
-        }
-
         if (onlyOne) {
             addLatexAnnotationActions(menu, pair);
         }
@@ -512,12 +487,6 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
                     action->setText(i18n("Copy forbidden by DRM"));
                 }
                 connect(action, &QAction::triggered, menu, [this, pair] { doCopyAnnotationText(pair); });
-            }
-
-            if (convertibleTextAnnotation(pair.annotation)) {
-                action = menu->addAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:inmenu", "Convert to LaTeX Note"));
-                action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
-                connect(action, &QAction::triggered, menu, [this, pair] { doConvertTextAnnotationToLatex(pair); });
             }
 
             addLatexAnnotationActions(menu, pair);
@@ -612,78 +581,6 @@ void AnnotationPopup::addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair)
     action = menu->addAction(QIcon::fromTheme(QStringLiteral("tool-text")), i18nc("@action:inmenu", "Convert LaTeX Note to Plain Text"));
     action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && textAnnotation && mDocument->canModifyPageAnnotation(pair.annotation));
     connect(action, &QAction::triggered, menu, [this, pair] { doConvertLatexAnnotationToText(pair); });
-}
-
-void AnnotationPopup::doConvertTextAnnotationToLatex(AnnotPagePair pair)
-{
-    if (pair.pageNumber == -1 || !mDocument->isAllowed(Okular::AllowNotes) || !mDocument->canRemovePageAnnotation(pair.annotation)) {
-        return;
-    }
-
-    Okular::TextAnnotation *textAnnotation = convertibleTextAnnotation(pair.annotation);
-    if (!textAnnotation) {
-        return;
-    }
-
-    const QString latexInput = textAnnotation->contents();
-    const int fontSize = latexFontSizeForTextAnnotation(textAnnotation);
-    const QColor textColor = latexTextColorForTextAnnotation(textAnnotation);
-    const Okular::Page *page = mDocument->page(pair.pageNumber);
-    const double maxWidth = layoutWidthForLatexTextVisibleWidth(latexMaxWidthForTextAnnotation(textAnnotation, page), 1.0);
-
-    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(latexInput, textColor, fontSize, maxWidth);
-    if (!rendered.ok) {
-        KMessageBox::error(mParent, rendered.errorMessage, i18n("LaTeX rendering failed"));
-        return;
-    }
-
-    const QSizeF latexSizePoints = rendered.pdfSizePoints;
-    if (!latexSizePoints.isValid() || latexSizePoints.isEmpty()) {
-        KMessageBox::error(mParent, i18n("Could not load the rendered LaTeX note PDF."), i18n("LaTeX rendering failed"));
-        return;
-    }
-
-    const QSizeF latexFreeTextSizePoints = visualSizeForLatexTextAnnotation(latexSizePoints, maxWidth);
-
-    auto *latexTextAnnotation = new Okular::TextAnnotation();
-    latexTextAnnotation->setTextType(Okular::TextAnnotation::InPlace);
-    latexTextAnnotation->setInplaceIntent(textAnnotation->inplaceIntent());
-    latexTextAnnotation->setInplaceAlignment(textAnnotation->inplaceAlignment());
-    for (int i = 0; i < 3; ++i) {
-        latexTextAnnotation->setInplaceCallout(textAnnotation->inplaceCallout(i), i);
-    }
-    if (textAnnotation->hasTextFont()) {
-        latexTextAnnotation->setTextFont(textAnnotation->textFont());
-    } else if (!textAnnotation->textFontName().isEmpty()) {
-        latexTextAnnotation->setTextFontName(textAnnotation->textFontName());
-        latexTextAnnotation->setTextFontPointSize(textAnnotation->textFontPointSize());
-    }
-    latexTextAnnotation->setTextColor(textColor);
-    latexTextAnnotation->setInplaceBorderColor(latexBorderColorForTextAnnotation(textAnnotation));
-    latexTextAnnotation->setContents(latexInput);
-    latexTextAnnotation->setOkularLatex(true);
-    latexTextAnnotation->setLatexLayoutWidth(maxWidth);
-    latexTextAnnotation->setLatexScale(1.0);
-    latexTextAnnotation->setLatexAppearancePdfFileName(rendered.pdfFileName);
-    latexTextAnnotation->setBoundingRectangle(rectForDocumentAdd(LatexNoteUtils::boundingRectForPdf(textAnnotation->boundingRectangle(), page, latexFreeTextSizePoints), page));
-    latexTextAnnotation->style() = textAnnotation->style();
-    latexTextAnnotation->style().setColor(latexFillColorForTextAnnotation(textAnnotation));
-    if (textAnnotation->inplaceIntent() == Okular::TextAnnotation::Callout) {
-        latexTextAnnotation->window().setSummary(i18n("LaTeX Callout"));
-    } else if (textAnnotation->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
-        latexTextAnnotation->window().setSummary(i18n("LaTeX Typewriter"));
-    } else {
-        latexTextAnnotation->window().setSummary(i18n("LaTeX Inline Note"));
-    }
-
-    const QDateTime now = QDateTime::currentDateTime();
-    latexTextAnnotation->setCreationDate(textAnnotation->creationDate().isValid() ? textAnnotation->creationDate() : now);
-    latexTextAnnotation->setModificationDate(now);
-    latexTextAnnotation->setAuthor(textAnnotation->author().isEmpty() ? Okular::Settings::identityAuthor() : textAnnotation->author());
-
-    mDocument->addPageAnnotation(pair.pageNumber, latexTextAnnotation);
-    mDocument->removePageAnnotation(pair.pageNumber, pair.annotation);
-    LatexNoteUtils::showRenderWarning(mParent, rendered.warning);
 }
 
 void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
@@ -861,7 +758,6 @@ void AnnotationPopup::doConvertLatexAnnotationToText(AnnotPagePair pair)
     font.setPointSize(LatexNoteUtils::convertedTextFontSize());
 
     mDocument->prepareToModifyAnnotationProperties(latexTextAnn);
-    latexTextAnn->setOkularLatex(false);
     latexTextAnn->setLatexAppearancePdfFileName(QString());
     latexTextAnn->setLatexLayoutWidth(0.0);
     latexTextAnn->setLatexScale(1.0);

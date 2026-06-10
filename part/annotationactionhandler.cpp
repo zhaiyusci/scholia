@@ -857,7 +857,7 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
     }
     LatexNoteUtils::showRenderWarning(qobject_cast<QWidget *>(annotator ? annotator->parent() : nullptr), rendered.warning);
 
-    selectedBuiltinTool = annotator->selectLatexFreeTextTool(rendered.pdfFileName, latexInput, boxed, textColor, fillColor, borderColor, callout);
+    selectedBuiltinTool = annotator->selectLatexStampTool(rendered.pdfFileName, latexInput, boxed, textColor, fillColor, borderColor, callout);
     if (selectedBuiltinTool != -1) {
         updateConfigActions(callout ? QStringLiteral("note-callout") : (boxed ? QStringLiteral("note-inline") : QStringLiteral("typewriter")));
     }

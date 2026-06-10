@@ -1039,28 +1039,29 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     if (d->m_style.opacity() != 1.0) {
         e.setAttribute(QStringLiteral("opacity"), QString::number(d->m_style.opacity()));
     }
-    if (d->m_okularLatex) {
+    const bool storeLatexMetadata = subType() == AStamp && d->m_okularLatex;
+    if (storeLatexMetadata) {
         e.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
     }
-    if (d->m_latexNoteType != LatexNotePlain) {
+    if (storeLatexMetadata && d->m_latexNoteType != LatexNotePlain) {
         e.setAttribute(QStringLiteral("latexNoteType"), d->m_latexNoteType == LatexNoteCallout ? QStringLiteral("callout") : QStringLiteral("boxed"));
     }
-    if (d->m_latexCallout) {
+    if (storeLatexMetadata && d->m_latexCallout) {
         e.setAttribute(QStringLiteral("latexCallout"), QStringLiteral("1"));
     }
-    if (d->m_latexLayoutWidth > 0.0) {
+    if (storeLatexMetadata && d->m_latexLayoutWidth > 0.0) {
         e.setAttribute(QStringLiteral("latexLayoutWidth"), QString::number(d->m_latexLayoutWidth, 'f', 3));
     }
-    if (d->m_latexScale > 0.0 && d->m_latexScale != 1.0) {
+    if (storeLatexMetadata && d->m_latexScale > 0.0 && d->m_latexScale != 1.0) {
         e.setAttribute(QStringLiteral("latexScale"), QString::number(d->m_latexScale, 'f', 6));
     }
-    if (d->m_latexTextColor.isValid()) {
+    if (storeLatexMetadata && d->m_latexTextColor.isValid()) {
         e.setAttribute(QStringLiteral("latexTextColor"), d->m_latexTextColor.name(QColor::HexArgb));
     }
-    if (d->m_latexFillColor.isValid()) {
+    if (storeLatexMetadata && d->m_latexFillColor.isValid()) {
         e.setAttribute(QStringLiteral("latexFillColor"), d->m_latexFillColor.name(QColor::HexArgb));
     }
-    if (d->m_latexBorderColor.isValid()) {
+    if (storeLatexMetadata && d->m_latexBorderColor.isValid()) {
         e.setAttribute(QStringLiteral("latexBorderColor"), d->m_latexBorderColor.name(QColor::HexArgb));
     }
     // Sub-Node-1 - boundary
@@ -1141,7 +1142,7 @@ QDomNode Annotation::getAnnotationPropertiesDomNode(bool includeRuntimeState) co
     QDomElement node = doc.createElement(QStringLiteral("annotation"));
 
     store(node, doc);
-    if (includeRuntimeState && !d->m_latexAppearancePdfFileName.isEmpty()) {
+    if (includeRuntimeState && subType() == AStamp && d->m_okularLatex && !d->m_latexAppearancePdfFileName.isEmpty()) {
         QDomElement baseElement = node.firstChildElement(QStringLiteral("base"));
         if (!baseElement.isNull()) {
             baseElement.setAttribute(QStringLiteral("latexAppearancePdfFileName"), d->m_latexAppearancePdfFileName);

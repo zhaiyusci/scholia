@@ -293,20 +293,6 @@ public:
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->setInplaceIntent(inplaceIntent);
         ta->setTextFontName(QStringLiteral("Helvetica"));
-        const bool okularLatex = m_annotElement.attribute(QStringLiteral("okularLatex")).toInt() != 0;
-        if (okularLatex) {
-            ta->setOkularLatex(true);
-            ta->setLatexAppearancePdfFileName(m_annotElement.attribute(QStringLiteral("latexAppearancePdfFileName")));
-            bool ok = false;
-            const double layoutWidth = m_annotElement.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
-            if (ok && layoutWidth > 0.0) {
-                ta->setLatexLayoutWidth(layoutWidth);
-            }
-            const double scale = m_annotElement.attribute(QStringLiteral("latexScale")).toDouble(&ok);
-            if (ok && scale > 0.0) {
-                ta->setLatexScale(scale);
-            }
-        }
         // set alignment
         if (m_annotElement.hasAttribute(QStringLiteral("align"))) {
             ta->setInplaceAlignment(m_annotElement.attribute(QStringLiteral("align")).toInt());
@@ -350,23 +336,10 @@ public:
         qCDebug(OkularUiDebug).nospace() << "xyScale=" << xscale << "," << yscale;
         static const int padding = 2;
         const QFontMetricsF mf(ta->textFont());
-        if (okularLatex && !ta->latexAppearancePdfFileName().isEmpty()) {
-            const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(ta->latexAppearancePdfFileName());
-            if (pdfSizePoints.isValid() && !pdfSizePoints.isEmpty()) {
-                if (pagewidth > 0.0 && pageheight > 0.0) {
-                    const double latexFreeTextPaddingPoints = LatexNoteUtils::latexTextAnnotationPaddingPoints();
-                    const double normalizedWidth = (pdfSizePoints.width() + latexFreeTextPaddingPoints) / pagewidth;
-                    const double normalizedHeight = (pdfSizePoints.height() + latexFreeTextPaddingPoints) / pageheight;
-                    rect.right = qMax(rect.right, rect.left + normalizedWidth);
-                    rect.bottom = qMax(rect.bottom, rect.top + normalizedHeight);
-                }
-            }
-        } else {
-            const QRectF rcf =
-                mf.boundingRect(Okular::NormalizedRect(rect.left, rect.top, 1.0, 1.0).geometry((int)pagewidth, (int)pageheight).adjusted(padding, padding, -padding, -padding), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, ta->contents());
-            rect.right = qMax(rect.right, rect.left + (rcf.width() + padding * 2) / pagewidth);
-            rect.bottom = qMax(rect.bottom, rect.top + (rcf.height() + padding * 2) / pageheight);
-        }
+        const QRectF rcf =
+            mf.boundingRect(Okular::NormalizedRect(rect.left, rect.top, 1.0, 1.0).geometry((int)pagewidth, (int)pageheight).adjusted(padding, padding, -padding, -padding), Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, ta->contents());
+        rect.right = qMax(rect.right, rect.left + (rcf.width() + padding * 2) / pagewidth);
+        rect.bottom = qMax(rect.bottom, rect.top + (rcf.height() + padding * 2) / pageheight);
         ta->window().setSummary(summary);
     }
 
@@ -375,16 +348,7 @@ public:
         addInPlaceTextAnnotation(ann, i18n("Callout"), content, Okular::TextAnnotation::Callout);
 
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(ann);
-        const bool okularLatex = ta->isOkularLatex();
-        const double dragDistance = qAbs(point.x - startpoint.x) * xscale + qAbs(point.y - startpoint.y) * yscale;
-        if (okularLatex && dragDistance <= QApplication::startDragDistance()) {
-            point.x = qBound(0.0, startpoint.x + 0.18, 1.0);
-            point.y = qBound(0.0, startpoint.y + 0.18, 1.0);
-        }
         rect = calloutBoxRect(content);
-        if (okularLatex) {
-            ta->window().setSummary(i18n("LaTeX Callout"));
-        }
         const Okular::NormalizedPoint connection = calloutConnectionPoint(rect);
         Okular::NormalizedPoint elbow((startpoint.x + connection.x) / 2.0, connection.y);
         if (qAbs(startpoint.x - connection.x) < 0.02) {
@@ -2007,7 +1971,7 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     return stampToolId;
 }
 
-int PageViewAnnotator::selectLatexFreeTextTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout)
+int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout)
 {
     const QString toolType = QStringLiteral("stamp");
     const int toolId = m_builtinToolsDefinition->findToolId(toolType);
