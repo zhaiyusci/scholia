@@ -451,7 +451,8 @@ public:
             }
             if (latexStamp) {
                 sa->setOkularLatex(true);
-                sa->setLatexCallout(m_annotElement.attribute(QStringLiteral("latexCallout")).toInt() != 0);
+                const bool latexCallout = m_annotElement.attribute(QStringLiteral("latexCallout")).toInt() != 0;
+                sa->setLatexNoteType(latexCallout ? Okular::Annotation::LatexNoteCallout : (boxedLatexStamp ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
                 sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
                 QColor textColor = m_annotElement.hasAttribute(QStringLiteral("textColor")) ? QColor(m_annotElement.attribute(QStringLiteral("textColor"))) : Qt::black;
                 if (!textColor.isValid() || textColor.alpha() == 0) {

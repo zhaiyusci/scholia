@@ -66,6 +66,7 @@ public:
     QDateTime m_creationDate;
 
     bool m_okularLatex = false;
+    Annotation::LatexNoteType m_latexNoteType = Annotation::LatexNotePlain;
     bool m_latexCallout = false;
     NormalizedPoint m_latexCalloutPoints[3];
     NormalizedPoint m_transformedLatexCalloutPoints[3];

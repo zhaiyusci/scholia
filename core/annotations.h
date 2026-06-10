@@ -735,6 +735,23 @@ public:
      */
     bool isOkularLatex() const;
 
+    enum LatexNoteType
+    {
+        LatexNotePlain,
+        LatexNoteBoxed,
+        LatexNoteCallout
+    };
+
+    /**
+     * Sets the LaTeX note variant.
+     */
+    void setLatexNoteType(LatexNoteType type);
+
+    /**
+     * Returns the LaTeX note variant.
+     */
+    LatexNoteType latexNoteType() const;
+
     /**
      * Marks this LaTeX-backed annotation as a stamp-based callout.
      */

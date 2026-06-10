@@ -63,8 +63,7 @@ A PDF annotation is an Okular LaTeX note when:
 - `/Subtype` is `/Stamp`;
 - `/LatexNoteData` is present;
 - `/LatexNoteData` parses as JSON;
-- the parsed JSON has `"kind": "okular-latex-note"`;
-- `/Contents` is present and non-empty.
+- the parsed JSON has `"version": 20260610`.
 
 `/OkularLatex true` is not required in the new format.
 
@@ -76,7 +75,6 @@ Minimal schema:
 
 ```json
 {
-  "kind": "okular-latex-note",
   "version": 20260610,
   "type": "plain",
   "layout": {
@@ -90,9 +88,6 @@ Minimal schema:
 ```
 
 Fields:
-
-`kind`
-: Required string. Must be `"okular-latex-note"`.
 
 `version`
 : Required integer. For this specification, the value is `20260610`.
@@ -139,7 +134,7 @@ A plain note is unboxed rendered LaTeX content.
   /Subtype /Stamp
   /Rect [100 500 220 530]
   /Contents (E = mc^2)
-  /LatexNoteData ({"kind":"okular-latex-note","version":20260610,"type":"plain","layout":{"widthPt":0,"scale":1},"style":{"textColor":"#ff000000"}})
+  /LatexNoteData ({"version":20260610,"type":"plain","layout":{"widthPt":0,"scale":1},"style":{"textColor":"#ff000000"}})
   /AP << /N 21 0 R >>
 >>
 ```
@@ -148,7 +143,6 @@ Plain-note JSON:
 
 ```json
 {
-  "kind": "okular-latex-note",
   "version": 20260610,
   "type": "plain",
   "layout": {
@@ -173,7 +167,7 @@ style is stored in JSON.
   /Subtype /Stamp
   /Rect [100 500 260 550]
   /Contents (\int_a^b f(x)\,dx)
-  /LatexNoteData ({"kind":"okular-latex-note","version":20260610,"type":"boxed","layout":{"widthPt":140,"scale":1},"style":{"textColor":"#ff000000","fillColor":"#ffffff00","borderColor":"#ff000000","borderWidthPt":1}})
+  /LatexNoteData ({"version":20260610,"type":"boxed","layout":{"widthPt":140,"scale":1},"style":{"textColor":"#ff000000","fillColor":"#ffffff00","borderColor":"#ff000000","borderWidthPt":1}})
   /AP << /N 31 0 R >>
 >>
 ```
@@ -182,7 +176,6 @@ Boxed-note JSON:
 
 ```json
 {
-  "kind": "okular-latex-note",
   "version": 20260610,
   "type": "boxed",
   "layout": {
@@ -213,7 +206,6 @@ Callout JSON:
 
 ```json
 {
-  "kind": "okular-latex-note",
   "version": 20260610,
   "type": "callout",
   "layout": {
@@ -261,6 +253,10 @@ The normal appearance may be an outer Form XObject that draws Okular note
 geometry and places an inner Form XObject containing the rendered LaTeX page.
 That is an implementation detail; readers should treat `/AP /N` as the source
 of visual truth.
+
+Poppler should not need to know the `/LatexNoteData` schema. Okular owns JSON
+parsing and passes only generic appearance geometry to the PDF backend when
+building `/AP`.
 
 ## Layout And Resize Rules
 

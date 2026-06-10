@@ -3193,7 +3193,7 @@ void PageView::mousePressEvent(QMouseEvent *e)
     {
         PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
         if (leftButton) {
-            if (pageItem) {
+            if (pageItem || d->mouseAnnotation->isFocused()) {
                 d->mouseAnnotation->routeMousePressEvent(pageItem, eventPos);
             }
 

@@ -841,10 +841,28 @@ bool Annotation::isOkularLatex() const
     return d->m_okularLatex;
 }
 
+void Annotation::setLatexNoteType(LatexNoteType type)
+{
+    Q_D(Annotation);
+    d->m_latexNoteType = type;
+    d->m_latexCallout = type == LatexNoteCallout;
+}
+
+Annotation::LatexNoteType Annotation::latexNoteType() const
+{
+    Q_D(const Annotation);
+    return d->m_latexNoteType;
+}
+
 void Annotation::setLatexCallout(bool callout)
 {
     Q_D(Annotation);
     d->m_latexCallout = callout;
+    if (callout) {
+        d->m_latexNoteType = LatexNoteCallout;
+    } else if (d->m_latexNoteType == LatexNoteCallout) {
+        d->m_latexNoteType = LatexNotePlain;
+    }
 }
 
 bool Annotation::isLatexCallout() const
@@ -1024,6 +1042,9 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     }
     if (d->m_okularLatex) {
         e.setAttribute(QStringLiteral("okularLatex"), QStringLiteral("1"));
+    }
+    if (d->m_latexNoteType != LatexNotePlain) {
+        e.setAttribute(QStringLiteral("latexNoteType"), d->m_latexNoteType == LatexNoteCallout ? QStringLiteral("callout") : QStringLiteral("boxed"));
     }
     if (d->m_latexCallout) {
         e.setAttribute(QStringLiteral("latexCallout"), QStringLiteral("1"));
@@ -1259,8 +1280,22 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     if (e.hasAttribute(QStringLiteral("okularLatex"))) {
         m_okularLatex = e.attribute(QStringLiteral("okularLatex")).toInt() != 0;
     }
+    if (e.hasAttribute(QStringLiteral("latexNoteType"))) {
+        const QString type = e.attribute(QStringLiteral("latexNoteType"));
+        if (type == QLatin1String("boxed")) {
+            m_latexNoteType = Annotation::LatexNoteBoxed;
+        } else if (type == QLatin1String("callout")) {
+            m_latexNoteType = Annotation::LatexNoteCallout;
+            m_latexCallout = true;
+        } else {
+            m_latexNoteType = Annotation::LatexNotePlain;
+        }
+    }
     if (e.hasAttribute(QStringLiteral("latexCallout"))) {
         m_latexCallout = e.attribute(QStringLiteral("latexCallout")).toInt() != 0;
+        if (m_latexCallout) {
+            m_latexNoteType = Annotation::LatexNoteCallout;
+        }
     }
     if (e.hasAttribute(QStringLiteral("latexLayoutWidth"))) {
         bool ok = false;

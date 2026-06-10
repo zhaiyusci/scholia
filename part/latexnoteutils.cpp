@@ -538,7 +538,7 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
         document->prepareToModifyAnnotationProperties(stampAnnotation);
     }
     stampAnnotation->setOkularLatex(true);
-    stampAnnotation->setLatexCallout(stampAnnotation->isLatexCallout());
+    stampAnnotation->setLatexNoteType(stampAnnotation->isLatexCallout() ? Okular::Annotation::LatexNoteCallout : (boxed ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
     stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
     stampAnnotation->setStampImagePath(QString());
     stampAnnotation->setLatexAppearancePdfFileName(rendered.pdfFileName);

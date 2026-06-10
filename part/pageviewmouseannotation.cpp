@@ -135,6 +135,11 @@ static const Okular::Annotation *calloutAnnotation(const Okular::Annotation *ann
     return calloutAnnotation(const_cast<Okular::Annotation *>(annotation));
 }
 
+static Okular::NormalizedRect latexCalloutBoxRectangle(const Okular::Annotation *annotation)
+{
+    return annotation ? annotation->boundingRectangle() : Okular::NormalizedRect();
+}
+
 static QRect latexWidthHandleVisualRect(const QRect &hitRect)
 {
     const QPoint center = hitRect.center();
@@ -215,11 +220,6 @@ static bool hasUsableCalloutPoints(const Okular::Annotation *annotation)
         hasNonZeroPoint = hasNonZeroPoint || point.x != 0.0 || point.y != 0.0;
     }
     return hasNonZeroPoint;
-}
-
-static Okular::NormalizedPoint boundToPage(const Okular::NormalizedPoint &point)
-{
-    return Okular::NormalizedPoint(qBound(0.0, point.x, 1.0), qBound(0.0, point.y, 1.0));
 }
 
 static Okular::NormalizedPoint boundToCalloutBoxEdge(const Okular::NormalizedPoint &point, const Okular::NormalizedRect &box)
@@ -810,7 +810,7 @@ static bool updateLatexNoteAfterResize(Okular::Document *document,
         const QColor fillColor = fillColorForLatexStampAnnotation(stampAnnotation, boxed);
         stampAnnotation->setStampIconName(QStringLiteral("latex-notes"));
         stampAnnotation->setStampImagePath(QString());
-        stampAnnotation->setLatexCallout(stampAnnotation->isLatexCallout());
+        stampAnnotation->setLatexNoteType(stampAnnotation->isLatexCallout() ? Okular::Annotation::LatexNoteCallout : (boxed ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));
         stampAnnotation->setLatexTextColor(textColor);
         stampAnnotation->setLatexFillColor(fillColor);
         stampAnnotation->setLatexBorderColor(borderColorForLatexStampAnnotation(stampAnnotation, boxed));
@@ -924,9 +924,14 @@ MouseAnnotation::~MouseAnnotation()
 
 void MouseAnnotation::routeMousePressEvent(PageViewItem *pageViewItem, const QPoint eventPos)
 {
+    PageViewItem *interactionPageItem = pageViewItem;
+    if (!interactionPageItem && m_focusedAnnotation.isValid()) {
+        interactionPageItem = m_focusedAnnotation.pageViewItem;
+    }
+
     /* Is there a selected annotation? */
-    if (m_focusedAnnotation.isValid()) {
-        m_mousePosition = eventPos - pageViewItem->uncroppedGeometry().topLeft();
+    if (m_focusedAnnotation.isValid() && interactionPageItem) {
+        m_mousePosition = eventPos - interactionPageItem->uncroppedGeometry().topLeft();
         m_handle = getHandleAt(m_mousePosition, m_focusedAnnotation);
         if (hasLatexRenderWarning(m_focusedAnnotation) && getLatexWarningMarkerRect(m_focusedAnnotation).contains(m_mousePosition)) {
             return;
@@ -976,7 +981,12 @@ void MouseAnnotation::routeMouseReleaseEvent()
 
 void MouseAnnotation::routeMouseMoveEvent(PageViewItem *pageViewItem, const QPoint eventPos, bool leftButtonPressed)
 {
-    if (!pageViewItem) {
+    PageViewItem *interactionPageItem = pageViewItem;
+    if (!interactionPageItem && m_focusedAnnotation.isValid()) {
+        interactionPageItem = m_focusedAnnotation.pageViewItem;
+    }
+
+    if (!interactionPageItem) {
         /* qDebug() << "routeMouseMoveEvent: no pageViewItem provided, ignore"; */
         return;
     }
@@ -997,20 +1007,20 @@ void MouseAnnotation::routeMouseMoveEvent(PageViewItem *pageViewItem, const QPoi
             /* qDebug() << "routeMouseMoveEvent: perform command, delta " << eventPos - m_mousePosition; */
             updateViewport(m_focusedAnnotation);
             performCommand(eventPos);
-            m_mousePosition = eventPos - pageViewItem->uncroppedGeometry().topLeft();
+            m_mousePosition = eventPos - interactionPageItem->uncroppedGeometry().topLeft();
             updateViewport(m_focusedAnnotation);
         }
     } else {
         if (isFocused()) {
             /* qDebug() << "routeMouseMoveEvent: update cursor for focused annotation, new eventPos " << eventPos; */
-            m_mousePosition = eventPos - pageViewItem->uncroppedGeometry().topLeft();
+            m_mousePosition = eventPos - interactionPageItem->uncroppedGeometry().topLeft();
             m_handle = getHandleAt(m_mousePosition, m_focusedAnnotation);
             m_pageView->updateCursor();
         }
 
         /* We get here quite frequently. */
         const AnnotationDescription ad(pageViewItem, eventPos);
-        m_mousePosition = eventPos - pageViewItem->uncroppedGeometry().topLeft();
+        m_mousePosition = eventPos - interactionPageItem->uncroppedGeometry().topLeft();
         if (ad.isValid()) {
             if (!(m_mouseOverAnnotation == ad)) {
                 /* qDebug() << "routeMouseMoveEvent: Annotation under mouse (subtype " << ad.annotation->subType() << ", flags " << ad.annotation->flags() << ")"; */
@@ -1468,9 +1478,8 @@ void MouseAnnotation::performCommand(const QPoint newPos)
                 Okular::NormalizedPoint point = calloutPoint(calloutAnn, pointIndex, false);
                 point.x += normalizedRotatedMouseDelta.x();
                 point.y += normalizedRotatedMouseDelta.y();
-                point = boundToPage(point);
                 if (m_handle == RH_CalloutAnchor) {
-                    point = boundToCalloutBoxEdge(point, calloutAnn->boundingRectangle());
+                    point = boundToCalloutBoxEdge(point, latexCalloutBoxRectangle(calloutAnn));
                 }
                 setCalloutPoint(calloutAnn, point, pointIndex);
                 logLatexCalloutInteraction("callout-point-preview", calloutAnn,
