@@ -29,7 +29,9 @@ fi
 
 prefix_libdir="$prefix/lib"
 if [ ! -d "$prefix_libdir" ]; then
-    prefix_libdir="$prefix/lib64"
+    echo "Expected local Linux libraries under $prefix_libdir." >&2
+    echo "Rebuild/install with CMAKE_INSTALL_LIBDIR=lib before packaging." >&2
+    exit 1
 fi
 libdir_name=$(basename "$prefix_libdir")
 app_usr="$appdir/usr"
@@ -279,9 +281,6 @@ esac
 appdir=$(CDPATH= cd -- "$(dirname -- "$this")" && pwd)
 prefix="$appdir/usr"
 libdir="$prefix/lib"
-if [ ! -d "$libdir" ]; then
-    libdir="$prefix/lib64"
-fi
 
 export PATH="$prefix/bin${PATH:+:$PATH}"
 export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
