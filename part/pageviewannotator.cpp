@@ -443,6 +443,8 @@ public:
                 const double layoutWidth = m_annotElement.attribute(QStringLiteral("latexLayoutWidth")).toDouble(&ok);
                 if (ok && layoutWidth > 0.0) {
                     sa->setLatexLayoutWidth(layoutWidth);
+                } else if (m_annotElement.attribute(QStringLiteral("latexDefaultLayoutWidth")) == QLatin1String("page-third") && pagewidth > 0.0) {
+                    sa->setLatexLayoutWidth(pagewidth / 3.0);
                 }
                 const double scale = m_annotElement.attribute(QStringLiteral("latexScale")).toDouble(&ok);
                 if (ok && scale > 0.0) {
@@ -450,6 +452,16 @@ public:
                 }
                 sa->style().setWidth(boxedLatexStamp ? 1.0 : 0.0);
                 sa->style().setColor(textColor);
+                if (!sa->contents().trimmed().isEmpty() && sa->latexLayoutWidth() > 0.0) {
+                    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(sa->contents(), textColor, LatexNoteUtils::latexFontSize(), sa->latexLayoutWidth(), latexCallout);
+                    if (rendered.ok) {
+                        latexAppearancePdfFileName = rendered.pdfFileName;
+                        sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);
+                        if (!rendered.warningMessage.isEmpty()) {
+                            LatexNoteUtils::showRenderWarning(pageView, rendered.warningMessage);
+                        }
+                    }
+                }
             }
             // set boundary
             rect.left = qMin(startpoint.x, point.x);
@@ -462,8 +474,8 @@ public:
                 const QSizeF pdfSizePoints = GuiUtils::pdfPageSizeInPoints(latexAppearancePdfFileName);
                 const QSizeF visualSizePoints = LatexNoteUtils::visualSizeForLatexTextAnnotation(pdfSizePoints, sa->latexLayoutWidth());
                 if (visualSizePoints.isValid() && !visualSizePoints.isEmpty() && pagewidth > 0.0 && pageheight > 0.0) {
-                    rect.right = qMax(rect.right, rect.left + visualSizePoints.width() / pagewidth);
-                    rect.bottom = qMax(rect.bottom, rect.top + visualSizePoints.height() / pageheight);
+                    rect.right = rect.left + visualSizePoints.width() / pagewidth;
+                    rect.bottom = rect.top + visualSizePoints.height() / pageheight;
                 }
             } else if (ml <= QApplication::startDragDistance()) {
                 double stampxscale = xscale > 0.0 ? pixmap.width() / xscale : 0.0;
@@ -1966,6 +1978,7 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
     annotationElement.removeAttribute(QStringLiteral("latexScale"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
+    annotationElement.removeAttribute(QStringLiteral("latexDefaultLayoutWidth"));
     saveBuiltinAnnotationTools();
     selectBuiltinTool(stampToolId, ShowTip::Yes);
     return stampToolId;
@@ -1998,6 +2011,7 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
     }
     annotationElement.setAttribute(QStringLiteral("latexScale"), QStringLiteral("1"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
+    annotationElement.setAttribute(QStringLiteral("latexDefaultLayoutWidth"), QStringLiteral("page-third"));
     QColor targetTextColor = textColor;
     if (!targetTextColor.isValid() || targetTextColor.alpha() == 0) {
         targetTextColor = Qt::black;

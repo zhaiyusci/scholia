@@ -8,6 +8,7 @@ param(
     [string[]] $SourceFiles = @(
         "part\latexnoteutils.cpp",
         "part\annotationpopup.cpp",
+        "part\pageviewmouseannotation.cpp",
         "part\pageviewannotator.cpp"
     ),
     [switch] $NoInstall

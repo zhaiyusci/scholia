@@ -578,10 +578,6 @@ static QRect latexLayoutGeometry(const AnnotationDescription &ad)
 
 static QRect controlGeometry(const AnnotationDescription &ad)
 {
-    if (LatexNoteUtils::annotationIsLatex(ad.annotation)) {
-        return latexLayoutGeometry(ad);
-    }
-
     return Okular::AnnotationUtils::annotationGeometry(ad.annotation, ad.pageViewItem->uncroppedWidth(), ad.pageViewItem->uncroppedHeight());
 }
 
@@ -1497,7 +1493,7 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         const ResizeHandle rotatedHandle = rotateHandle(m_handle, m_focusedAnnotation.pageViewItem->page()->rotation());
 
         if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation)) {
-            const Okular::NormalizedRect baseLayoutRect = m_hasLatexResizeLayoutRect ? m_latexResizeLayoutRect : latexLayoutBoundingRect(m_focusedAnnotation, annotRect);
+            const Okular::NormalizedRect baseLayoutRect = m_hasLatexResizeLayoutRect ? m_latexResizeLayoutRect : annotRect;
             QRectF adjustedLayoutRect = latexControlRectAfterResize(baseLayoutRect, rotatedHandle, delta1, delta2);
             if (adjustedLayoutRect.width() > 0.0 && adjustedLayoutRect.height() > 0.0) {
                 fitRectInsidePage(adjustedLayoutRect);
@@ -1717,11 +1713,7 @@ QRect MouseAnnotation::controlGeometryForInteraction(const AnnotationDescription
             return geometryForBoundingRect(ad, m_latexResizeLayoutRect);
         }
         if (m_hasPreviewBoundingRect) {
-            Okular::NormalizedRect previewRect = m_previewBoundingRect;
-            if (LatexNoteUtils::annotationIsLatex(ad.annotation)) {
-                previewRect = latexLayoutBoundingRect(ad, previewRect);
-            }
-            return geometryForBoundingRect(ad, previewRect);
+            return geometryForBoundingRect(ad, m_previewBoundingRect);
         }
     }
 
