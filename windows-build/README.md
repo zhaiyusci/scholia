@@ -27,6 +27,12 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
   -SourceFiles part\latexrenderer.cpp
 ```
 
+Incremental rebuild after Poppler implementation edits:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-poppler-incremental.ps1
+```
+
 Prepare, smoke test, and package the PDF-only installer:
 
 ```powershell
@@ -191,6 +197,61 @@ For LaTeX note renderer changes, the usual incremental command is:
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-okularpart-incremental.ps1 `
   -SourceFiles part\latexrenderer.cpp
+```
+
+## Incremental Poppler Rebuild
+
+Use this for Poppler implementation-only edits such as changes in
+`external\poppler\poppler\*.cc` or `external\poppler\qt6\src\*.cc` when the
+existing Poppler build directory is valid. It asks Ninja for the exact runtime
+targets, then copies the rebuilt DLLs into Craft:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-poppler-incremental.ps1
+```
+
+The script intentionally does not run `ninja install`. In this CMake build,
+`install` depends on `all`, so using it for a one-file Poppler fix can rebuild
+unrelated GLib, C++, tests, or demo targets. The incremental script builds only:
+
+- `poppler.dll`
+- `qt6\src\poppler-qt6.dll`
+
+It then installs the runtime files to:
+
+- `C:\CraftRoot\bin\poppler.dll`
+- `C:\CraftRoot\bin\poppler-qt6.dll`
+
+No Okular rebuild is needed for implementation-only Poppler changes because the
+installed Okular runtime dynamically loads those DLLs. Rebuild Okular only when
+Poppler headers, exported ABI, generator code, CMake options, or resources
+changed.
+
+To rebuild Poppler incrementally and then package the Windows installer from the
+main package script:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\scripts\build-local-packages.ps1 `
+  -SkipLinux `
+  -WindowsPopplerIncremental
+```
+
+To verify the same main-script path without touching the installed runtime:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\scripts\build-local-packages.ps1 `
+  -SkipLinux `
+  -SkipWindowsPackage `
+  -WindowsPopplerIncremental `
+  -WindowsNoInstall
+```
+
+To package only from the already installed Windows runtime:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\scripts\build-local-packages.ps1 `
+  -SkipLinux `
+  -SkipWindowsBuild
 ```
 
 ## Clean Okular Build Directory

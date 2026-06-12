@@ -17,7 +17,15 @@ param(
     [switch] $SkipWindowsBuild,
     [switch] $SkipLinuxBuild,
     [switch] $SkipWindowsPackage,
-    [switch] $SkipAppImagePackage
+    [switch] $SkipAppImagePackage,
+    [switch] $WindowsPopplerIncremental,
+    [switch] $WindowsOkularPartIncremental,
+    [switch] $WindowsNoInstall,
+    [string[]] $WindowsOkularPartSourceFiles = @(
+        "part\latexnoteutils.cpp",
+        "part\annotationpopup.cpp",
+        "part\pageviewannotator.cpp"
+    )
 )
 
 $ErrorActionPreference = "Stop"
@@ -91,8 +99,47 @@ Write-Host "  Package output:     $PackageOutputRoot"
 Write-Host "  WSL distro:         $WslDistro"
 Write-Host "  AppImage version:   $AppImageVersion"
 
+$windowsBuildModes = @($SkipWindowsBuild, $WindowsPopplerIncremental, $WindowsOkularPartIncremental) |
+    Where-Object { $_ }
+if ($windowsBuildModes.Count -gt 1) {
+    throw "Choose only one Windows build mode: -SkipWindowsBuild, -WindowsPopplerIncremental, or -WindowsOkularPartIncremental."
+}
+if ($WindowsNoInstall -and !$SkipWindowsPackage) {
+    throw "-WindowsNoInstall cannot be used while building the Windows package. Add -SkipWindowsPackage for build-only verification."
+}
+
 if (!$SkipWindows) {
-    if (!$SkipWindowsBuild) {
+    if ($WindowsPopplerIncremental) {
+        Invoke-Step "Windows Poppler incremental build" {
+            $args = @(
+                "-ExecutionPolicy", "Bypass",
+                "-NoProfile",
+                "-File", (Join-Path $repoRoot "windows-build\scripts\build-poppler-incremental.ps1"),
+                "-CraftRoot", $CraftRoot,
+                "-OkularSource", $repoRoot
+            )
+            if ($WindowsNoInstall) {
+                $args += "-NoInstall"
+            }
+            Invoke-External "powershell.exe" $args
+        }
+    } elseif ($WindowsOkularPartIncremental) {
+        Invoke-Step "Windows okularpart incremental build" {
+            $args = @(
+                "-ExecutionPolicy", "Bypass",
+                "-NoProfile",
+                "-File", (Join-Path $repoRoot "windows-build\scripts\build-okularpart-incremental.ps1"),
+                "-WorkspaceRoot", $workspaceRoot,
+                "-LogRoot", $WindowsBuildRoot,
+                "-CraftRoot", $CraftRoot,
+                "-SourceFiles"
+            ) + $WindowsOkularPartSourceFiles
+            if ($WindowsNoInstall) {
+                $args += "-NoInstall"
+            }
+            Invoke-External "powershell.exe" $args
+        }
+    } elseif (!$SkipWindowsBuild) {
         Invoke-Step "Windows full build" {
             $args = @(
                 "-ExecutionPolicy", "Bypass",

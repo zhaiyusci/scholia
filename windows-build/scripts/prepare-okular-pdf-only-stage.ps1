@@ -111,6 +111,17 @@ foreach ($dll in $systemDlls) {
     $systemDllLookup[$dll.ToLowerInvariant()] = $true
 }
 
+function Test-SystemDll([string] $DllName) {
+    $lowerDll = $DllName.ToLowerInvariant()
+    if ($systemDllLookup.ContainsKey($lowerDll)) {
+        return $true
+    }
+
+    return $lowerDll -like "api-ms-win-*.dll" -or
+        $lowerDll -like "ext-ms-win-*.dll" -or
+        $lowerDll -eq "ntdll.dll"
+}
+
 Write-Host "Preparing minimal PDF-only stage:"
 Write-Host "  CraftRoot: $CraftRoot"
 Write-Host "  StageRoot: $resolvedStageRoot"
@@ -163,6 +174,7 @@ $copied["bin\qt.conf"] = "Qt path configuration for staged sibling plugin/data l
 Write-Host ""
 Write-Host "Resolving DLL imports from CraftRoot\\bin..."
 $scanRows = @()
+$scannedBinaries = @{}
 $added = $true
 while ($added) {
     $added = $false
@@ -174,11 +186,12 @@ while ($added) {
         Get-ChildItem -LiteralPath $scanRoot -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Extension -in @(".exe", ".dll") }
     }
-    Write-Host "  scanning $($binaries.Count) binaries..."
-    foreach ($binary in $binaries) {
+    $pendingBinaries = @($binaries | Where-Object { !$scannedBinaries.ContainsKey($_.FullName) })
+    Write-Host "  scanning $($pendingBinaries.Count) new binaries..."
+    foreach ($binary in $pendingBinaries) {
+        $scannedBinaries[$binary.FullName] = $true
         foreach ($dll in Get-ImportDlls $binary.FullName) {
-            $lowerDll = $dll.ToLowerInvariant()
-            if ($systemDllLookup.ContainsKey($lowerDll)) {
+            if (Test-SystemDll $dll) {
                 $scanRows += [pscustomobject]@{ Binary = $binary.FullName.Substring($resolvedStageRoot.Length + 1); Dependency = $dll; Action = "system" }
                 continue
             }

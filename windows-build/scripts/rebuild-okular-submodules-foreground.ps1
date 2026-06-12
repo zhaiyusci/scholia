@@ -3,7 +3,9 @@ param(
     [string] $CraftRoot = "C:\CraftRoot",
     [string] $OkularSource = "",
     [int] $Jobs = 4,
-    [switch] $Clean
+    [switch] $Clean,
+    [switch] $PopplerIncrementalOnly,
+    [switch] $NoInstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,6 +49,8 @@ Write-Host "Okular source : $OkularSource"
 Write-Host "Poppler source: $popplerSource"
 Write-Host "Jobs          : $Jobs"
 Write-Host "Clean         : $Clean"
+Write-Host "Poppler incr. : $PopplerIncrementalOnly"
+Write-Host "No install    : $NoInstall"
 
 if (!(Test-Path -LiteralPath (Join-Path $OkularSource ".gitmodules"))) {
     throw "Okular source does not look like a submodule-enabled checkout: $OkularSource"
@@ -62,8 +66,23 @@ if (!(Test-Path -LiteralPath $vcvars)) {
 }
 
 if ($Clean) {
+    if ($PopplerIncrementalOnly) {
+        throw "-Clean cannot be combined with -PopplerIncrementalOnly."
+    }
     Reset-BuildDir $popplerBuild
     Reset-BuildDir $okularBuild
+}
+
+if ($PopplerIncrementalOnly) {
+    Write-Host ""
+    Write-Host "Poppler incremental mode: building exact DLL targets and copying runtime files only." -ForegroundColor Green
+    & (Join-Path $PSScriptRoot "build-poppler-incremental.ps1") `
+        -CraftRoot $CraftRoot `
+        -OkularSource $OkularSource `
+        -BuildDir $popplerBuild `
+        -Jobs $Jobs `
+        -NoInstall:$NoInstall
+    exit $LASTEXITCODE
 }
 
 Write-Host ""
