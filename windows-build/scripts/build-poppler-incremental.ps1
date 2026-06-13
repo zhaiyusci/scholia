@@ -73,9 +73,9 @@ try {
     }
 
     if (!$NoInstall) {
-        $runningOkular = Get-Process okular -ErrorAction SilentlyContinue
-        if ($runningOkular) {
-            throw "Poppler DLLs were rebuilt, but okular.exe is running. Close it, then rerun this script to install updated DLLs into $CraftRoot\bin."
+        $runningScholia = Get-Process scholia -ErrorAction SilentlyContinue
+        if ($runningScholia) {
+            throw "Poppler DLLs were rebuilt, but scholia.exe is running. Close it, then rerun this script to install updated DLLs into $CraftRoot\bin."
         }
 
         Write-Host ""

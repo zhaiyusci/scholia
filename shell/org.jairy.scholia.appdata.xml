@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component type="desktop-application">
+  <id>org.jairy.scholia</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>Scholia</name>
+  <summary>PDF-centered document viewer and annotation tool</summary>
+  <description>
+    <p>
+      Scholia is a modified distribution of KDE Okular focused on PDF annotation,
+      LaTeX-backed notes, and Windows packaging.
+    </p>
+    <p>
+      Scholia is not an official KDE Okular release and is not affiliated with or
+      endorsed by KDE. It retains the applicable Okular copyright and license
+      notices.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.jairy.scholia.desktop</launchable>
+  <provides>
+    <binary>scholia</binary>
+  </provides>
+  <url type="homepage">https://github.com/ye-jair/okular</url>
+  <url type="bugtracker">https://github.com/ye-jair/okular/issues</url>
+  <url type="help">https://docs.kde.org/?application=okular</url>
+  <project_group>Scholia</project_group>
+  <developer_name translate="no">Scholia Contributors</developer_name>
+  <content_rating type="oars-1.1"/>
+  <custom>
+    <value key="Scholia::based_on">KDE Okular</value>
+  </custom>
+</component>

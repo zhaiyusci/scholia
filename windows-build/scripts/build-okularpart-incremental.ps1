@@ -42,10 +42,10 @@ function Convert-ToObjTarget([string] $sourceFile) {
 
 Start-Transcript -Path $logPath -Force | Out-Null
 try {
-    Write-Host "Okular part incremental build started at $(Get-Date -Format o)"
+    Write-Host "Scholia part incremental build started at $(Get-Date -Format o)"
     Write-Host "Log: $logPath"
-    Write-Host "Local Okular: $localOkular"
-    Write-Host "Craft Okular source: $CraftOkularSource"
+    Write-Host "Local Scholia source: $localOkular"
+    Write-Host "Craft Scholia source: $CraftOkularSource"
     Write-Host "Log root: $LogRoot"
     Write-Host "Build dir: $BuildDir"
     Write-Host ""

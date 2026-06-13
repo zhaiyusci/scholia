@@ -11,7 +11,7 @@ $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $workspaceRoot = Split-Path -Parent $repoRoot
 $windowsBuildRoot = Join-Path $workspaceRoot "windows_build"
 if (!$StageRoot) {
-    $StageRoot = Join-Path $windowsBuildRoot "dist\okular-pdf-only\app"
+    $StageRoot = Join-Path $windowsBuildRoot "dist\scholia-pdf\app"
 }
 $StageRoot = [System.IO.Path]::GetFullPath($StageRoot)
 
@@ -24,27 +24,27 @@ if (!(Test-Path -LiteralPath $PdfPath)) {
 }
 $PdfPath = [System.IO.Path]::GetFullPath($PdfPath)
 
-$okularExe = Join-Path $StageRoot "bin\okular.exe"
-if (!(Test-Path -LiteralPath $okularExe)) {
-    throw "Missing staged Okular executable: $okularExe"
+$scholiaExe = Join-Path $StageRoot "bin\scholia.exe"
+if (!(Test-Path -LiteralPath $scholiaExe)) {
+    throw "Missing staged Scholia executable: $scholiaExe"
 }
 
-Get-Process -Name okular -ErrorAction SilentlyContinue |
+Get-Process -Name scholia -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -like "$StageRoot*" } |
     Stop-Process -Force
 
 $oldPath = $env:PATH
 try {
     $env:PATH = "$StageRoot\bin;$env:SystemRoot\System32;$env:SystemRoot"
-    Start-Process -FilePath $okularExe -ArgumentList "`"$PdfPath`"" -WorkingDirectory (Join-Path $StageRoot "bin")
+    Start-Process -FilePath $scholiaExe -ArgumentList "`"$PdfPath`"" -WorkingDirectory (Join-Path $StageRoot "bin")
     Start-Sleep -Seconds $WaitSeconds
 
-    $process = Get-Process -Name okular -ErrorAction Stop |
+    $process = Get-Process -Name scholia -ErrorAction Stop |
         Where-Object { $_.Path -like "$StageRoot*" } |
         Select-Object -First 1
 
     if (!$process) {
-        throw "Staged Okular is not running."
+        throw "Staged Scholia is not running."
     }
 
     $modules = $process.Modules | ForEach-Object FileName | Where-Object { $_ }
@@ -60,7 +60,7 @@ try {
     } | Format-List
 
     if ($craftRootModules) {
-        Write-Warning "Staged Okular loaded modules from CraftRoot:"
+        Write-Warning "Staged Scholia loaded modules from CraftRoot:"
         $craftRootModules | Sort-Object | ForEach-Object { Write-Warning "  $_" }
         exit 2
     }

@@ -15,19 +15,24 @@
 
 inline KAboutData okularAboutData()
 {
-    KAboutData about(QStringLiteral("okular"),
-                     i18n("Okular"),
+    KAboutData about(QStringLiteral("scholia"),
+                     i18n("Scholia"),
                      QStringLiteral(OKULAR_VERSION_STRING),
-                     i18n("Okular, a universal document viewer"),
-                     KAboutLicense::GPL,
-                     i18n("(C) 2002 Wilco Greven, Christophe Devriese\n"
+                     i18n("A PDF-centered document viewer and annotation tool based on KDE Okular"),
+                     KAboutLicense::GPL_V2,
+                     i18n("(C) 2026 Yu Zhai and the Scholia contributors\n"
+                          "(C) 2002 Wilco Greven, Christophe Devriese\n"
                           "(C) 2004-2005 Enrico Ros\n"
                           "(C) 2005 Piotr Szymanski\n"
                           "(C) 2004-2017 Albert Astals Cid\n"
                           "(C) 2006-2009 Pino Toscano"),
-                     QString(),
-                     QStringLiteral("https://okular.kde.org"));
+                     i18n("Scholia is a modified distribution of KDE Okular. It is not an official KDE Okular release and is not affiliated with or endorsed by KDE."),
+                     QStringLiteral("https://github.com/ye-jair/okular"));
+    about.setDesktopFileName(QStringLiteral("org.jairy.scholia"));
 
+    about.addAuthor(i18n("Yu Zhai"), i18n("Scholia maintainer and PDF annotation changes"));
+
+    about.addCredit(i18n("KDE Okular Developers"), i18n("Original Okular project"), QString(), QStringLiteral("https://okular.kde.org"));
     about.addAuthor(i18n("Pino Toscano"), i18n("Former maintainer"), QStringLiteral("pino@kde.org"));
     about.addAuthor(i18n("Tobias Koenig"), i18n("Lots of framework work, FictionBook backend and former ODT backend"), QStringLiteral("tokoe@kde.org"));
     about.addAuthor(i18n("Albert Astals Cid"), i18n("Developer"), QStringLiteral("aacid@kde.org"));

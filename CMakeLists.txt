@@ -673,8 +673,14 @@ if (Qt6TextToSpeech_FOUND)
    target_link_libraries(okularpart Qt6::TextToSpeech)
 endif()
 
-#instead install the part to this path so it can be found
-install(TARGETS okularpart DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/parts/ )
+# Instead install the part to this path so it can be found. On Windows the
+# loadable DLL is the RUNTIME artifact; keep the import library out of the
+# plugin directory.
+install(TARGETS okularpart
+    RUNTIME DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/parts/
+    LIBRARY DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf6/parts/
+    ARCHIVE DESTINATION ${KDE_INSTALL_LIBDIR}
+)
 
 endif()# End of BUILD_DESKTOP if
 

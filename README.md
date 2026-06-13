@@ -1,6 +1,11 @@
-# Okular – Universal Document Viewer
+# Scholia – PDF-Centered Document Viewer
 
-Okular can view and annotate documents of various formats, including PDF, Postscript, Comic Book, and various image formats.
+Scholia is a modified distribution of KDE Okular focused on PDF annotation,
+LaTeX-backed notes, and Windows packaging. It is not an official KDE Okular
+release and is not affiliated with or endorsed by KDE.
+
+Scholia inherits Okular's document viewing and annotation features, including
+support for PDF, PostScript, Comic Book, and various image formats.
 It supports native PDF annotations.
 
 ## Changes in this fork

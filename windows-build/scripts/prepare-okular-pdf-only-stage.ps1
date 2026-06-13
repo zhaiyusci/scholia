@@ -12,7 +12,7 @@ $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $workspaceRoot = Split-Path -Parent $repoRoot
 $windowsBuildRoot = Join-Path $workspaceRoot "windows_build"
 if (!$StageRoot) {
-    $StageRoot = Join-Path $windowsBuildRoot "dist\okular-pdf-only\app"
+    $StageRoot = Join-Path $windowsBuildRoot "dist\scholia-pdf\app"
 }
 
 $resolvedStageRoot = [System.IO.Path]::GetFullPath($StageRoot)
@@ -103,8 +103,10 @@ $systemDlls = @(
     "NETAPI32.dll", "OLE32.dll", "OLEAUT32.dll", "PROPSYS.dll", "RPCRT4.dll",
     "SHELL32.dll", "SHLWAPI.dll", "USER32.dll", "USERENV.dll", "UXTHEME.dll",
     "VERSION.dll", "WINMM.dll", "WINTRUST.dll", "WS2_32.dll", "WTSAPI32.dll",
-    "bcrypt.dll", "d3d11.dll", "dxgi.dll", "msvcp140.dll", "msvcp140_1.dll",
-    "msvcp140_2.dll", "ucrtbase.dll", "vcruntime140.dll", "vcruntime140_1.dll"
+    "AVRT.dll", "bcrypt.dll", "d3d9.dll", "d3d11.dll", "d3d12.dll", "DNSAPI.dll", "DWrite.dll",
+    "dxgi.dll", "IPHLPAPI.DLL", "msvcp140.dll", "msvcp140_1.dll",
+    "msvcp140_2.dll", "MSWSOCK.dll", "ncrypt.dll", "Secur32.dll", "SETUPAPI.dll",
+    "UIAutomationCore.DLL", "ucrtbase.dll", "vcruntime140.dll", "vcruntime140_1.dll", "WINHTTP.dll"
 )
 $systemDllLookup = @{}
 foreach ($dll in $systemDlls) {
@@ -127,18 +129,18 @@ Write-Host "  CraftRoot: $CraftRoot"
 Write-Host "  StageRoot: $resolvedStageRoot"
 Write-Host ""
 
-Copy-FileFromCraft "bin\okular.exe" "Application entry point"
+Copy-FileFromCraft "bin\scholia.exe" "Application entry point"
 Copy-FileFromCraft "bin\kioworker.exe" "KIO worker host executable required for file:// save/load operations"
 Copy-FileFromCraft "bin\Okular6Core.dll" "Okular core library"
-Copy-FileFromCraft "plugins\kf6\parts\okularpart.dll" "Okular KParts UI plugin"
+Copy-FileFromCraft "plugins\kf6\parts\okularpart.dll" "Scholia KParts UI plugin"
 Copy-FileFromCraft "plugins\kf6\kio\kio_file.dll" "KIO file protocol worker required for file:// save/load operations"
 Copy-FileFromCraft "plugins\okular_generators\okularGenerator_poppler.dll" "PDF generator"
 
-Copy-DirectoryFromCraft "bin\data\okular" "Okular annotation tools, stamps, and app data"
-Copy-FileFromCraft "bin\data\applications\org.kde.okular.desktop" "Okular shell desktop metadata"
+Copy-DirectoryFromCraft "bin\data\okular" "Scholia annotation tools, stamps, and app data"
+Copy-FileFromCraft "bin\data\applications\org.jairy.scholia.desktop" "Scholia shell desktop metadata"
 Copy-FileFromCraft "bin\data\applications\okularApplication_pdf.desktop" "PDF-only application metadata"
 Copy-FileFromCraft "bin\data\metainfo\org.kde.okular-poppler.metainfo.xml" "PDF generator metadata"
-Copy-FileFromCraft "bin\data\metainfo\org.kde.okular.appdata.xml" "Okular app metadata"
+Copy-FileFromCraft "bin\data\metainfo\org.jairy.scholia.appdata.xml" "Scholia app metadata"
 Copy-DirectoryFromCraft "bin\data\icons\hicolor" "Application and action icons"
 Copy-DirectoryFromCraft "bin\data\mime" "MIME database used by KDE/Qt file type lookup"
 Copy-DirectoryFromCraft "bin\data\kf6" "KF6 runtime service metadata"
@@ -156,7 +158,7 @@ if (!$SkipWinDeployQt) {
         --no-system-dxc-compiler `
         --dir (Join-Path $resolvedStageRoot "bin") `
         --plugindir (Join-Path $resolvedStageRoot "plugins") `
-        (Join-Path $resolvedStageRoot "bin\okular.exe")
+        (Join-Path $resolvedStageRoot "bin\scholia.exe")
     if ($LASTEXITCODE -ne 0) {
         throw "windeployqt6 failed with exit code $LASTEXITCODE"
     }
@@ -215,7 +217,7 @@ while ($added) {
 }
 
 $manifestLines = @()
-$manifestLines += "# Required components for PDF-only Okular staging"
+$manifestLines += "# Required components for Scholia PDF staging"
 $manifestLines += "# Generated: $(Get-Date -Format o)"
 $manifestLines += "# StageRoot: $resolvedStageRoot"
 $manifestLines += ""
@@ -231,7 +233,7 @@ $fileCount = (Get-ChildItem -LiteralPath $resolvedStageRoot -Recurse -File | Mea
 $totalBytes = (Get-ChildItem -LiteralPath $resolvedStageRoot -Recurse -File | Measure-Object Length -Sum).Sum
 
 Write-Host ""
-Write-Host "Remaining Okular generators:"
+Write-Host "Remaining Scholia generators:"
 $generatorFiles | ForEach-Object { Write-Host "  $_" }
 Write-Host ""
 Write-Host "Stage file count: $fileCount"

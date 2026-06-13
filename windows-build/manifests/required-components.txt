@@ -1,6 +1,6 @@
-﻿# Required components for PDF-only Okular staging
-# Generated: 2026-06-03T23:33:47.0808945+08:00
-# StageRoot: C:\Users\jairy\Documents\okular\windows_build\dist\okular-pdf-only\app
+﻿# Required components for Scholia PDF staging
+# Generated: 2026-06-13T19:07:20.6152213+08:00
+# StageRoot: C:\Users\jairy\Documents\okular\windows_build\dist\scholia-pdf\app
 
 bin\avcodec-62.dll	DLL import required by heif.dll
 bin\avif.dll	DLL import required by kimg_avif.dll
@@ -11,13 +11,13 @@ bin\brotlidec.dll	DLL import required by Qt6Network.dll
 bin\brotlienc.dll	DLL import required by jxl.dll
 bin\bz2.dll	DLL import required by freetype.dll
 bin\data\applications\okularApplication_pdf.desktop	PDF-only application metadata
-bin\data\applications\org.kde.okular.desktop	Okular shell desktop metadata
+bin\data\applications\org.jairy.scholia.desktop	Scholia shell desktop metadata
 bin\data\icons\hicolor	Application and action icons
 bin\data\kf6	KF6 runtime service metadata
-bin\data\metainfo\org.kde.okular.appdata.xml	Okular app metadata
+bin\data\metainfo\org.jairy.scholia.appdata.xml	Scholia app metadata
 bin\data\metainfo\org.kde.okular-poppler.metainfo.xml	PDF generator metadata
 bin\data\mime	MIME database used by KDE/Qt file type lookup
-bin\data\okular	Okular annotation tools, stamps, and app data
+bin\data\okular	Scholia annotation tools, stamps, and app data
 bin\data\qlogging-categories6	Qt/KF6 logging category metadata
 bin\dav1d.dll	DLL import required by avif.dll
 bin\freetype.dll	DLL import required by Qt6Gui.dll
@@ -37,23 +37,23 @@ bin\KF6BreezeIcons.dll	DLL import required by KF6IconThemes.dll
 bin\KF6Codecs.dll	DLL import required by KF6Completion.dll
 bin\KF6ColorScheme.dll	DLL import required by okularpart.dll
 bin\KF6Completion.dll	DLL import required by okularpart.dll
-bin\KF6ConfigCore.dll	DLL import required by okular.exe
-bin\KF6ConfigGui.dll	DLL import required by okular.exe
-bin\KF6ConfigWidgets.dll	DLL import required by okular.exe
-bin\KF6CoreAddons.dll	DLL import required by okular.exe
-bin\KF6Crash.dll	DLL import required by okular.exe
+bin\KF6ConfigCore.dll	DLL import required by Okular6Core.dll
+bin\KF6ConfigGui.dll	DLL import required by Okular6Core.dll
+bin\KF6ConfigWidgets.dll	DLL import required by Okular6Core.dll
+bin\KF6CoreAddons.dll	DLL import required by Okular6Core.dll
+bin\KF6Crash.dll	DLL import required by scholia.exe
 bin\KF6GuiAddons.dll	DLL import required by KF6ColorScheme.dll
-bin\KF6I18n.dll	DLL import required by okular.exe
+bin\KF6I18n.dll	DLL import required by Okular6Core.dll
 bin\KF6I18nQml.dll	DLL import required by KF6PurposeWidgets.dll
-bin\KF6IconThemes.dll	DLL import required by okular.exe
+bin\KF6IconThemes.dll	DLL import required by scholia.exe
 bin\KF6IconWidgets.dll	DLL import required by KF6KIOWidgets.dll
 bin\KF6ItemViews.dll	DLL import required by KF6XmlGui.dll
 bin\KF6JobWidgets.dll	DLL import required by KF6KIOWidgets.dll
-bin\KF6KIOCore.dll	DLL import required by okular.exe
-bin\KF6KIOGui.dll	DLL import required by okular.exe
+bin\KF6KIOCore.dll	DLL import required by Okular6Core.dll
+bin\KF6KIOGui.dll	DLL import required by Okular6Core.dll
 bin\KF6KIOWidgets.dll	DLL import required by okularpart.dll
 bin\KF6Notifications.dll	DLL import required by KF6JobWidgets.dll
-bin\KF6Parts.dll	DLL import required by okular.exe
+bin\KF6Parts.dll	DLL import required by scholia.exe
 bin\KF6Purpose.dll	DLL import required by okularpart.dll
 bin\KF6PurposeWidgets.dll	DLL import required by okularpart.dll
 bin\KF6Service.dll	DLL import required by KF6KIOCore.dll
@@ -62,9 +62,9 @@ bin\KF6SonnetCore.dll	DLL import required by KF6TextWidgets.dll
 bin\KF6SonnetUi.dll	DLL import required by KF6TextWidgets.dll
 bin\KF6TextWidgets.dll	DLL import required by okularpart.dll
 bin\KF6ThreadWeaver.dll	DLL import required by Okular6Core.dll
-bin\KF6WidgetsAddons.dll	DLL import required by okular.exe
-bin\KF6WindowSystem.dll	DLL import required by okular.exe
-bin\KF6XmlGui.dll	DLL import required by okular.exe
+bin\KF6WidgetsAddons.dll	DLL import required by Okular6Core.dll
+bin\KF6WindowSystem.dll	DLL import required by scholia.exe
+bin\KF6XmlGui.dll	DLL import required by Okular6Core.dll
 bin\kioworker.exe	KIO worker host executable required for file:// save/load operations
 bin\lcms2-2.dll	DLL import required by jxl_cms.dll
 bin\libassuan-9.dll	DLL import required by libgpgme-45.dll
@@ -88,12 +88,11 @@ bin\libwinpthread-1.dll	DLL import required by libgpgme-45.dll
 bin\libx265.dll	DLL import required by avcodec-62.dll
 bin\nss3.dll	DLL import required by poppler.dll
 bin\nssutil3.dll	DLL import required by nss3.dll
-bin\okular.exe	Application entry point
 bin\Okular6Core.dll	Okular core library
 bin\openjp2.dll	DLL import required by kimg_jp2.dll
 bin\pcre2-16.dll	DLL import required by Qt6Core.dll
 bin\phonon4qt6.dll	DLL import required by Okular6Core.dll
-bin\poppler.dll	DLL import required by poppler-qt6.dll
+bin\poppler.dll	DLL import required by okularGenerator_poppler.dll
 bin\poppler-qt6.dll	DLL import required by okularpart.dll
 bin\psl-5.dll	DLL import required by libcurl.dll
 bin\qt.conf	Qt path configuration for staged sibling plugin/data layout
@@ -103,6 +102,7 @@ bin\Qt6PrintSupport.dll	DLL import required by Okular6Core.dll
 bin\Qt6Qml.dll	DLL import required by Okular6Core.dll
 bin\Qt6TextToSpeech.dll	DLL import required by okularpart.dll
 bin\Qt6Xml.dll	DLL import required by Okular6Core.dll
+bin\scholia.exe	Application entry point
 bin\smime3.dll	DLL import required by poppler.dll
 bin\SvtAv1Enc.dll	DLL import required by avcodec-62.dll
 bin\swresample-6.dll	DLL import required by avcodec-62.dll
@@ -111,6 +111,6 @@ bin\VCOMP140.DLL	DLL import required by b2-1.dll
 bin\zlib1.dll	DLL import required by Okular6Core.dll
 bin\zstd.dll	DLL import required by Qt6Core.dll
 plugins\kf6\kio\kio_file.dll	KIO file protocol worker required for file:// save/load operations
-plugins\kf6\parts\okularpart.dll	Okular KParts UI plugin
+plugins\kf6\parts\okularpart.dll	Scholia KParts UI plugin
 plugins\okular_generators\okularGenerator_poppler.dll	PDF generator
 share\poppler	Poppler CMap/CID data required by CJK and other encoded PDFs

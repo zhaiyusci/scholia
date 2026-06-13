@@ -43,7 +43,7 @@ function Reset-BuildDir([string] $Path) {
     New-Item -ItemType Directory -Force -Path $full | Out-Null
 }
 
-Write-Host "Okular from-submodule rebuild" -ForegroundColor Green
+Write-Host "Scholia from-submodule rebuild" -ForegroundColor Green
 Write-Host "CraftRoot     : $CraftRoot"
 Write-Host "Okular source : $OkularSource"
 Write-Host "Poppler source: $popplerSource"
@@ -94,14 +94,14 @@ Write-Host "[2/4] Build and install Poppler submodule" -ForegroundColor Green
 Invoke-VsCmd """$ninja"" -C ""$popplerBuild"" -j$Jobs install"
 
 Write-Host ""
-Write-Host "[3/4] Configure Okular with submodule MicroTeX and installed submodule Poppler" -ForegroundColor Green
+Write-Host "[3/4] Configure Scholia with submodule MicroTeX and installed submodule Poppler" -ForegroundColor Green
 Invoke-VsCmd """$cmake"" -S ""$OkularSource"" -B ""$okularBuild"" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=C:/CraftRoot -DCMAKE_PREFIX_PATH=C:/CraftRoot -DBUILD_TESTING=OFF -DOKULAR_PDF_ONLY=ON -DOKULAR_ENABLE_MICROTEX=ON -DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON"
 
 Write-Host ""
-Write-Host "[4/4] Build and install Okular" -ForegroundColor Green
+Write-Host "[4/4] Build and install Scholia" -ForegroundColor Green
 Invoke-VsCmd """$ninja"" -C ""$okularBuild"" -j$Jobs install"
 
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
-Write-Host "Okular:  $(Get-Item -LiteralPath (Join-Path $CraftRoot 'bin\okular.exe') | Select-Object -ExpandProperty LastWriteTime)"
+Write-Host "Scholia: $(Get-Item -LiteralPath (Join-Path $CraftRoot 'bin\scholia.exe') | Select-Object -ExpandProperty LastWriteTime)"
 Write-Host "PDF gen: $(Get-Item -LiteralPath (Join-Path $CraftRoot 'plugins\okular_generators\okularGenerator_poppler.dll') | Select-Object -ExpandProperty LastWriteTime)"

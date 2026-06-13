@@ -46,7 +46,7 @@ class KPluginFactory;
 class Shell : public KParts::MainWindow
 {
     Q_OBJECT
-    Q_CLASSINFO("D-Bus Interface", "org.kde.okular")
+    Q_CLASSINFO("D-Bus Interface", "org.jairy.scholia")
 
     friend class MainShellTest;
     friend class AnnotationToolBarTest;
@@ -65,7 +65,7 @@ public:
     QSize sizeHint() const override;
 
     /**
-     * Returns false if Okular component wasn't found
+     * Returns false if the viewer component wasn't found
      **/
     bool isValid() const;
 

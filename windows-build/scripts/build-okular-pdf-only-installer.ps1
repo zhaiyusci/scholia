@@ -15,7 +15,7 @@ $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $workspaceRoot = Split-Path -Parent $repoRoot
 $windowsBuildRoot = Join-Path $workspaceRoot "windows_build"
 if (!$StageRoot) {
-    $StageRoot = Join-Path $windowsBuildRoot "dist\okular-pdf-only\app"
+    $StageRoot = Join-Path $windowsBuildRoot "dist\scholia-pdf\app"
 }
 if (!$OutputDir) {
     $OutputDir = Join-Path $windowsBuildRoot "dist"
@@ -45,10 +45,10 @@ if (!(Test-Path -LiteralPath $ISCC)) {
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$env:OKULAR_PDF_STAGE = $StageRoot
-$env:OKULAR_PDF_OUTPUT = $OutputDir
-$env:OKULAR_PDF_VERSION = $Version
-$env:OKULAR_PDF_FILE_VERSION = $FileVersion
+$env:SCHOLIA_STAGE = $StageRoot
+$env:SCHOLIA_OUTPUT = $OutputDir
+$env:SCHOLIA_VERSION = $Version
+$env:SCHOLIA_FILE_VERSION = $FileVersion
 
 $iss = Join-Path (Split-Path -Parent $PSScriptRoot) "installer\okular-pdf-only.iss"
 Write-Host "Building installer with Inno Setup:"
