@@ -17,12 +17,14 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QHash>
 #include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QLoggingCategory>
+#include <QStringList>
 #include <QTemporaryFile>
 #include <QVariant>
 
@@ -143,6 +145,53 @@ namespace
 {
 constexpr int LatexNoteDataVersion = 20260610;
 const QString LatexNoteDataKey = QStringLiteral("LatexNoteData");
+
+const QStringList &pdfBase14FontNames()
+{
+    static const QStringList names {
+        QStringLiteral("Times-Roman"),
+        QStringLiteral("Times-Bold"),
+        QStringLiteral("Times-Italic"),
+        QStringLiteral("Times-BoldItalic"),
+        QStringLiteral("Helvetica"),
+        QStringLiteral("Helvetica-Bold"),
+        QStringLiteral("Helvetica-Oblique"),
+        QStringLiteral("Helvetica-BoldOblique"),
+        QStringLiteral("Courier"),
+        QStringLiteral("Courier-Bold"),
+        QStringLiteral("Courier-Oblique"),
+        QStringLiteral("Courier-BoldOblique"),
+        QStringLiteral("Symbol"),
+        QStringLiteral("ZapfDingbats"),
+    };
+    return names;
+}
+
+QString normalizedPdfBase14FontName(const QString &fontName)
+{
+    const QString name = fontName.startsWith(QLatin1Char('/')) ? fontName.mid(1) : fontName;
+    if (pdfBase14FontNames().contains(name)) {
+        return name;
+    }
+
+    static const QHash<QString, QString> aliases {
+        {QStringLiteral("Helv"), QStringLiteral("Helvetica")},
+        {QStringLiteral("HeBo"), QStringLiteral("Helvetica-Bold")},
+        {QStringLiteral("HeOb"), QStringLiteral("Helvetica-Oblique")},
+        {QStringLiteral("HeBO"), QStringLiteral("Helvetica-BoldOblique")},
+        {QStringLiteral("Cour"), QStringLiteral("Courier")},
+        {QStringLiteral("CoBo"), QStringLiteral("Courier-Bold")},
+        {QStringLiteral("CoOb"), QStringLiteral("Courier-Oblique")},
+        {QStringLiteral("CoBO"), QStringLiteral("Courier-BoldOblique")},
+        {QStringLiteral("TiRo"), QStringLiteral("Times-Roman")},
+        {QStringLiteral("TiBo"), QStringLiteral("Times-Bold")},
+        {QStringLiteral("TiIt"), QStringLiteral("Times-Italic")},
+        {QStringLiteral("TiBI"), QStringLiteral("Times-BoldItalic")},
+        {QStringLiteral("Symb"), QStringLiteral("Symbol")},
+        {QStringLiteral("ZaDb"), QStringLiteral("ZapfDingbats")},
+    };
+    return aliases.value(name, QStringLiteral("Helvetica"));
+}
 
 struct ParsedLatexNoteData {
     bool valid = false;
@@ -743,12 +792,8 @@ static QRectF freeTextLayoutBoundaryFromOkularAnnotation(const Okular::TextAnnot
 static void updatePopplerFreeTextPropertiesFromOkularAnnotation(const Okular::TextAnnotation *oTextAnnotation, Poppler::TextAnnotation *pTextAnnotation)
 {
     pTextAnnotation->setTextIcon(oTextAnnotation->textIcon());
-    if (oTextAnnotation->hasTextFont()) {
-        pTextAnnotation->setTextFont(oTextAnnotation->textFont());
-    } else if (!oTextAnnotation->textFontName().isEmpty()) {
-        pTextAnnotation->setTextFontName(oTextAnnotation->textFontName());
-        pTextAnnotation->setTextFontPointSize(oTextAnnotation->textFontPointSize());
-    }
+    pTextAnnotation->setTextFontName(normalizedPdfBase14FontName(oTextAnnotation->textFontName()));
+    pTextAnnotation->setTextFontPointSize(oTextAnnotation->textFontPointSize());
     pTextAnnotation->setTextColor(oTextAnnotation->textColor());
     pTextAnnotation->setOkularBorderColor(oTextAnnotation->inplaceBorderColor());
     pTextAnnotation->setInplaceAlign(static_cast<Poppler::TextAnnotation::InplaceAlignPosition>(oTextAnnotation->inplaceAlignment()));
@@ -1492,7 +1537,7 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::TextAn
     oTextAnn->setTextIcon(popplerAnnotation->textIcon());
     const QString textFontName = popplerAnnotation->textFontName();
     if (!textFontName.isEmpty()) {
-        oTextAnn->setTextFontName(textFontName);
+        oTextAnn->setTextFontName(normalizedPdfBase14FontName(textFontName));
     }
     oTextAnn->setTextFontPointSize(popplerAnnotation->textFontPointSize());
     oTextAnn->setTextColor(popplerAnnotation->textColor());

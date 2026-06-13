@@ -761,7 +761,8 @@ void AnnotationPopup::doConvertLatexAnnotationToText(AnnotPagePair pair)
     latexTextAnn->setLatexAppearancePdfFileName(QString());
     latexTextAnn->setLatexLayoutWidth(0.0);
     latexTextAnn->setLatexScale(1.0);
-    latexTextAnn->setTextFont(font);
+    latexTextAnn->setTextFontName(QStringLiteral("Helvetica"));
+    latexTextAnn->setTextFontPointSize(font.pointSizeF());
     latexTextAnn->setBoundingRectangle(textAnnotationRectForSource(latexTextAnn, page, font));
     if (latexTextAnn->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
         latexTextAnn->style().setColor(QColor(255, 255, 255, 0));

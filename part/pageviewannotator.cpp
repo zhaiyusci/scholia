@@ -306,7 +306,9 @@ public:
                 fontString.replace(QStringLiteral("\\\\,"), QStringLiteral(","));
             }
             f.fromString(fontString);
-            ta->setTextFont(f);
+            if (f.pointSizeF() > 0) {
+                ta->setTextFontPointSize(f.pointSizeF());
+            }
         } else if (m_annotElement.hasAttribute(QStringLiteral("fontName"))) {
             ta->setTextFontName(m_annotElement.attribute(QStringLiteral("fontName")));
         }
@@ -2415,9 +2417,9 @@ void PageViewAnnotator::setAnnotationOpacity(double opacity)
 void PageViewAnnotator::setAnnotationFont(const QFont &font)
 {
     QDomElement annotationElement = currentAnnotationElement();
-    annotationElement.removeAttribute(QStringLiteral("fontName"));
-    annotationElement.removeAttribute(QStringLiteral("fontSize"));
-    annotationElement.setAttribute(QStringLiteral("font"), font.toString());
+    annotationElement.removeAttribute(QStringLiteral("font"));
+    annotationElement.setAttribute(QStringLiteral("fontName"), QStringLiteral("Helvetica"));
+    annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(font.pointSizeF() > 0 ? font.pointSizeF() : 10.0));
     saveBuiltinAnnotationTools();
     selectLastTool();
 }

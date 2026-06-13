@@ -160,12 +160,8 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         if (ta->inplaceAlignment() != 0) {
             annotationElement.setAttribute(QStringLiteral("align"), ta->inplaceAlignment());
         }
-        if (ta->hasTextFont()) {
-            annotationElement.setAttribute(QStringLiteral("font"), ta->textFont().toString());
-        } else if (!ta->textFontName().isEmpty()) {
-            annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName());
-            annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
-        }
+        annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName().isEmpty() ? QStringLiteral("Helvetica") : ta->textFontName());
+        annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
     } else if (toolType == ToolCallout) {
         Okular::TextAnnotation *ta = static_cast<Okular::TextAnnotation *>(m_stubann);
         const QString textColor = ta->textColor().name(QColor::HexArgb);
@@ -181,12 +177,8 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         if (ta->inplaceAlignment() != 0) {
             annotationElement.setAttribute(QStringLiteral("align"), ta->inplaceAlignment());
         }
-        if (ta->hasTextFont()) {
-            annotationElement.setAttribute(QStringLiteral("font"), ta->textFont().toString());
-        } else if (!ta->textFontName().isEmpty()) {
-            annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName());
-            annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
-        }
+        annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName().isEmpty() ? QStringLiteral("Helvetica") : ta->textFontName());
+        annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
     } else if (toolType == ToolInk) {
         toolElement.setAttribute(QStringLiteral("type"), QStringLiteral("ink"));
         engineElement.setAttribute(QStringLiteral("type"), QStringLiteral("SmoothLine"));
@@ -290,12 +282,8 @@ QDomDocument EditAnnotToolDialog::toolXml() const
         annotationElement.setAttribute(QStringLiteral("color"), color);
         annotationElement.setAttribute(QStringLiteral("textColor"), textColor);
         annotationElement.setAttribute(QStringLiteral("width"), width);
-        if (ta->hasTextFont()) {
-            annotationElement.setAttribute(QStringLiteral("font"), ta->textFont().toString());
-        } else if (!ta->textFontName().isEmpty()) {
-            annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName());
-            annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
-        }
+        annotationElement.setAttribute(QStringLiteral("fontName"), ta->textFontName().isEmpty() ? QStringLiteral("Helvetica") : ta->textFontName());
+        annotationElement.setAttribute(QStringLiteral("fontSize"), QString::number(ta->textFontPointSize()));
     }
 
     if (opacity != QStringLiteral("1")) {
@@ -443,7 +431,9 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
         if (annotationElement.hasAttribute(QStringLiteral("font"))) {
             QFont f;
             f.fromString(annotationElement.attribute(QStringLiteral("font")));
-            ta->setTextFont(f);
+            if (f.pointSizeF() > 0) {
+                ta->setTextFontPointSize(f.pointSizeF());
+            }
         } else if (annotationElement.hasAttribute(QStringLiteral("fontName"))) {
             ta->setTextFontName(annotationElement.attribute(QStringLiteral("fontName")));
         }
@@ -463,7 +453,9 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
         if (annotationElement.hasAttribute(QStringLiteral("font"))) {
             QFont f;
             f.fromString(annotationElement.attribute(QStringLiteral("font")));
-            ta->setTextFont(f);
+            if (f.pointSizeF() > 0) {
+                ta->setTextFontPointSize(f.pointSizeF());
+            }
         } else if (annotationElement.hasAttribute(QStringLiteral("fontName"))) {
             ta->setTextFontName(annotationElement.attribute(QStringLiteral("fontName")));
         }
@@ -537,7 +529,9 @@ void EditAnnotToolDialog::loadTool(const QDomElement &toolElement)
         if (annotationElement.hasAttribute(QStringLiteral("font"))) {
             QFont f;
             f.fromString(annotationElement.attribute(QStringLiteral("font")));
-            ta->setTextFont(f);
+            if (f.pointSizeF() > 0) {
+                ta->setTextFontPointSize(f.pointSizeF());
+            }
         } else if (annotationElement.hasAttribute(QStringLiteral("fontName"))) {
             ta->setTextFontName(annotationElement.attribute(QStringLiteral("fontName")));
         }

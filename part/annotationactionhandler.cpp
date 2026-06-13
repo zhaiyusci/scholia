@@ -32,7 +32,6 @@
 
 // kde includes
 #include <KActionCollection>
-#include <KFontRequester>
 #include <KLocalizedString>
 #include <KMessageBox>
 #include <KParts/MainWindow>
@@ -531,7 +530,7 @@ void AnnotationActionHandlerPrivate::parseTool(int toolId)
         if (currentFont.pointSizeF() > 0) {
             currentFontPointSize = currentFont.pointSizeF();
         }
-        currentUsesCustomFont = true;
+        currentFontName = QStringLiteral("Helvetica");
     }
 
     // if the width value is not a default one, insert a new action in the width list
@@ -889,17 +888,12 @@ void AnnotationActionHandlerPrivate::slotSelectAnnotationFont()
     QFormLayout *formLayout = new QFormLayout;
     mainLayout->addLayout(formLayout);
 
-    QCheckBox *usePdfFont = new QCheckBox(i18nc("@option:check", "Use PDF base font"), &dialog);
-    usePdfFont->setChecked(!currentUsesCustomFont);
-    formLayout->addRow(QString(), usePdfFont);
-
     QComboBox *pdfFontName = new QComboBox(&dialog);
     for (const QString &fontName : pdfBase14FontNames()) {
         pdfFontName->addItem(fontName, fontName);
     }
     const int pdfFontIndex = pdfFontName->findData(normalizedPdfBase14FontName(currentFontName));
     pdfFontName->setCurrentIndex(pdfFontIndex >= 0 ? pdfFontIndex : pdfFontName->findData(QStringLiteral("Helvetica")));
-    pdfFontName->setEnabled(!currentUsesCustomFont);
     formLayout->addRow(i18n("PDF font:"), pdfFontName);
 
     QDoubleSpinBox *pdfFontSize = new QDoubleSpinBox(&dialog);
@@ -907,20 +901,11 @@ void AnnotationActionHandlerPrivate::slotSelectAnnotationFont()
     pdfFontSize->setDecimals(1);
     pdfFontSize->setSingleStep(1.0);
     pdfFontSize->setValue(currentFontPointSize);
-    pdfFontSize->setEnabled(!currentUsesCustomFont);
     formLayout->addRow(i18n("PDF font size:"), pdfFontSize);
-
-    KFontRequester *customFont = new KFontRequester(&dialog);
-    customFont->setFont(currentUsesCustomFont ? currentFont : QFont(QStringLiteral("Helvetica")));
-    customFont->setEnabled(currentUsesCustomFont);
-    formLayout->addRow(i18n("Custom font:"), customFont);
 
     QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     mainLayout->addWidget(buttonBox);
 
-    QObject::connect(usePdfFont, &QCheckBox::toggled, pdfFontName, &QComboBox::setEnabled);
-    QObject::connect(usePdfFont, &QCheckBox::toggled, pdfFontSize, &QDoubleSpinBox::setEnabled);
-    QObject::connect(usePdfFont, &QCheckBox::toggled, customFont, &KFontRequester::setDisabled);
     QObject::connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
@@ -928,16 +913,10 @@ void AnnotationActionHandlerPrivate::slotSelectAnnotationFont()
         return;
     }
 
-    if (usePdfFont->isChecked()) {
-        currentFontName = pdfFontName->currentData().toString();
-        currentFontPointSize = pdfFontSize->value();
-        currentUsesCustomFont = false;
-        annotator->setAnnotationFontName(currentFontName, currentFontPointSize);
-    } else {
-        currentFont = customFont->font();
-        currentUsesCustomFont = true;
-        annotator->setAnnotationFont(currentFont);
-    }
+    currentFontName = pdfFontName->currentData().toString();
+    currentFontPointSize = pdfFontSize->value();
+    currentUsesCustomFont = false;
+    annotator->setAnnotationFontName(currentFontName, currentFontPointSize);
 }
 
 bool AnnotationActionHandlerPrivate::isQuickToolAction(QAction *aTool)
