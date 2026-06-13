@@ -1136,7 +1136,7 @@ void DocumentPrivate::performModifyPageAnnotation(int page, Annotation *annotati
 
     // notify observers about the change
     notifyAnnotationChanges(page);
-    if (annotation->flags() & Annotation::ExternallyDrawn) {
+    if (appearanceChanged || (annotation->flags() & Annotation::ExternallyDrawn)) {
         if (annotation->flags() & (Annotation::BeingMoved | Annotation::BeingResized)) {
             // The generator suppresses externally drawn annotations while they
             // are being moved or resized. Redrawing the page pixmap here only
