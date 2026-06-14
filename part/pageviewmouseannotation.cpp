@@ -151,6 +151,65 @@ static bool isCalloutHandle(MouseAnnotation::ResizeHandle handle)
     return handle == MouseAnnotation::RH_CalloutTip || handle == MouseAnnotation::RH_CalloutKnee || handle == MouseAnnotation::RH_CalloutAnchor;
 }
 
+static bool isLinePointHandle(MouseAnnotation::ResizeHandle handle)
+{
+    return handle == MouseAnnotation::RH_LinePoint;
+}
+
+static Okular::LineAnnotation *lineAnnotation(Okular::Annotation *annotation)
+{
+    if (!annotation || annotation->subType() != Okular::Annotation::ALine) {
+        return nullptr;
+    }
+    return static_cast<Okular::LineAnnotation *>(annotation);
+}
+
+static const Okular::LineAnnotation *lineAnnotation(const Okular::Annotation *annotation)
+{
+    return lineAnnotation(const_cast<Okular::Annotation *>(annotation));
+}
+
+static bool hasFinitePoint(const Okular::NormalizedPoint &point);
+
+static bool hasUsableLinePoints(const Okular::Annotation *annotation)
+{
+    const Okular::LineAnnotation *lineAnn = lineAnnotation(annotation);
+    if (!lineAnn || lineAnn->linePoints().count() < 2 || lineAnn->transformedLinePoints().count() != lineAnn->linePoints().count()) {
+        return false;
+    }
+
+    for (const Okular::NormalizedPoint &point : lineAnn->linePoints()) {
+        if (!hasFinitePoint(point)) {
+            return false;
+        }
+    }
+    for (const Okular::NormalizedPoint &point : lineAnn->transformedLinePoints()) {
+        if (!hasFinitePoint(point)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static Okular::NormalizedRect lineBoundingRect(const QList<Okular::NormalizedPoint> &points)
+{
+    if (points.isEmpty()) {
+        return {};
+    }
+
+    double left = points.first().x;
+    double right = points.first().x;
+    double top = points.first().y;
+    double bottom = points.first().y;
+    for (const Okular::NormalizedPoint &point : points) {
+        left = qMin(left, point.x);
+        right = qMax(right, point.x);
+        top = qMin(top, point.y);
+        bottom = qMax(bottom, point.y);
+    }
+    return Okular::NormalizedRect(left, top, right, bottom);
+}
+
 static int calloutIndexForHandle(MouseAnnotation::ResizeHandle handle)
 {
     if (handle == MouseAnnotation::RH_CalloutTip) {
@@ -908,6 +967,8 @@ MouseAnnotation::MouseAnnotation(PageView *parent, Okular::Document *document)
     , m_hasOriginalBoundingRect(false)
     , m_hasPreviewBoundingRect(false)
     , m_hasOriginalCalloutGeometry(false)
+    , m_hasOriginalLineGeometry(false)
+    , m_linePointHandleIndex(-1)
     , m_hasLatexResizeLayoutRect(false)
     , m_latexRenderWarningAnnotation(nullptr)
 {
@@ -1118,6 +1179,30 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
         painter->restore();
         return;
     }
+    if (hasUsableLinePoints(m_focusedAnnotation.annotation)) {
+        const auto *lineAnn = static_cast<const Okular::LineAnnotation *>(m_focusedAnnotation.annotation);
+        const QList<Okular::NormalizedPoint> points = lineAnn->transformedLinePoints();
+        QPolygon linePolyline;
+        for (const Okular::NormalizedPoint &point : points) {
+            linePolyline << QPoint(qRound(point.x * m_focusedAnnotation.pageViewItem->uncroppedWidth()), qRound(point.y * m_focusedAnnotation.pageViewItem->uncroppedHeight()));
+        }
+
+        painter->setRenderHint(QPainter::Antialiasing, true);
+        painter->setPen(QPen(QColor(37, 99, 235), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter->setBrush(Qt::NoBrush);
+        if (lineAnn->lineClosed()) {
+            painter->drawPolygon(linePolyline);
+        } else {
+            painter->drawPolyline(linePolyline);
+        }
+
+        painter->setPen(QPen(Qt::white, 1.5));
+        painter->setBrush(QColor(37, 99, 235));
+        for (int i = 0; i < points.count(); ++i) {
+            painter->drawEllipse(getLinePointHandleRect(i, m_focusedAnnotation));
+        }
+        painter->setRenderHint(QPainter::Antialiasing, false);
+    }
     if (m_focusedAnnotation.annotation->canBeResized()) {
         const Okular::Annotation *calloutAnn = calloutAnnotation(m_focusedAnnotation.annotation);
         if (hasUsableCalloutPoints(calloutAnn)) {
@@ -1226,7 +1311,7 @@ bool MouseAnnotation::isModified() const
 Qt::CursorShape MouseAnnotation::cursor() const
 {
     if (m_handle != RH_None) {
-        if (isCalloutHandle(m_handle)) {
+        if (isCalloutHandle(m_handle) || isLinePointHandle(m_handle)) {
             return Qt::SizeAllCursor;
         }
         if (isMoved()) {
@@ -1347,7 +1432,7 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
     if (!ad.isValid()) {
         /* qDebug() << "No annotation provided, forcing state inactive." << state; */
         state = StateInactive;
-    } else if ((state == StateMoving && !ad.annotation->canBeMoved()) || (state == StateResizing && !ad.annotation->canBeResized())) {
+    } else if ((state == StateMoving && !ad.annotation->canBeMoved()) || (state == StateResizing && !ad.annotation->canBeResized() && !isLinePointHandle(m_handle))) {
         /* qDebug() << "Annotation does not support requested state, forcing state selected." << state; */
         state = StateInactive;
     }
@@ -1370,6 +1455,9 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
         if (isCalloutHandle(m_handle) && !m_hasOriginalCalloutGeometry) {
             rememberOriginalCalloutGeometry(m_focusedAnnotation);
         }
+        if (isLinePointHandle(m_handle) && !m_hasOriginalLineGeometry) {
+            rememberOriginalLineGeometry(m_focusedAnnotation);
+        }
         if (!m_hasOriginalBoundingRect) {
             m_originalBoundingRect = m_focusedAnnotation.annotation->boundingRectangle();
             m_hasOriginalBoundingRect = isUsableRect(m_originalBoundingRect);
@@ -1388,6 +1476,9 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
         m_hasOriginalBoundingRect = false;
         m_hasPreviewBoundingRect = false;
         m_hasOriginalCalloutGeometry = false;
+        m_hasOriginalLineGeometry = false;
+        m_originalLinePoints.clear();
+        m_linePointHandleIndex = -1;
         m_hasLatexResizeLayoutRect = false;
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~(Okular::Annotation::BeingMoved | Okular::Annotation::BeingResized));
         refreshLatexRenderWarning(m_focusedAnnotation);
@@ -1403,6 +1494,9 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
         m_hasOriginalBoundingRect = false;
         m_hasPreviewBoundingRect = false;
         m_hasOriginalCalloutGeometry = false;
+        m_hasOriginalLineGeometry = false;
+        m_originalLinePoints.clear();
+        m_linePointHandleIndex = -1;
         m_hasLatexResizeLayoutRect = false;
         clearLatexRenderWarning();
     }
@@ -1433,6 +1527,13 @@ QRect MouseAnnotation::getFullBoundingRect(const AnnotationDescription &ad) cons
             boundingRect = boundingRect.united(getCalloutLineRect(ad));
             for (int i = 0; i < 3; ++i) {
                 boundingRect = boundingRect.united(getHandleRect(calloutHandleForIndex(i), ad));
+            }
+        }
+        if (hasUsableLinePoints(ad.annotation)) {
+            boundingRect = boundingRect.united(getLinePointsRect(ad));
+            const auto *lineAnn = static_cast<const Okular::LineAnnotation *>(ad.annotation);
+            for (int i = 0; i < lineAnn->transformedLinePoints().count(); ++i) {
+                boundingRect = boundingRect.united(getLinePointHandleRect(i, ad));
             }
         }
         const QRect warningMarkerRect = getLatexWarningMarkerRect(ad);
@@ -1467,6 +1568,22 @@ void MouseAnnotation::performCommand(const QPoint newPos)
         return;
 
     } else if (isResized()) {
+        if (isLinePointHandle(m_handle)) {
+            auto *lineAnn = lineAnnotation(m_focusedAnnotation.annotation);
+            if (lineAnn && m_linePointHandleIndex >= 0) {
+                QList<Okular::NormalizedPoint> points = lineAnn->linePoints();
+                if (m_linePointHandleIndex < points.count()) {
+                    Okular::NormalizedPoint point = points.at(m_linePointHandleIndex);
+                    point.x = qBound(0.0, point.x + normalizedRotatedMouseDelta.x(), 1.0);
+                    point.y = qBound(0.0, point.y + normalizedRotatedMouseDelta.y(), 1.0);
+                    points[m_linePointHandleIndex] = point;
+                    lineAnn->setLinePoints(points);
+                    lineAnn->setBoundingRectangle(lineBoundingRect(points));
+                }
+            }
+            return;
+        }
+
         if (isCalloutHandle(m_handle)) {
             Okular::Annotation *calloutAnn = calloutAnnotation(m_focusedAnnotation.annotation);
             const int pointIndex = calloutIndexForHandle(m_handle);
@@ -1605,6 +1722,43 @@ void MouseAnnotation::finishCommand()
         return;
     }
 
+    if (m_hasOriginalLineGeometry) {
+        auto *lineAnn = lineAnnotation(m_focusedAnnotation.annotation);
+        const bool wasResized = isResized();
+        QList<Okular::NormalizedPoint> finalLinePoints;
+        Okular::NormalizedRect finalBoundingRect;
+        bool moved = false;
+        if (lineAnn) {
+            finalLinePoints = lineAnn->linePoints();
+            finalBoundingRect = lineAnn->boundingRectangle();
+            if (finalLinePoints.count() == m_originalLinePoints.count()) {
+                for (int i = 0; i < finalLinePoints.count(); ++i) {
+                    moved = moved || pointMoved(finalLinePoints.at(i), m_originalLinePoints.at(i));
+                }
+            } else {
+                moved = true;
+            }
+        }
+
+        restoreOriginalLineGeometry(m_focusedAnnotation);
+        m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~Okular::Annotation::BeingResized);
+
+        if (lineAnn && wasResized && moved) {
+            m_document->prepareToModifyAnnotationProperties(lineAnn);
+            lineAnn->setLinePoints(finalLinePoints);
+            lineAnn->setBoundingRectangle(finalBoundingRect);
+            lineAnn->setModificationDate(QDateTime::currentDateTime());
+            m_document->modifyPageAnnotationProperties(m_focusedAnnotation.pageNumber, lineAnn);
+        }
+
+        m_hasOriginalLineGeometry = false;
+        m_originalLinePoints.clear();
+        m_linePointHandleIndex = -1;
+        m_hasOriginalBoundingRect = false;
+        m_hasPreviewBoundingRect = false;
+        return;
+    }
+
     if (m_hasOriginalBoundingRect) {
         const bool wasMoved = isMoved();
         const bool wasResized = isResized();
@@ -1676,6 +1830,18 @@ void MouseAnnotation::rollbackCommand()
         restoreOriginalCalloutGeometry(m_focusedAnnotation);
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~Okular::Annotation::BeingResized);
         m_hasOriginalCalloutGeometry = false;
+        updateViewport(m_focusedAnnotation);
+        return;
+    }
+
+    if (m_hasOriginalLineGeometry) {
+        restoreOriginalLineGeometry(m_focusedAnnotation);
+        m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() & ~Okular::Annotation::BeingResized);
+        m_hasOriginalLineGeometry = false;
+        m_originalLinePoints.clear();
+        m_linePointHandleIndex = -1;
+        m_hasOriginalBoundingRect = false;
+        m_hasPreviewBoundingRect = false;
         updateViewport(m_focusedAnnotation);
         return;
     }
@@ -1789,6 +1955,17 @@ void MouseAnnotation::clearLatexRenderWarning()
 MouseAnnotation::ResizeHandle MouseAnnotation::getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const
 {
     ResizeHandle selected = RH_None;
+    m_linePointHandleIndex = -1;
+
+    if (hasUsableLinePoints(ad.annotation)) {
+        const auto *lineAnn = static_cast<const Okular::LineAnnotation *>(ad.annotation);
+        for (int i = 0; i < lineAnn->transformedLinePoints().count(); ++i) {
+            if (getLinePointHandleRect(i, ad).contains(eventPos)) {
+                m_linePointHandleIndex = i;
+                return RH_LinePoint;
+            }
+        }
+    }
 
     if (ad.annotation->canBeResized()) {
         if (calloutAnnotation(ad.annotation)) {
@@ -1882,6 +2059,41 @@ QRect MouseAnnotation::getHandleRect(ResizeHandle handle, const AnnotationDescri
     return handleRect;
 }
 
+QRect MouseAnnotation::getLinePointHandleRect(int pointIndex, const AnnotationDescription &ad) const
+{
+    const auto *lineAnn = lineAnnotation(ad.annotation);
+    if (!lineAnn || pointIndex < 0 || pointIndex >= lineAnn->transformedLinePoints().count()) {
+        return {};
+    }
+
+    const Okular::NormalizedPoint point = lineAnn->transformedLinePoints().at(pointIndex);
+    const int left = qRound(point.x * ad.pageViewItem->uncroppedWidth()) - handleSizeHalf;
+    const int top = qRound(point.y * ad.pageViewItem->uncroppedHeight()) - handleSizeHalf;
+    return QRect(left, top, handleSize, handleSize);
+}
+
+QRect MouseAnnotation::getLinePointsRect(const AnnotationDescription &ad) const
+{
+    const auto *lineAnn = lineAnnotation(ad.annotation);
+    if (!lineAnn || lineAnn->transformedLinePoints().isEmpty()) {
+        return {};
+    }
+
+    QRect lineRect;
+    const QList<Okular::NormalizedPoint> points = lineAnn->transformedLinePoints();
+    for (int i = 0; i < points.count(); ++i) {
+        const Okular::NormalizedPoint point = points.at(i);
+        const QPoint pagePoint(qRound(point.x * ad.pageViewItem->uncroppedWidth()), qRound(point.y * ad.pageViewItem->uncroppedHeight()));
+        if (i == 0) {
+            lineRect = QRect(pagePoint, QSize(1, 1));
+        } else {
+            lineRect = lineRect.united(QRect(pagePoint, QSize(1, 1)));
+        }
+    }
+
+    return lineRect.adjusted(-handleSizeHalf, -handleSizeHalf, handleSizeHalf, handleSizeHalf);
+}
+
 QRect MouseAnnotation::getCalloutLineRect(const AnnotationDescription &ad) const
 {
     const Okular::Annotation *calloutAnn = calloutAnnotation(ad.annotation);
@@ -1929,6 +2141,30 @@ void MouseAnnotation::restoreOriginalCalloutGeometry(const AnnotationDescription
     for (int i = 0; i < 3; ++i) {
         setCalloutPoint(calloutAnn, m_originalCalloutPoints[i], i);
     }
+}
+
+void MouseAnnotation::rememberOriginalLineGeometry(const AnnotationDescription &ad)
+{
+    const auto *lineAnn = lineAnnotation(ad.annotation);
+    if (!hasUsableLinePoints(lineAnn)) {
+        m_hasOriginalLineGeometry = false;
+        return;
+    }
+
+    m_originalLinePoints = lineAnn->linePoints();
+    m_originalLineBoundingRect = lineAnn->boundingRectangle();
+    m_hasOriginalLineGeometry = true;
+}
+
+void MouseAnnotation::restoreOriginalLineGeometry(const AnnotationDescription &ad)
+{
+    auto *lineAnn = lineAnnotation(ad.annotation);
+    if (!lineAnn || !m_hasOriginalLineGeometry) {
+        return;
+    }
+
+    lineAnn->setLinePoints(m_originalLinePoints);
+    lineAnn->setBoundingRectangle(m_originalLineBoundingRect);
 }
 
 /* Convert a resize handle delta into two adjust delta coordinates. */
