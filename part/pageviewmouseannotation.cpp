@@ -1182,47 +1182,21 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
     if (hasUsableLinePoints(m_focusedAnnotation.annotation)) {
         const auto *lineAnn = static_cast<const Okular::LineAnnotation *>(m_focusedAnnotation.annotation);
         const QList<Okular::NormalizedPoint> points = lineAnn->transformedLinePoints();
-        QPolygon linePolyline;
-        for (const Okular::NormalizedPoint &point : points) {
-            linePolyline << QPoint(qRound(point.x * m_focusedAnnotation.pageViewItem->uncroppedWidth()), qRound(point.y * m_focusedAnnotation.pageViewItem->uncroppedHeight()));
-        }
-
-        painter->setRenderHint(QPainter::Antialiasing, true);
-        painter->setPen(QPen(QColor(37, 99, 235), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter->setBrush(Qt::NoBrush);
-        if (lineAnn->lineClosed()) {
-            painter->drawPolygon(linePolyline);
-        } else {
-            painter->drawPolyline(linePolyline);
-        }
-
-        painter->setPen(QPen(Qt::white, 1.5));
-        painter->setBrush(QColor(37, 99, 235));
+        Q_UNUSED(lineAnn);
+        painter->setPen(borderColor);
+        painter->setBrush(fillColor);
         for (int i = 0; i < points.count(); ++i) {
-            painter->drawEllipse(getLinePointHandleRect(i, m_focusedAnnotation));
+            painter->drawRect(getLinePointHandleRect(i, m_focusedAnnotation));
         }
-        painter->setRenderHint(QPainter::Antialiasing, false);
     }
     if (m_focusedAnnotation.annotation->canBeResized()) {
         const Okular::Annotation *calloutAnn = calloutAnnotation(m_focusedAnnotation.annotation);
         if (hasUsableCalloutPoints(calloutAnn)) {
-            QPolygon calloutPolyline;
+            painter->setPen(borderColor);
+            painter->setBrush(fillColor);
             for (int i = 0; i < 3; ++i) {
-                const Okular::NormalizedPoint point = calloutPoint(calloutAnn, i, true);
-                calloutPolyline << QPoint(qRound(point.x * m_focusedAnnotation.pageViewItem->uncroppedWidth()), qRound(point.y * m_focusedAnnotation.pageViewItem->uncroppedHeight()));
+                painter->drawRect(getHandleRect(calloutHandleForIndex(i), m_focusedAnnotation));
             }
-
-            painter->setRenderHint(QPainter::Antialiasing, true);
-            painter->setPen(QPen(QColor(37, 99, 235), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter->setBrush(Qt::NoBrush);
-            painter->drawPolyline(calloutPolyline);
-
-            painter->setPen(QPen(Qt::white, 1.5));
-            painter->setBrush(QColor(37, 99, 235));
-            for (int i = 0; i < 3; ++i) {
-                painter->drawEllipse(getHandleRect(calloutHandleForIndex(i), m_focusedAnnotation));
-            }
-            painter->setRenderHint(QPainter::Antialiasing, false);
         }
 
         for (const ResizeHandle &handle : std::as_const(m_resizeHandleList)) {
