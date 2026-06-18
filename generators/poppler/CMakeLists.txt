@@ -53,7 +53,7 @@ target_include_directories(okularGenerator_poppler PRIVATE
     ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}
     ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/poppler
 )
-target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Qt6 Qt6::Xml)
+target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Core Poppler::Qt6 Qt6::Xml)
 if(POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
     target_compile_definitions(okularGenerator_poppler PRIVATE POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
 endif()
