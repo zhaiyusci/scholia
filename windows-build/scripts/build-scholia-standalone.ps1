@@ -87,6 +87,39 @@ function Reset-Directory([string] $Path, [string] $AllowedRoot) {
     New-Item -ItemType Directory -Force -Path $full | Out-Null
 }
 
+function Copy-DirectoryContents([string] $Source, [string] $Destination) {
+    if (!(Test-Path -LiteralPath $Source)) {
+        return
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force
+    }
+}
+
+function Remove-DirectoryInside([string] $Path, [string] $AllowedRoot) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if (!$full.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove directory outside $allowed`: $full"
+    }
+    if (Test-Path -LiteralPath $full) {
+        Remove-Item -LiteralPath $full -Recurse -Force
+    }
+}
+
+function Sync-InstalledRuntimePlugins([string] $Prefix) {
+    $pluginsDir = Join-Path $Prefix "plugins"
+    if (!(Test-Path -LiteralPath $pluginsDir)) {
+        return
+    }
+
+    Write-Host "Synchronizing runtime plugin copies..." -ForegroundColor Cyan
+    Copy-DirectoryContents $pluginsDir (Join-Path $Prefix "bin\plugins")
+    Remove-DirectoryInside $pluginsDir $Prefix
+    Remove-DirectoryInside (Join-Path $Prefix "lib\plugins") $Prefix
+}
+
 $QtPrefix = Find-QtPrefix $QtPrefix
 $CMake = Resolve-CommandPath "cmake" @($CMake, (Join-Path $QtPrefix "..\..\Tools\CMake_64\bin\cmake.exe"), "C:\Program Files\CMake\bin\cmake.exe")
 $Ninja = Resolve-CommandPath "ninja" @($Ninja, (Join-Path $QtPrefix "..\..\Tools\Ninja\ninja.exe"))
@@ -152,6 +185,7 @@ Invoke-VsCmd ($configureArgs -join " ")
 
 $build = """$CMake"" --build ""$buildDir"" --target install --parallel $Jobs"
 Invoke-VsCmd $build
+Sync-InstalledRuntimePlugins $InstallPrefix
 
 Write-Host ""
 Write-Host "Scholia standalone install complete." -ForegroundColor Green

@@ -62,7 +62,31 @@ function Copy-DirectoryContents([string] $Source, [string] $Destination) {
         return
     }
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    Get-ChildItem -LiteralPath $Source -Force | Copy-Item -Destination $Destination -Recurse -Force
+    Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force
+    }
+}
+
+function Remove-DirectoryInside([string] $Path, [string] $AllowedRoot) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if (!$full.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove directory outside $allowed`: $full"
+    }
+    if (Test-Path -LiteralPath $full) {
+        Remove-Item -LiteralPath $full -Recurse -Force
+    }
+}
+
+function Copy-PluginFile([string] $SourceRoot, [string] $RelativePath, [string] $DestinationRoot) {
+    $source = Join-Path $SourceRoot $RelativePath
+    if (!(Test-Path -LiteralPath $source)) {
+        Write-Host "Skipping missing plugin: $RelativePath" -ForegroundColor DarkYellow
+        return
+    }
+    $destination = Join-Path $DestinationRoot $RelativePath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
 $QtPrefix = Find-QtPrefix $QtPrefix
@@ -87,9 +111,35 @@ Get-ChildItem -LiteralPath (Join-Path $SdkPrefix "bin") -Filter "*.dll" -File |
 Write-Host "Copying SDK runtime data..."
 Copy-DirectoryContents (Join-Path $SdkPrefix "bin\data") (Join-Path $binDir "data")
 
-Write-Host "Copying SDK plugins..."
-Copy-DirectoryContents (Join-Path $SdkPrefix "lib\plugins") (Join-Path $InstallPrefix "plugins")
-Copy-DirectoryContents (Join-Path $InstallPrefix "plugins") (Join-Path $binDir "plugins")
+Write-Host "Preparing runtime plugins..."
+$runtimePluginsDir = Join-Path $binDir "plugins"
+$stagedPluginsDir = Join-Path $InstallPrefix ".runtime-plugins-staging"
+Remove-DirectoryInside $stagedPluginsDir $InstallPrefix
+
+$sdkPluginsDir = Join-Path $SdkPrefix "lib\plugins"
+foreach ($plugin in @(
+    "kf6\kio\kio_file.dll",
+    "kiconthemes6\iconengines\KIconEnginePlugin.dll"
+)) {
+    Copy-PluginFile $sdkPluginsDir $plugin $stagedPluginsDir
+}
+
+$installedPluginsDir = Join-Path $InstallPrefix "plugins"
+if (Test-Path -LiteralPath $installedPluginsDir) {
+    Copy-DirectoryContents $installedPluginsDir $stagedPluginsDir
+} else {
+    foreach ($plugin in @(
+        "kf6\parts\okularpart.dll",
+        "okular_generators\okularGenerator_poppler.dll"
+    )) {
+        Copy-PluginFile $runtimePluginsDir $plugin $stagedPluginsDir
+    }
+}
+
+Remove-DirectoryInside $runtimePluginsDir $InstallPrefix
+Move-Item -LiteralPath $stagedPluginsDir -Destination $runtimePluginsDir
+Remove-DirectoryInside $installedPluginsDir $InstallPrefix
+Remove-DirectoryInside (Join-Path $InstallPrefix "lib\plugins") $InstallPrefix
 
 Write-Host "Removing stale Qt runtime DLLs..."
 Get-ChildItem -LiteralPath $binDir -Filter "Qt6*.dll" -File -ErrorAction SilentlyContinue |
@@ -116,6 +166,9 @@ foreach ($dll in @(
         throw "Required Qt runtime DLL is missing from QtPrefix: $source"
     }
 }
+
+Remove-DirectoryInside (Join-Path $InstallPrefix "plugins") $InstallPrefix
+Remove-DirectoryInside (Join-Path $InstallPrefix "lib\plugins") $InstallPrefix
 
 Write-Host ""
 Write-Host "Runtime deployment complete." -ForegroundColor Green
