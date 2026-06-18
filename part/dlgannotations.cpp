@@ -28,6 +28,26 @@ QString stemTeXLightHtml(bool ok)
 {
     return QStringLiteral("<span style=\"color:%1;font-size:14px;\">&#9679;</span>").arg(ok ? QStringLiteral("#179c48") : QStringLiteral("#c62828"));
 }
+
+QString stemTeXStageText(const GuiUtils::StemTeXStatus &status)
+{
+    // Mirrors StemTeXRenderStage in stemtex_renderer.h.
+    switch (status.renderStage) {
+    case 1:
+        return i18nc("@info Config dialog, annotations page, StemTeX engine status", "latest request queued");
+    case 2:
+        return i18nc("@info Config dialog, annotations page, StemTeX engine status", "XeTeX typesetting");
+    case 3:
+        return i18nc("@info Config dialog, annotations page, StemTeX engine status", "xdvipdfmx converting PDF");
+    case 4:
+        return i18nc("@info Config dialog, annotations page, StemTeX engine status", "worker rebuilding");
+    case 5:
+        return i18nc("@info Config dialog, annotations page, StemTeX engine status", "renderer stopping");
+    case 0:
+    default:
+        return i18nc("@info Config dialog, annotations page, StemTeX engine status", "idle");
+    }
+}
 }
 
 DlgAnnotations::DlgAnnotations(QWidget *parent)
@@ -147,8 +167,21 @@ void DlgAnnotations::refreshStemTeXStatus()
     }
 
     QString note = status.note;
-    if (note.isEmpty() && status.spareRebuilding) {
-        note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "rebuilding");
+    if (note.isEmpty() && status.ready) {
+        note = stemTeXStageText(status);
+    }
+    if (status.asyncRunning) {
+        note += i18nc("@info Config dialog, annotations page, StemTeX engine status", ", running job %1", QString::number(status.runningJobId));
+    }
+    if (status.asyncPending) {
+        note += i18nc("@info Config dialog, annotations page, StemTeX engine status", ", pending job %1", QString::number(status.pendingJobId));
+    }
+    if (status.spareRebuilding) {
+        if (note.isEmpty()) {
+            note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "rebuilding");
+        } else {
+            note += i18nc("@info Config dialog, annotations page, StemTeX engine status", ", rebuilding spare");
+        }
     } else if (note.isEmpty() && status.initializing) {
         note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "starting");
     } else if (note.isEmpty() && status.ready && status.primaryReady && status.spareReady >= qMin(2, spareTarget)) {

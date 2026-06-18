@@ -38,6 +38,11 @@ struct StemTeXStatus {
     int spareTarget = 0;
     bool spareRebuilding = false;
     int rendererStatus = 0;
+    int renderStage = 0;
+    bool asyncRunning = false;
+    bool asyncPending = false;
+    quint64 runningJobId = 0;
+    quint64 pendingJobId = 0;
     int lastError = 0;
     QString note;
 };

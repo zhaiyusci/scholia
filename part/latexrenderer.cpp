@@ -666,10 +666,15 @@ struct StemTeXRenderResult {
 
 struct StemTeXEngineSnapshot {
     int status;
+    int stage;
     int primary_ready;
     int spare_ready;
     int spare_target;
     int spare_rebuilding;
+    int async_running;
+    int async_pending;
+    uint64_t running_job_id;
+    uint64_t pending_job_id;
     int last_error;
 };
 
@@ -1027,10 +1032,15 @@ private:
 
         status.ready = true;
         status.rendererStatus = snapshot.status;
+        status.renderStage = snapshot.stage;
         status.primaryReady = snapshot.primary_ready != 0;
         status.spareReady = qMax(0, snapshot.spare_ready);
         status.spareTarget = qMax(0, snapshot.spare_target);
         status.spareRebuilding = snapshot.spare_rebuilding != 0;
+        status.asyncRunning = snapshot.async_running != 0;
+        status.asyncPending = snapshot.async_pending != 0;
+        status.runningJobId = snapshot.running_job_id;
+        status.pendingJobId = snapshot.pending_job_id;
         status.lastError = snapshot.last_error;
         return status;
     }
