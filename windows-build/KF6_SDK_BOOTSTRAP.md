@@ -55,3 +55,20 @@ The intended next steps are:
 3. Configure Scholia with `CMAKE_PREFIX_PATH=<QtPrefix>;..\windows_build\sdk`.
 4. Update staging to copy Scholia artifacts from the standalone install prefix,
    using Craft only as a temporary fallback for DLL dependencies.
+
+## Build One KF6 Module
+
+After ECM is installed, build individual stable KF6 modules with:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-kf6-module.ps1 `
+  -Module kcoreaddons
+```
+
+The script uses the same default stable version, `v6.27.0`, and records
+installed modules in:
+
+```text
+..\windows_build\sdk\scholia-sdk-modules.json
+```
