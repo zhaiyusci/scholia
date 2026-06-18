@@ -72,3 +72,20 @@ installed modules in:
 ```text
 ..\windows_build\sdk\scholia-sdk-modules.json
 ```
+
+Some KF6 modules need third-party C libraries. Build zlib into the SDK with:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-zlib-sdk.ps1
+```
+
+For example, `KArchive` can then be built with the nonessential compression and
+crypto backends disabled:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-kf6-module.ps1 `
+  -Module karchive `
+  -ExtraCMakeArgs -DWITH_BZIP2=OFF,-DWITH_LIBLZMA=OFF,-DWITH_OPENSSL=OFF,-DWITH_LIBZSTD=OFF
+```
