@@ -23,6 +23,8 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFileOpenEvent>
+#include <QDir>
+#include <QDebug>
 #include <QObject>
 #include <QStringList>
 #include <QTextStream>
@@ -75,6 +77,24 @@ int main(int argc, char **argv)
     QCoreApplication::setAttribute(Qt::AA_CompressTabletEvents);
 
     QApplication app(argc, argv);
+
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString prefixDir = QDir(appDir).absoluteFilePath(QStringLiteral(".."));
+    QStringList libraryPaths = QCoreApplication::libraryPaths();
+    const QStringList scholiaPluginPaths = {
+        QDir(appDir).absoluteFilePath(QStringLiteral("plugins")),
+        QDir(prefixDir).absoluteFilePath(QStringLiteral("plugins")),
+        QDir(prefixDir).absoluteFilePath(QStringLiteral("lib/plugins")),
+    };
+    for (const QString &pluginPath : scholiaPluginPaths) {
+        if (QDir(pluginPath).exists() && !libraryPaths.contains(pluginPath)) {
+            libraryPaths.prepend(pluginPath);
+        }
+    }
+    QCoreApplication::setLibraryPaths(libraryPaths);
+    if (qEnvironmentVariableIsSet("SCHOLIA_DEBUG_PLUGIN_PATHS")) {
+        qDebug() << "Scholia plugin search paths:" << QCoreApplication::libraryPaths();
+    }
 
     /**
      * Install event filter to handle macOS file opening.
