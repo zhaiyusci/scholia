@@ -947,6 +947,16 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
             return true;
         }
 
+        const bool clearingPendingPreview = m_hasPendingLatexResizePreview && m_pendingLatexResizeAnnotationUniqueName == resizeUpdate.annotationUniqueName;
+        if (clearingPendingPreview && m_focusedAnnotation.isValid() && m_focusedAnnotation.pageNumber == resizeUpdate.pageNumber && m_focusedAnnotation.annotation
+            && m_focusedAnnotation.annotation->uniqueName() == resizeUpdate.annotationUniqueName) {
+            updateViewport(m_focusedAnnotation);
+        }
+        if (clearingPendingPreview) {
+            m_hasPendingLatexResizePreview = false;
+            m_pendingLatexResizeAnnotationUniqueName.clear();
+        }
+
         GuiUtils::LatexRenderWarning warning;
         const bool ok = applyLatexResizeUpdate(m_document, resizeUpdate, rendered, &warning);
         if (m_focusedAnnotation.isValid() && m_focusedAnnotation.pageNumber == resizeUpdate.pageNumber && m_focusedAnnotation.annotation
@@ -977,6 +987,11 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
     if (!update.needsRender) {
         return finishResize(update, nullptr);
     }
+
+    m_pendingLatexResizeAnnotationUniqueName = update.annotationUniqueName;
+    m_pendingLatexResizePreviewRect = update.resizedRect;
+    m_hasPendingLatexResizePreview = true;
+    updateViewport(ad);
 
     QPointer<MouseAnnotation> self(this);
     std::thread([self, requestId, update, finishResize]() mutable {
@@ -1084,6 +1099,7 @@ MouseAnnotation::MouseAnnotation(PageView *parent, Okular::Document *document)
     , m_hasLatexResizeLayoutRect(false)
     , m_latexRenderWarningAnnotation(nullptr)
     , m_latexResizeRequestId(0)
+    , m_hasPendingLatexResizePreview(false)
 {
     m_resizeHandleList << RH_Left << RH_Right << RH_Top << RH_Bottom << RH_TopLeft << RH_TopRight << RH_BottomLeft << RH_BottomRight;
 }
@@ -1551,6 +1567,13 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
             m_previewBoundingRect = m_originalBoundingRect;
             m_hasPreviewBoundingRect = m_hasOriginalBoundingRect;
         }
+        if (LatexNoteUtils::annotationIsLatex(m_focusedAnnotation.annotation) && m_hasPendingLatexResizePreview
+            && m_focusedAnnotation.annotation->uniqueName() == m_pendingLatexResizeAnnotationUniqueName) {
+            m_latexResizeLayoutRect = m_pendingLatexResizePreviewRect;
+            m_hasLatexResizeLayoutRect = true;
+            m_previewBoundingRect = m_pendingLatexResizePreviewRect;
+            m_hasPreviewBoundingRect = true;
+        }
         m_focusedAnnotation.annotation->setFlags(m_focusedAnnotation.annotation->flags() | Okular::Annotation::BeingResized);
         logLatexCalloutInteraction("enter-resizing", m_focusedAnnotation.annotation, {QStringLiteral("handle: %1").arg(int(m_handle))});
         updateViewport(m_focusedAnnotation);
@@ -1559,6 +1582,8 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
         m_focusedAnnotation = ad;
         if (previousFocusedAnnotation && previousFocusedAnnotation != m_focusedAnnotation.annotation) {
             clearLatexRenderWarning();
+            m_hasPendingLatexResizePreview = false;
+            m_pendingLatexResizeAnnotationUniqueName.clear();
         }
         m_hasOriginalBoundingRect = false;
         m_hasPreviewBoundingRect = false;
@@ -1586,6 +1611,8 @@ void MouseAnnotation::setState(MouseAnnotationState state, const AnnotationDescr
         m_linePointHandleIndex = -1;
         m_hasLatexResizeLayoutRect = false;
         clearLatexRenderWarning();
+        m_hasPendingLatexResizePreview = false;
+        m_pendingLatexResizeAnnotationUniqueName.clear();
     }
 
     /* qDebug() << "setState: enter " << state; */
@@ -1954,6 +1981,9 @@ QRect MouseAnnotation::controlGeometryForInteraction(const AnnotationDescription
     if (m_focusedAnnotation == ad) {
         if (LatexNoteUtils::annotationIsLatex(ad.annotation) && isResized() && m_hasLatexResizeLayoutRect) {
             return geometryForBoundingRect(ad, m_latexResizeLayoutRect);
+        }
+        if (LatexNoteUtils::annotationIsLatex(ad.annotation) && m_hasPendingLatexResizePreview && ad.annotation->uniqueName() == m_pendingLatexResizeAnnotationUniqueName) {
+            return geometryForBoundingRect(ad, m_pendingLatexResizePreviewRect);
         }
         if (m_hasPreviewBoundingRect) {
             return geometryForBoundingRect(ad, m_previewBoundingRect);

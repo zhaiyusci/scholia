@@ -42,6 +42,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <QThread>
 
 #include "gui/debug_ui.h"
 #include "settings.h"
@@ -737,12 +738,12 @@ public:
 
     static void prewarm()
     {
-        (void)sharedSession(false, nullptr);
+        (void)sharedSession(false, false, nullptr);
     }
 
-    static StemtexRendererSession *instance(QString *error)
+    static StemtexRendererSession *instance(QString *error, bool waitForInitialization = false)
     {
-        return sharedSession(true, error);
+        return sharedSession(true, waitForInitialization, error);
     }
 
     static StemTeXStatus sharedStatus()
@@ -874,6 +875,7 @@ public:
 private:
     struct SharedState {
         std::mutex mutex;
+        std::condition_variable condition;
         std::unique_ptr<StemtexRendererSession> session;
         bool initializing = false;
         bool attempted = false;
@@ -887,46 +889,67 @@ private:
     {
     }
 
-    static StemtexRendererSession *sharedSession(bool reportStarting, QString *error)
+    static StemtexRendererSession *sharedSession(bool reportStarting, bool waitForInitialization, QString *error)
     {
         SharedState &state = sharedState();
+        bool startInitialization = false;
 
         {
-            std::lock_guard<std::mutex> guard(state.mutex);
+            std::unique_lock<std::mutex> guard(state.mutex);
             if (state.session) {
                 return state.session.get();
             }
-            if (state.initializing) {
+            if (!state.initializing && !state.attempted) {
+                state.initializing = true;
+                startInitialization = true;
+            } else if (state.initializing && !waitForInitialization) {
                 if (error && reportStarting) {
                     *error = i18n("StemTeX renderer is still starting.");
                 }
                 return nullptr;
-            }
-            if (state.attempted) {
+            } else if (state.attempted) {
                 if (error) {
                     *error = state.lastError;
                 }
                 return nullptr;
             }
-            state.initializing = true;
         }
 
-        std::thread([]() {
-            QString initError;
-            std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtimeRoot(), rendererDllPath()));
-            const bool ok = created->initialize(&initError);
+        if (startInitialization) {
+            std::thread([]() {
+                QString initError;
+                std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtimeRoot(), rendererDllPath()));
+                const bool ok = created->initialize(&initError);
 
-            SharedState &state = sharedState();
-            std::lock_guard<std::mutex> guard(state.mutex);
-            if (ok) {
-                state.session = std::move(created);
-                state.lastError.clear();
-            } else {
-                state.lastError = initError;
+                SharedState &state = sharedState();
+                {
+                    std::lock_guard<std::mutex> guard(state.mutex);
+                    if (ok) {
+                        state.session = std::move(created);
+                        state.lastError.clear();
+                    } else {
+                        state.lastError = initError;
+                    }
+                    state.initializing = false;
+                    state.attempted = true;
+                }
+                state.condition.notify_all();
+            }).detach();
+        }
+
+        if (waitForInitialization) {
+            std::unique_lock<std::mutex> guard(state.mutex);
+            state.condition.wait(guard, [&state]() {
+                return !state.initializing;
+            });
+            if (state.session) {
+                return state.session.get();
             }
-            state.initializing = false;
-            state.attempted = true;
-        }).detach();
+            if (error) {
+                *error = state.lastError;
+            }
+            return nullptr;
+        }
 
         if (error && reportStarting) {
             *error = i18n("StemTeX renderer is starting.");
@@ -1353,7 +1376,8 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
                           QStringLiteral("max width: %1").arg(maxWidth),
                           QStringLiteral("source length: %1").arg(latexSource.size())});
         QString stemtexError;
-        StemtexRendererSession *session = StemtexRendererSession::instance(&stemtexError);
+        const bool waitForStemTeXStartup = QCoreApplication::instance() && QThread::currentThread() != QCoreApplication::instance()->thread();
+        StemtexRendererSession *session = StemtexRendererSession::instance(&stemtexError, waitForStemTeXStartup);
         if (!session) {
             pdfFileName->clear();
             latexOutput = stemtexError.isEmpty() ? i18n("StemTeX renderer is not available.") : stemtexError;

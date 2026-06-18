@@ -21,6 +21,7 @@
 #define _OKULAR_PAGEVIEWMOUSEANNOTATION_H_
 
 #include <QObject>
+#include <QString>
 
 #include "core/annotations.h"
 #include "latexrenderer.h"
@@ -206,6 +207,9 @@ private:
     Okular::Annotation *m_latexRenderWarningAnnotation;
     GuiUtils::LatexRenderWarning m_latexRenderWarning;
     quint64 m_latexResizeRequestId;
+    QString m_pendingLatexResizeAnnotationUniqueName;
+    Okular::NormalizedRect m_pendingLatexResizePreviewRect;
+    bool m_hasPendingLatexResizePreview;
 
     QList<ResizeHandle> m_resizeHandleList;
 };
