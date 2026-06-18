@@ -75,7 +75,9 @@ function Find-QtPrefix([string] $RequestedPrefix) {
 function Invoke-VsCmd([string] $Command) {
     Write-Host ""
     Write-Host ">>> $Command" -ForegroundColor Cyan
-    & cmd.exe /d /s /c "call ""$VcVars"" >nul && $Command"
+    $qtBin = Join-Path $script:QtPrefix "bin"
+    $sdkBin = Join-Path $script:SdkPrefix "bin"
+    & cmd.exe /d /s /c "call ""$VcVars"" >nul && set ""PATH=$qtBin;$sdkBin;%PATH%"" && $Command"
     if ($LASTEXITCODE -ne 0) {
         throw "Command failed with exit code $LASTEXITCODE"
     }
