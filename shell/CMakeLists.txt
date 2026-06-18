@@ -18,10 +18,14 @@ set(scholia_SRCS
    shell.qrc
 )
 
+if(WIN32)
+    list(APPEND scholia_SRCS ../icons/scholia.rc)
+endif()
+
 ki18n_wrap_ui(scholia_SRCS
     welcomescreen.ui)
 
-file(GLOB ICONS_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/../icons/*-apps-okular.png")
+file(GLOB ICONS_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/../icons/*-apps-scholia.png")
 ecm_add_app_icon(scholia_SRCS ICONS ${ICONS_SRCS})
 
 add_executable(scholia ${scholia_SRCS})

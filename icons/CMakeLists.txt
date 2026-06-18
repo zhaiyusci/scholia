@@ -1,1 +1,1 @@
-ecm_install_icons( ICONS 128-apps-okular.png  16-apps-okular.png  22-apps-okular.png  32-apps-okular.png  48-apps-okular.png  64-apps-okular.png DESTINATION ${KDE_INSTALL_ICONDIR} THEME hicolor )
+ecm_install_icons( ICONS 128-apps-scholia.png  16-apps-scholia.png  22-apps-scholia.png  256-apps-scholia.png  32-apps-scholia.png  48-apps-scholia.png  64-apps-scholia.png DESTINATION ${KDE_INSTALL_ICONDIR} THEME hicolor )
