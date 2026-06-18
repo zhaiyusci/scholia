@@ -877,9 +877,9 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->annotator = parent;
 
     // toolbar visibility actions
-    d->aToolBarVisibility = new KToggleAction(QIcon::fromTheme(QStringLiteral("draw-freehand")), i18n("&Annotations"), this);
+    d->aToolBarVisibility = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-freehand.svg")), i18n("&Annotations"), this);
     d->aHideToolBar = new QAction(QIcon::fromTheme(QStringLiteral("dialog-close")), i18nc("@action:intoolbar Hide the toolbar", "Hide"), this);
-    d->aShowToolBar = new QAction(QIcon::fromTheme(QStringLiteral("draw-freehand")), i18nc("@action:intoolbar Show the builtin annotation toolbar", "Show more annotation tools"), this);
+    d->aShowToolBar = new QAction(d->scholiaIcon(QStringLiteral("annotation-freehand.svg")), i18nc("@action:intoolbar Show the builtin annotation toolbar", "Show more annotation tools"), this);
 
     // Text markup actions
     KToggleAction *aHighlighter = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-highlight.svg")), i18nc("@action:intoolbar Annotation tool", "Highlighter"), this);
@@ -887,18 +887,18 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     KToggleAction *aSquiggle = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-squiggle.svg")), i18nc("@action:intoolbar Annotation tool", "Squiggle"), this);
     KToggleAction *aStrikeout = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-strikeout.svg")), i18nc("@action:intoolbar Annotation tool", "Strike Out"), this);
     // Notes actions
-    KToggleAction *aTypewriter = new KToggleAction(d->toolIcon(QStringLiteral("typewriter")), i18nc("@action:intoolbar Annotation tool", "Typewriter"), this);
-    KToggleAction *aInlineNote = new KToggleAction(d->toolIcon(QStringLiteral("note-inline")), i18nc("@action:intoolbar Annotation tool", "Inline Note"), this);
-    KToggleAction *aPopupNote = new KToggleAction(d->toolIcon(QStringLiteral("note-linked")), i18nc("@action:intoolbar Annotation tool", "Popup Note"), this);
-    KToggleAction *aCallout = new KToggleAction(d->toolIcon(QStringLiteral("note-callout")), i18nc("@action:intoolbar Annotation tool", "Callout"), this);
-    KToggleAction *aFreehandLine = new KToggleAction(d->toolIcon(QStringLiteral("ink")), i18nc("@action:intoolbar Annotation tool", "Freehand Line"), this);
+    KToggleAction *aTypewriter = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-typewriter.svg")), i18nc("@action:intoolbar Annotation tool", "Typewriter"), this);
+    KToggleAction *aInlineNote = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-inline-note.svg")), i18nc("@action:intoolbar Annotation tool", "Inline Note"), this);
+    KToggleAction *aPopupNote = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-popup-note.svg")), i18nc("@action:intoolbar Annotation tool", "Popup Note"), this);
+    KToggleAction *aCallout = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-callout.svg")), i18nc("@action:intoolbar Annotation tool", "Callout"), this);
+    KToggleAction *aFreehandLine = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-freehand.svg")), i18nc("@action:intoolbar Annotation tool", "Freehand Line"), this);
     // Geometrical shapes actions
-    KToggleAction *aStraightLine = new KToggleAction(d->toolIcon(QStringLiteral("straight-line")), i18nc("@action:intoolbar Annotation tool", "Straight line"), this);
-    KToggleAction *aArrow = new KToggleAction(d->toolIcon(QStringLiteral("straight-line"), QStringLiteral("Arrow")), i18nc("@action:intoolbar Annotation tool", "Arrow"), this);
-    KToggleAction *aRectangle = new KToggleAction(d->toolIcon(QStringLiteral("rectangle")), i18nc("@action:intoolbar Annotation tool", "Rectangle"), this);
-    KToggleAction *aEllipse = new KToggleAction(d->toolIcon(QStringLiteral("ellipse")), i18nc("@action:intoolbar Annotation tool", "Ellipse"), this);
-    KToggleAction *aPolygon = new KToggleAction(d->toolIcon(QStringLiteral("polygon")), i18nc("@action:intoolbar Annotation tool", "Polygon"), this);
-    d->aGeomShapes = new ToggleActionMenu(d->toolIcon(QStringLiteral("straight-line"), QStringLiteral("Arrow")), i18nc("@action", "Geometrical shapes"), this);
+    KToggleAction *aStraightLine = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-straight-line.svg")), i18nc("@action:intoolbar Annotation tool", "Straight line"), this);
+    KToggleAction *aArrow = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-arrow.svg")), i18nc("@action:intoolbar Annotation tool", "Arrow"), this);
+    KToggleAction *aRectangle = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-rectangle.svg")), i18nc("@action:intoolbar Annotation tool", "Rectangle"), this);
+    KToggleAction *aEllipse = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-ellipse.svg")), i18nc("@action:intoolbar Annotation tool", "Ellipse"), this);
+    KToggleAction *aPolygon = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-polygon.svg")), i18nc("@action:intoolbar Annotation tool", "Polygon"), this);
+    d->aGeomShapes = new ToggleActionMenu(d->scholiaIcon(QStringLiteral("annotation-arrow.svg")), i18nc("@action", "Geometrical shapes"), this);
     d->aGeomShapes->setEnabled(true); // Need to explicitly set this once, or refreshActions() in part.cpp will disable this action
     d->aGeomShapes->setPopupMode(QToolButton::MenuButtonPopup);
     d->aGeomShapes->addAction(aArrow);
@@ -931,7 +931,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->textTools.append(aStrikeout);
 
     // Stamp action
-    d->aStamp = new ToggleActionMenu(d->toolIcon(QStringLiteral("stamp")), i18nc("@action", "Stamp"), this);
+    d->aStamp = new ToggleActionMenu(d->scholiaIcon(QStringLiteral("annotation-stamp.svg")), i18nc("@action", "Stamp"), this);
     d->aStamp->setPopupMode(QToolButton::MenuButtonPopup);
     for (const auto &stamp : StampAnnotationWidget::defaultStamps()) {
         KToggleAction *ann = new KToggleAction(d->stampIcon(stamp.second), stamp.first, this);
@@ -977,7 +977,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     // Quick annotations action
     d->aQuickTools = new ToggleActionMenu(i18nc("@action:intoolbar Show list of quick annotation tools", "Quick Annotations"), this);
     d->aQuickTools->setPopupMode(QToolButton::MenuButtonPopup);
-    d->aQuickTools->setIcon(QIcon::fromTheme(QStringLiteral("draw-freehand")));
+    d->aQuickTools->setIcon(d->scholiaIcon(QStringLiteral("annotation-quick-tools.svg")));
     d->aQuickTools->setToolTip(i18nc("@info:tooltip", "Choose an annotation tool from the quick annotations"));
     d->aQuickTools->setEnabled(true); // required to ensure that populateQuickAnnotations is executed the first time
     // set the triggered quick annotation as default action (but avoid setting 'Configure...' as default action)
@@ -1011,7 +1011,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
 
     // Constrain angle action
     d->aConstrainRatioAndAngle =
-        new KToggleAction(QIcon::fromTheme(QStringLiteral("snap-angle")), i18nc("@action When checked, line annotations are constrained to 15° steps, shape annotations to 1:1 ratio", "Constrain Ratio and Angle of Annotation Tools"), this);
+        new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-constrain.svg")), i18nc("@action When checked, line annotations are constrained to 15° steps, shape annotations to 1:1 ratio", "Constrain Ratio and Angle of Annotation Tools"), this);
     d->aConstrainRatioAndAngle->setChecked(d->annotator->constrainRatioAndAngleActive());
 
     // Annotation settings actions
@@ -1022,7 +1022,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aAdvancedSettings = new QAction(d->scholiaIcon(QStringLiteral("annotation-advanced-settings.svg")), i18nc("@action:intoolbar Current annotation advanced settings", "Annotation Settings"), this);
 
     // Width list
-    d->aWidth = new KSelectAction(QIcon::fromTheme(QStringLiteral("edit-line-width")), i18nc("@action:intoolbar Current annotation config option", "Line width"), this);
+    d->aWidth = new KSelectAction(d->scholiaIcon(QStringLiteral("annotation-line-width.svg")), i18nc("@action:intoolbar Current annotation config option", "Line width"), this);
     d->aWidth->setToolBarMode(KSelectAction::MenuMode);
     for (auto width : d->widthStandardValues) {
         KToggleAction *ann = new KToggleAction(d->widthIcon(width), i18nc("@item:inlistbox", "Width %1", width), this);
