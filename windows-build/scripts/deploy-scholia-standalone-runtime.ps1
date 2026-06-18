@@ -1,0 +1,105 @@
+[CmdletBinding()]
+param(
+    [string] $QtPrefix = "",
+    [string] $SdkPrefix = "",
+    [string] $WorkspaceRoot = "",
+    [string] $InstallPrefix = "",
+    [string] $WinDeployQt = ""
+)
+
+$ErrorActionPreference = "Stop"
+
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
+if (!$WorkspaceRoot) {
+    $WorkspaceRoot = Join-Path (Split-Path -Parent $repoRoot) "windows_build"
+}
+$WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+if (!$SdkPrefix) {
+    $SdkPrefix = Join-Path $WorkspaceRoot "sdk"
+}
+$SdkPrefix = [System.IO.Path]::GetFullPath($SdkPrefix)
+if (!$InstallPrefix) {
+    $InstallPrefix = Join-Path $WorkspaceRoot "install\scholia"
+}
+$InstallPrefix = [System.IO.Path]::GetFullPath($InstallPrefix)
+
+function Resolve-CommandPath([string] $Name, [string[]] $Candidates) {
+    foreach ($candidate in $Candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            return [System.IO.Path]::GetFullPath($candidate)
+        }
+    }
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    throw "Cannot find $Name. Pass an explicit path with the matching parameter."
+}
+
+function Find-QtPrefix([string] $RequestedPrefix) {
+    $candidates = @()
+    if ($RequestedPrefix) {
+        $candidates += $RequestedPrefix
+    }
+    if ($env:QTDIR) {
+        $candidates += $env:QTDIR
+    }
+    if (Test-Path -LiteralPath "C:\Qt") {
+        $candidates += Get-ChildItem -LiteralPath "C:\Qt" -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName "msvc2022_64" }
+    }
+    foreach ($candidate in ($candidates | Where-Object { $_ } | Select-Object -Unique)) {
+        $full = [System.IO.Path]::GetFullPath($candidate)
+        if (Test-Path -LiteralPath (Join-Path $full "lib\cmake\Qt6\Qt6Config.cmake")) {
+            return $full
+        }
+    }
+    throw "Cannot find a Qt MSVC prefix. Pass -QtPrefix, for example C:\Qt\6.11.1\msvc2022_64."
+}
+
+function Copy-DirectoryContents([string] $Source, [string] $Destination) {
+    if (!(Test-Path -LiteralPath $Source)) {
+        return
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Get-ChildItem -LiteralPath $Source -Force | Copy-Item -Destination $Destination -Recurse -Force
+}
+
+$QtPrefix = Find-QtPrefix $QtPrefix
+$WinDeployQt = Resolve-CommandPath "windeployqt" @($WinDeployQt, (Join-Path $QtPrefix "bin\windeployqt.exe"))
+
+$binDir = Join-Path $InstallPrefix "bin"
+$exe = Join-Path $binDir "scholia.exe"
+if (!(Test-Path -LiteralPath $exe)) {
+    throw "Cannot find installed Scholia executable: $exe. Run build-scholia-standalone.ps1 first."
+}
+
+Write-Host "Scholia standalone runtime deploy" -ForegroundColor Green
+Write-Host "QtPrefix  : $QtPrefix"
+Write-Host "SdkPrefix : $SdkPrefix"
+Write-Host "Install   : $InstallPrefix"
+
+Write-Host ""
+Write-Host "Copying SDK DLLs..."
+Get-ChildItem -LiteralPath (Join-Path $SdkPrefix "bin") -Filter "*.dll" -File |
+    Copy-Item -Destination $binDir -Force
+
+Write-Host "Copying SDK runtime data..."
+Copy-DirectoryContents (Join-Path $SdkPrefix "bin\data") (Join-Path $binDir "data")
+
+Write-Host "Copying SDK plugins..."
+Copy-DirectoryContents (Join-Path $SdkPrefix "lib\plugins") (Join-Path $InstallPrefix "plugins")
+Copy-DirectoryContents (Join-Path $InstallPrefix "plugins") (Join-Path $binDir "plugins")
+
+Write-Host "Running windeployqt..."
+& $WinDeployQt --no-translations --no-system-d3d-compiler --no-opengl-sw $exe
+if ($LASTEXITCODE -ne 0) {
+    throw "windeployqt failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "Copying Qt runtime DLLs..."
+Get-ChildItem -LiteralPath (Join-Path $QtPrefix "bin") -Filter "Qt6*.dll" -File |
+    Copy-Item -Destination $binDir -Force
+
+Write-Host ""
+Write-Host "Runtime deployment complete." -ForegroundColor Green

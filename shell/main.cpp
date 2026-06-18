@@ -80,15 +80,20 @@ int main(int argc, char **argv)
 
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString prefixDir = QDir(appDir).absoluteFilePath(QStringLiteral(".."));
-    QStringList libraryPaths = QCoreApplication::libraryPaths();
     const QStringList scholiaPluginPaths = {
         QDir(appDir).absoluteFilePath(QStringLiteral("plugins")),
         QDir(prefixDir).absoluteFilePath(QStringLiteral("plugins")),
         QDir(prefixDir).absoluteFilePath(QStringLiteral("lib/plugins")),
     };
+    QStringList libraryPaths;
     for (const QString &pluginPath : scholiaPluginPaths) {
-        if (QDir(pluginPath).exists() && !libraryPaths.contains(pluginPath)) {
-            libraryPaths.prepend(pluginPath);
+        if (QDir(pluginPath).exists()) {
+            libraryPaths.append(pluginPath);
+        }
+    }
+    for (const QString &pluginPath : QCoreApplication::libraryPaths()) {
+        if (!libraryPaths.contains(pluginPath)) {
+            libraryPaths.append(pluginPath);
         }
     }
     QCoreApplication::setLibraryPaths(libraryPaths);
