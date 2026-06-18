@@ -9,12 +9,21 @@
 
 #include <QWidget>
 
+class QLabel;
+class QTimer;
+
 class DlgAnnotations : public QWidget
 {
     Q_OBJECT
 
 public:
     explicit DlgAnnotations(QWidget *parent = nullptr);
+
+private:
+    void refreshStemTeXStatus();
+
+    QLabel *m_stemTeXStatusLabel = nullptr;
+    QTimer *m_stemTeXStatusTimer = nullptr;
 };
 
 #endif

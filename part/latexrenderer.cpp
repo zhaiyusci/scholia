@@ -663,9 +663,19 @@ struct StemTeXRenderResult {
     char *summary_json_utf8;
 };
 
+struct StemTeXEngineSnapshot {
+    int status;
+    int primary_ready;
+    int spare_ready;
+    int spare_target;
+    int spare_rebuilding;
+    int last_error;
+};
+
 struct StemtexApi {
     using Create = void *(*)(const StemTeXConfig *, int *, char **);
     using Render = int (*)(void *, const char *, int, StemTeXRenderResult *, int *, char **);
+    using EngineSnapshot = int (*)(void *, StemTeXEngineSnapshot *);
     using FreeResult = void (*)(StemTeXRenderResult *);
     using FreeString = void (*)(char *);
     using Destroy = void (*)(void *);
@@ -673,6 +683,7 @@ struct StemtexApi {
     QLibrary library;
     Create create = nullptr;
     Render render = nullptr;
+    EngineSnapshot engineSnapshot = nullptr;
     FreeResult freeResult = nullptr;
     FreeString freeString = nullptr;
     Destroy destroy = nullptr;
@@ -693,10 +704,11 @@ struct StemtexApi {
 
         create = reinterpret_cast<Create>(library.resolve("stemtex_renderer_create"));
         render = reinterpret_cast<Render>(library.resolve("stemtex_renderer_render"));
+        engineSnapshot = reinterpret_cast<EngineSnapshot>(library.resolve("stemtex_renderer_engine_snapshot"));
         freeResult = reinterpret_cast<FreeResult>(library.resolve("stemtex_renderer_free_result"));
         freeString = reinterpret_cast<FreeString>(library.resolve("stemtex_renderer_free_string"));
         destroy = reinterpret_cast<Destroy>(library.resolve("stemtex_renderer_destroy"));
-        const bool ok = create && render && freeResult && freeString && destroy;
+        const bool ok = create && render && engineSnapshot && freeResult && freeString && destroy;
         if (!ok && error) {
             *error = QStringLiteral("stemtex-renderer.dll does not export the expected renderer ABI.");
         }
@@ -722,6 +734,27 @@ public:
     static StemtexRendererSession *instance(QString *error)
     {
         return sharedSession(true, error);
+    }
+
+    static StemTeXStatus sharedStatus()
+    {
+        StemTeXStatus status;
+        status.supported = true;
+        SharedState &state = sharedState();
+        std::lock_guard<std::mutex> guard(state.mutex);
+        if (state.session) {
+            return state.session->status();
+        }
+
+        status.initializing = state.initializing;
+        if (!state.lastError.isEmpty()) {
+            status.note = state.lastError;
+        } else if (state.initializing) {
+            status.note = i18n("StemTeX renderer is starting.");
+        } else if (!state.attempted) {
+            status.note = i18n("StemTeX renderer has not started yet.");
+        }
+        return status;
     }
 
     LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList)
@@ -821,6 +854,14 @@ public:
     }
 
 private:
+    struct SharedState {
+        std::mutex mutex;
+        std::unique_ptr<StemtexRendererSession> session;
+        bool initializing = false;
+        bool attempted = false;
+        QString lastError;
+    };
+
     StemtexRendererSession(QString runtimeRoot, QString dllPath)
         : m_runtimeRoot(std::move(runtimeRoot))
         , m_dllPath(std::move(dllPath))
@@ -830,14 +871,7 @@ private:
 
     static StemtexRendererSession *sharedSession(bool reportStarting, QString *error)
     {
-        struct SharedState {
-            std::mutex mutex;
-            std::unique_ptr<StemtexRendererSession> session;
-            bool initializing = false;
-            bool attempted = false;
-            QString lastError;
-        };
-        static SharedState state;
+        SharedState &state = sharedState();
 
         {
             std::lock_guard<std::mutex> guard(state.mutex);
@@ -864,6 +898,7 @@ private:
             std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtimeRoot(), rendererDllPath()));
             const bool ok = created->initialize(&initError);
 
+            SharedState &state = sharedState();
             std::lock_guard<std::mutex> guard(state.mutex);
             if (ok) {
                 state.session = std::move(created);
@@ -879,6 +914,12 @@ private:
             *error = i18n("StemTeX renderer is starting.");
         }
         return nullptr;
+    }
+
+    static SharedState &sharedState()
+    {
+        static SharedState state;
+        return state;
     }
 
     static QString runtimeRoot()
@@ -947,6 +988,32 @@ private:
 
         qCDebug(OkularUiDebug) << "StemTeX renderer initialized; runtime:" << m_runtimeRoot << "dll:" << m_dllPath;
         return true;
+    }
+
+    StemTeXStatus status()
+    {
+        StemTeXStatus status;
+        status.supported = true;
+        if (!m_renderer) {
+            status.note = i18n("StemTeX renderer is not initialized.");
+            return status;
+        }
+
+        StemTeXEngineSnapshot snapshot{};
+        if (!m_api.engineSnapshot(m_renderer, &snapshot)) {
+            status.ready = true;
+            status.note = i18n("StemTeX renderer status is unavailable.");
+            return status;
+        }
+
+        status.ready = true;
+        status.rendererStatus = snapshot.status;
+        status.primaryReady = snapshot.primary_ready != 0;
+        status.spareReady = qMax(0, snapshot.spare_ready);
+        status.spareTarget = qMax(0, snapshot.spare_target);
+        status.spareRebuilding = snapshot.spare_rebuilding != 0;
+        status.lastError = snapshot.last_error;
+        return status;
     }
 
     QString m_runtimeRoot;
@@ -1169,6 +1236,17 @@ void LatexRenderer::prewarmStemTeX()
 {
 #ifdef Q_OS_WIN
     StemtexRendererSession::prewarm();
+#endif
+}
+
+StemTeXStatus LatexRenderer::stemTeXStatus()
+{
+#ifdef Q_OS_WIN
+    return StemtexRendererSession::sharedStatus();
+#else
+    StemTeXStatus status;
+    status.note = i18n("StemTeX renderer is only available on Windows.");
+    return status;
 #endif
 }
 

@@ -6,6 +6,7 @@
 
 #include "dlgannotations.h"
 
+#include "latexrenderer.h"
 #include "widgetannottools.h"
 
 #include <KLocalizedString>
@@ -18,7 +19,16 @@
 #include <QPlainTextEdit>
 #include <QScrollArea>
 #include <QSpinBox>
+#include <QTimer>
 #include <QVBoxLayout>
+
+namespace
+{
+QString stemTeXLightHtml(bool ok)
+{
+    return QStringLiteral("<span style=\"color:%1;font-size:14px;\">&#9679;</span>").arg(ok ? QStringLiteral("#179c48") : QStringLiteral("#c62828"));
+}
+}
 
 DlgAnnotations::DlgAnnotations(QWidget *parent)
     : QWidget(parent)
@@ -88,6 +98,15 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     latexRenderBackend->setObjectName(QStringLiteral("kcfg_LatexRenderBackend"));
     layout->addRow(i18nc("@label:listbox Config dialog, annotations page", "LaTeX renderer:"), latexRenderBackend);
 
+    m_stemTeXStatusLabel = new QLabel(this);
+    m_stemTeXStatusLabel->setTextFormat(Qt::RichText);
+    layout->addRow(i18nc("@label Config dialog, annotations page", "StemTeX status:"), m_stemTeXStatusLabel);
+    m_stemTeXStatusTimer = new QTimer(this);
+    m_stemTeXStatusTimer->setInterval(500);
+    connect(m_stemTeXStatusTimer, &QTimer::timeout, this, &DlgAnnotations::refreshStemTeXStatus);
+    m_stemTeXStatusTimer->start();
+    refreshStemTeXStatus();
+
     QPlainTextEdit *latexPreamble = new QPlainTextEdit(this);
     latexPreamble->setObjectName(QStringLiteral("kcfg_LatexPreamble"));
     latexPreamble->setMinimumHeight(latexPreamble->fontMetrics().lineSpacing() * 7);
@@ -105,4 +124,40 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     kcfg_QuickAnnotationTools->setObjectName(QStringLiteral("kcfg_QuickAnnotationTools"));
     layout->addRow(kcfg_QuickAnnotationTools);
     // END Quick annotation tools section
+}
+
+void DlgAnnotations::refreshStemTeXStatus()
+{
+    if (!m_stemTeXStatusLabel) {
+        return;
+    }
+
+    const GuiUtils::StemTeXStatus status = GuiUtils::LatexRenderer::stemTeXStatus();
+    QString text;
+    if (!status.supported) {
+        text = stemTeXLightHtml(false) + QStringLiteral("<span style=\"color:transparent;font-size:14px;\">&#9679;</span>") + status.note.toHtmlEscaped();
+        m_stemTeXStatusLabel->setText(text);
+        return;
+    }
+
+    text += stemTeXLightHtml(status.primaryReady);
+    const int spareTarget = qMax(2, status.spareTarget);
+    for (int i = 0; i < spareTarget; ++i) {
+        text += stemTeXLightHtml(i < status.spareReady);
+    }
+
+    QString note = status.note;
+    if (note.isEmpty() && status.spareRebuilding) {
+        note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "rebuilding");
+    } else if (note.isEmpty() && status.initializing) {
+        note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "starting");
+    } else if (note.isEmpty() && status.ready && status.primaryReady && status.spareReady >= qMin(2, spareTarget)) {
+        note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "ready");
+    }
+
+    if (!note.isEmpty()) {
+        text += QStringLiteral("<span style=\"color:transparent;font-size:14px;\">&#9679;</span>");
+        text += note.toHtmlEscaped();
+    }
+    m_stemTeXStatusLabel->setText(text);
 }

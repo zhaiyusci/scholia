@@ -29,6 +29,19 @@ struct LatexRenderWarning {
     }
 };
 
+struct StemTeXStatus {
+    bool supported = false;
+    bool initializing = false;
+    bool ready = false;
+    bool primaryReady = false;
+    int spareReady = 0;
+    int spareTarget = 0;
+    bool spareRebuilding = false;
+    int rendererStatus = 0;
+    int lastError = 0;
+    QString note;
+};
+
 class LatexRenderer
 {
 public:
@@ -50,6 +63,7 @@ public:
     static QString defaultSourcePreamble();
     static QString compactErrorMessage(const QString &latexOutput);
     static void prewarmStemTeX();
+    static StemTeXStatus stemTeXStatus();
 
 private:
     enum class BodyMode { Math, Source };
