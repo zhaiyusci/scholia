@@ -103,3 +103,15 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
 This is a build-enabling shim, not a full gettext replacement. Swap it for a
 complete gettext/libintl build before treating translated runtime UI as covered
 by the standalone SDK.
+
+`Solid` needs flex and bison to generate its predicate parser. Install pinned
+winflexbison tools into the SDK with:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\install-winflexbison-sdk.ps1
+```
+
+The script installs `flex.exe` and `bison.exe` wrappers into
+`..\windows_build\sdk\bin`, so later KF6 module builds find them through the SDK
+PATH.
