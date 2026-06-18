@@ -12,6 +12,7 @@
 #include <cmath>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 
 #include <QDebug>
@@ -24,6 +25,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
@@ -39,6 +41,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <QTimer>
 
 #include "gui/debug_ui.h"
 #include "settings.h"
@@ -711,22 +714,14 @@ public:
         }
     }
 
+    static void prewarm()
+    {
+        (void)sharedSession(false, nullptr);
+    }
+
     static StemtexRendererSession *instance(QString *error)
     {
-        static std::mutex sessionMutex;
-        static std::unique_ptr<StemtexRendererSession> session;
-
-        std::lock_guard<std::mutex> guard(sessionMutex);
-        if (session) {
-            return session.get();
-        }
-
-        std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtimeRoot(), rendererDllPath()));
-        if (!created->initialize(error)) {
-            return nullptr;
-        }
-        session = std::move(created);
-        return session.get();
+        return sharedSession(true, error);
     }
 
     LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList)
@@ -748,46 +743,80 @@ public:
                                           .arg(latexSource);
         const QByteArray snippet = coloredSource.toUtf8();
 
-        StemTeXRenderResult result{};
-        int errorCode = 0;
-        char *error = nullptr;
-        int ok = 0;
-        {
-            std::lock_guard<std::mutex> guard(m_renderMutex);
-            ok = m_api.render(m_renderer, snippet.constData(), widthPt, &result, &errorCode, &error);
-        }
+        struct RenderState {
+            std::mutex mutex;
+            bool done = false;
+            int ok = 0;
+            int errorCode = 0;
+            QString errorText;
+            QString sourcePdfFile;
+            QString summary;
+        };
+        auto state = std::make_shared<RenderState>();
 
-        const QString errorText = error ? QString::fromUtf8(error) : QString();
-        if (error) {
-            m_api.freeString(error);
+        std::thread worker([this, snippet, widthPt, state]() {
+            StemTeXRenderResult result{};
+            int errorCode = 0;
+            char *error = nullptr;
+            int ok = 0;
+            {
+                std::lock_guard<std::mutex> guard(m_renderMutex);
+                ok = m_api.render(m_renderer, snippet.constData(), widthPt, &result, &errorCode, &error);
+            }
+
+            const QString errorText = error ? QString::fromUtf8(error) : QString();
+            if (error) {
+                m_api.freeString(error);
+            }
+            const QString sourcePdfFile = result.pdf_path_utf8 ? QString::fromUtf8(result.pdf_path_utf8) : QString();
+            const QString summary = result.summary_json_utf8 ? QString::fromUtf8(result.summary_json_utf8) : QString();
+            m_api.freeResult(&result);
+
+            std::lock_guard<std::mutex> guard(state->mutex);
+            state->ok = ok;
+            state->errorCode = errorCode;
+            state->errorText = errorText;
+            state->sourcePdfFile = sourcePdfFile;
+            state->summary = summary;
+            state->done = true;
+        });
+
+        QEventLoop waitLoop;
+        QTimer pollTimer;
+        pollTimer.setInterval(25);
+        QObject::connect(&pollTimer, &QTimer::timeout, &waitLoop, [&waitLoop, &state]() {
+            std::lock_guard<std::mutex> guard(state->mutex);
+            if (state->done) {
+                waitLoop.quit();
+            }
+        });
+        pollTimer.start();
+        waitLoop.exec();
+        worker.join();
+
+        int ok = 0;
+        int errorCode = 0;
+        QString errorText;
+        QString sourcePdfFile;
+        QString summary;
+        {
+            std::lock_guard<std::mutex> guard(state->mutex);
+            ok = state->ok;
+            errorCode = state->errorCode;
+            errorText = state->errorText;
+            sourcePdfFile = state->sourcePdfFile;
+            summary = state->summary;
         }
-        const QString sourcePdfFile = result.pdf_path_utf8 ? QString::fromUtf8(result.pdf_path_utf8) : QString();
-        const QString summary = result.summary_json_utf8 ? QString::fromUtf8(result.summary_json_utf8) : QString();
-        m_api.freeResult(&result);
 
         if (!ok || sourcePdfFile.isEmpty() || !QFileInfo::exists(sourcePdfFile)) {
             latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
             return LatexRenderer::LatexFailed;
         }
 
-        QTemporaryFile croppedFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("scholia_stemtex-XXXXXX.pdf")));
-        croppedFile.setAutoRemove(false);
-        if (!croppedFile.open()) {
-            latexOutput = i18n("Could not create a temporary PDF file for StemTeX output.");
-            return LatexRenderer::LatexFailed;
-        }
-        const QString croppedPdfFile = croppedFile.fileName();
-        croppedFile.close();
-        QFile::remove(croppedPdfFile);
-
         latexOutput = summary;
-        if (!cropPdfWithPdfcrop(sourcePdfFile, croppedPdfFile, latexOutput, fileList)) {
-            QFile::remove(croppedPdfFile);
-            return LatexRenderer::LatexFailed;
-        }
-
-        pdfFileName = croppedPdfFile;
-        qCDebug(OkularUiDebug) << "StemTeX render finished; source PDF:" << sourcePdfFile << "cropped PDF:" << pdfFileName << "summary:" << summary;
+        pdfFileName = sourcePdfFile;
+        fileList << sourcePdfFile;
+        qCDebug(OkularUiDebug) << "StemTeX render finished; PDF:" << pdfFileName << "summary:" << summary;
         return LatexRenderer::NoError;
     }
 
@@ -797,6 +826,59 @@ private:
         , m_dllPath(std::move(dllPath))
         , m_api(m_dllPath)
     {
+    }
+
+    static StemtexRendererSession *sharedSession(bool reportStarting, QString *error)
+    {
+        struct SharedState {
+            std::mutex mutex;
+            std::unique_ptr<StemtexRendererSession> session;
+            bool initializing = false;
+            bool attempted = false;
+            QString lastError;
+        };
+        static SharedState state;
+
+        {
+            std::lock_guard<std::mutex> guard(state.mutex);
+            if (state.session) {
+                return state.session.get();
+            }
+            if (state.initializing) {
+                if (error && reportStarting) {
+                    *error = i18n("StemTeX renderer is still starting.");
+                }
+                return nullptr;
+            }
+            if (state.attempted) {
+                if (error) {
+                    *error = state.lastError;
+                }
+                return nullptr;
+            }
+            state.initializing = true;
+        }
+
+        std::thread([]() {
+            QString initError;
+            std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtimeRoot(), rendererDllPath()));
+            const bool ok = created->initialize(&initError);
+
+            std::lock_guard<std::mutex> guard(state.mutex);
+            if (ok) {
+                state.session = std::move(created);
+                state.lastError.clear();
+            } else {
+                state.lastError = initError;
+            }
+            state.initializing = false;
+            state.attempted = true;
+        }).detach();
+
+        if (error && reportStarting) {
+            *error = i18n("StemTeX renderer is starting.");
+        }
+        return nullptr;
     }
 
     static QString runtimeRoot()
@@ -846,7 +928,7 @@ private:
         config.runtime_root_utf8 = runtime.constData();
         config.request_timeout_ms = 90000;
         config.xdvipdfmx_timeout_ms = 90000;
-        config.spare_worker_count = 1;
+        config.spare_worker_count = 2;
         config.delete_intermediates = 1;
 
         int errorCode = 0;
@@ -1083,6 +1165,13 @@ QString LatexRenderer::compactErrorMessage(const QString &latexOutput)
     return message;
 }
 
+void LatexRenderer::prewarmStemTeX()
+{
+#ifdef Q_OS_WIN
+    StemtexRendererSession::prewarm();
+#endif
+}
+
 LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput)
 {
     m_lastBackendName.clear();
@@ -1216,10 +1305,12 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
                        << fontSize << "pt]{article}\n"
                        << "\\usepackage[paper=a0paper,margin=0pt]{geometry}\n"
                        << effectiveSourcePreamble << "\n"
+                       << "\\usepackage[active,tightpage]{preview}\n"
                        << "\\pagestyle{empty}\n"
                           "\\setlength{\\parindent}{0pt}\n"
                           "\\begin{document}\n";
             tempStream << "\\thispagestyle{empty}\n";
+            tempStream << "\\begin{preview}\n";
             tempStream << "{\\color[rgb]{"
                        << textColor.redF()
                        << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
@@ -1251,8 +1342,11 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
                 tempStream << "\n\\end{minipage}%\n";
             }
         }
-        tempStream << "} \
-\\end{document}";
+        tempStream << "}";
+        if (renderSource) {
+            tempStream << "\n\\end{preview}\n";
+        }
+        tempStream << "\n\\end{document}";
         return true;
     };
 
@@ -1304,18 +1398,6 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
             }
             return LatexFailed;
         }
-
-        const QString croppedPdfFile = tempFileNameNS + QStringLiteral("-crop.pdf");
-        if (!cropPdfWithPdfcrop(temporaryPdfFile, croppedPdfFile, latexOutput, m_fileList)) {
-            QFile::remove(temporaryPdfFile);
-            fileName = QString();
-            if (pdfFileName) {
-                pdfFileName->clear();
-            }
-            return LatexFailed;
-        }
-        QFile::remove(temporaryPdfFile);
-        temporaryPdfFile = croppedPdfFile;
 
         if (resolution <= 0) {
             fileName.clear();

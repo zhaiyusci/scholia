@@ -23,6 +23,7 @@
 #include "part.h"
 
 #include "config-okular.h"
+#include "latexrenderer.h"
 
 // qt/kde includes
 #include <QApplication>
@@ -326,6 +327,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     // make sure that the component name is okular otherwise the XMLGUI .rc files are not found
     // when this part is used in an application other than okular (e.g. unit tests)
     setComponentName(QStringLiteral("okular"), QString());
+    GuiUtils::LatexRenderer::prewarmStemTeX();
 
     setupConfigSkeleton(args);
 

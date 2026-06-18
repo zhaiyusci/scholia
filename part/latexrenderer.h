@@ -49,6 +49,7 @@ public:
     static bool mightContainLatex(const QString &text);
     static QString defaultSourcePreamble();
     static QString compactErrorMessage(const QString &latexOutput);
+    static void prewarmStemTeX();
 
 private:
     enum class BodyMode { Math, Source };
