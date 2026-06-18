@@ -89,3 +89,17 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
   -Module karchive `
   -ExtraCMakeArgs -DWITH_BZIP2=OFF,-DWITH_LIBLZMA=OFF,-DWITH_OPENSSL=OFF,-DWITH_LIBZSTD=OFF
 ```
+
+`KI18n` needs a libintl-compatible development library and gettext command-line
+tools on Windows. The current SDK path provides a small compatibility shim that
+exports the gettext symbols needed by KI18n, plus minimal `msgfmt`/`msgmerge`
+tools, and falls back to untranslated source strings:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-libintl-shim-sdk.ps1
+```
+
+This is a build-enabling shim, not a full gettext replacement. Swap it for a
+complete gettext/libintl build before treating translated runtime UI as covered
+by the standalone SDK.
