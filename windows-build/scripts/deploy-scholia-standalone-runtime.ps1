@@ -91,15 +91,31 @@ Write-Host "Copying SDK plugins..."
 Copy-DirectoryContents (Join-Path $SdkPrefix "lib\plugins") (Join-Path $InstallPrefix "plugins")
 Copy-DirectoryContents (Join-Path $InstallPrefix "plugins") (Join-Path $binDir "plugins")
 
+Write-Host "Removing stale Qt runtime DLLs..."
+Get-ChildItem -LiteralPath $binDir -Filter "Qt6*.dll" -File -ErrorAction SilentlyContinue |
+    Remove-Item -Force
+
 Write-Host "Running windeployqt..."
 & $WinDeployQt --no-translations --no-system-d3d-compiler --no-opengl-sw $exe
 if ($LASTEXITCODE -ne 0) {
     throw "windeployqt failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "Copying Qt runtime DLLs..."
-Get-ChildItem -LiteralPath (Join-Path $QtPrefix "bin") -Filter "Qt6*.dll" -File |
-    Copy-Item -Destination $binDir -Force
+Write-Host "Copying indirect Qt runtime DLLs..."
+foreach ($dll in @(
+    "Qt6Qml.dll",
+    "Qt6QmlMeta.dll",
+    "Qt6QmlModels.dll",
+    "Qt6Quick.dll",
+    "Qt6OpenGL.dll"
+)) {
+    $source = Join-Path (Join-Path $QtPrefix "bin") $dll
+    if (Test-Path -LiteralPath $source) {
+        Copy-Item -LiteralPath $source -Destination $binDir -Force
+    } else {
+        throw "Required Qt runtime DLL is missing from QtPrefix: $source"
+    }
+}
 
 Write-Host ""
 Write-Host "Runtime deployment complete." -ForegroundColor Green
