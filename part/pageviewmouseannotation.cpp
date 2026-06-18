@@ -92,7 +92,7 @@ static QString annotationInteractionLogPath()
         logDir = QDir::tempPath();
     }
     QDir().mkpath(logDir);
-    return QDir(logDir).filePath(QStringLiteral("okular-tex-debug.log"));
+    return QDir(logDir).filePath(QStringLiteral("scholia-tex-debug.log"));
 }
 
 static void logLatexCalloutInteraction(const char *operation, const Okular::Annotation *annotation, const QStringList &details = QStringList())

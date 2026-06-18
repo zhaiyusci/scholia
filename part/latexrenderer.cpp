@@ -115,7 +115,7 @@ QString texInvocationLogPath()
         logDir = QDir::tempPath();
     }
     QDir().mkpath(logDir);
-    return QDir(logDir).filePath(QStringLiteral("okular-tex-debug.log"));
+    return QDir(logDir).filePath(QStringLiteral("scholia-tex-debug.log"));
 }
 
 void logTexInvocation(const char *operation, const QString &backend, const QString &reason, const QStringList &details = QStringList())
@@ -169,7 +169,7 @@ QString microtexResourceRoot()
         return envPath;
     }
 
-    const QString installedPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/microtex/res"), QStandardPaths::LocateDirectory);
+    const QString installedPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/microtex/res"), QStandardPaths::LocateDirectory);
     if (!installedPath.isEmpty()) {
         return installedPath;
     }
@@ -531,7 +531,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         const double width = qMax(1.0, std::ceil(paddedContentWidth));
         const double height = qMax(1.0, std::ceil(paddedContentHeight));
 
-        QTemporaryFile tempFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("okular_microtex-XXXXXX.pdf")));
+        QTemporaryFile tempFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("scholia_microtex-XXXXXX.pdf")));
         tempFile.setAutoRemove(false);
         if (!tempFile.open()) {
             latexOutput = i18n("Could not create a temporary PDF file for MicroTeX output.");
@@ -881,7 +881,7 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
         return renderWithMicrotex("configured-microtex");
     }
 
-    QTemporaryFile *tempFile = new QTemporaryFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("okular_kdelatex-XXXXXX.tex")));
+    QTemporaryFile *tempFile = new QTemporaryFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("scholia_kdelatex-XXXXXX.tex")));
     if (!tempFile->open()) {
         delete tempFile;
         return LatexNotFound;

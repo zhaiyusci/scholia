@@ -1739,7 +1739,7 @@ Okular::Document::PrintError PDFGenerator::print(QPrinter &printer)
     }
 
     // Create the tempfile to send to FilePrinter, which will manage the deletion
-    QTemporaryFile tf(QDir::tempPath() + QLatin1String("/okular_XXXXXX.ps"));
+    QTemporaryFile tf(QDir::tempPath() + QLatin1String("/scholia_XXXXXX.ps"));
     if (!tf.open()) {
         return Okular::Document::TemporaryFileOpenPrintError;
     }
@@ -2312,7 +2312,7 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
     std::unique_ptr<QTemporaryFile> timg;
 
     // save to tmp file - poppler doesn't like overwriting in-place
-    QTemporaryFile tf(QFileInfo(rFilename).absolutePath() + QLatin1String("/okular_XXXXXX.pdf"));
+    QTemporaryFile tf(QFileInfo(rFilename).absolutePath() + QLatin1String("/scholia_XXXXXX.pdf"));
     tf.setAutoRemove(false);
     if (!tf.open()) {
         return {Okular::SignatureWriteFailed, i18n("Failed writing temporary file")};
@@ -2339,7 +2339,7 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
         auto input = reader.read();
         if (!input.isNull()) {
             auto scaled = imagescaling::scaleAndFitCanvas(input, QSize(width, height));
-            timg = std::make_unique<QTemporaryFile>(QFileInfo(rFilename).absolutePath() + QLatin1String("/okular_XXXXXX.png"));
+            timg = std::make_unique<QTemporaryFile>(QFileInfo(rFilename).absolutePath() + QLatin1String("/scholia_XXXXXX.png"));
             timg->setAutoRemove(true);
             if (!timg->open()) {
                 tf.setAutoRemove(true);

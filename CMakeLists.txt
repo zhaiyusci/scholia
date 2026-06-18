@@ -143,7 +143,7 @@ if(OKULAR_ENABLE_MICROTEX)
     )
     set(OKULAR_MICROTEX_RES_DIR "${MICROTEX_SRC}/res")
     install(TARGETS LaTeX ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
-    install(DIRECTORY "${MICROTEX_SRC}/res" DESTINATION "${KDE_INSTALL_DATADIR}/okular/microtex")
+    install(DIRECTORY "${MICROTEX_SRC}/res" DESTINATION "${KDE_INSTALL_DATADIR}/scholia/microtex")
 endif()
 
 find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
@@ -714,7 +714,7 @@ install(EXPORT Okular6Targets DESTINATION "${CMAKECONFIG_INSTALL_DIR}" FILE Okul
 
 install(FILES
    core/stamps.svg
-   DESTINATION ${KDE_INSTALL_DATADIR}/okular/pics)
+   DESTINATION ${KDE_INSTALL_DATADIR}/scholia/pics)
 
 ########### summary #################
 

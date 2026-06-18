@@ -245,7 +245,7 @@ Shell::Shell(const QString &serializedOptions)
         connect(m_tabWidget->tabBar(), &QTabBar::tabMoved, this, &Shell::moveTabData);
 
         m_sidebar = new Sidebar;
-        m_sidebar->setObjectName(QStringLiteral("okular_sidebar"));
+        m_sidebar->setObjectName(QStringLiteral("scholia_sidebar"));
         m_sidebar->setContextMenuPolicy(Qt::ActionsContextMenu);
         m_sidebar->setWindowTitle(i18n("Sidebar"));
         connect(m_sidebar, &QDockWidget::visibilityChanged, this, [this](bool visible) {
@@ -617,7 +617,7 @@ void Shell::setupActions()
     m_undoCloseTab->setEnabled(false);
     connect(m_undoCloseTab, &QAction::triggered, this, &Shell::undoCloseTab);
 
-    m_lockSidebarAction = actionCollection()->addAction(QStringLiteral("okular_lock_sidebar"));
+    m_lockSidebarAction = actionCollection()->addAction(QStringLiteral("scholia_lock_sidebar"));
     m_lockSidebarAction->setCheckable(true);
     m_lockSidebarAction->setIcon(QIcon::fromTheme(QStringLiteral("lock")));
     m_lockSidebarAction->setText(i18n("Lock Sidebar"));
@@ -1191,8 +1191,8 @@ void Shell::triggerUpdateRecentItems(const int maxItems)
 
 void Shell::readRecentFilesSettings()
 {
-    // Read no. of max. recent items from okularpartrc, populate File->Open Recent menu-item as well as recentsListView on welcome screen
-    QString configFilePath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QLatin1Char('/') + QLatin1String("okularpartrc");
+    // Read no. of max. recent items from scholiarc, populate File->Open Recent menu-item as well as recentsListView on welcome screen
+    QString configFilePath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QLatin1Char('/') + QLatin1String("scholiarc");
     const KConfigGroup confgrp = KSharedConfig::openConfig(configFilePath).data()->group(QStringLiteral("General"));
     const int defaultMaxRecentItems = 10;
     int maxRecentItems = confgrp.readEntry<int>("MaxRecentItems", defaultMaxRecentItems);

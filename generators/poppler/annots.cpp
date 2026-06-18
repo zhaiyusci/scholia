@@ -1055,7 +1055,7 @@ static std::unique_ptr<Poppler::Annotation> createPopplerAnnotationFromOkularAnn
 {
     auto pSignatureAnnotation = std::make_unique<Poppler::SignatureAnnotation>();
 
-    auto helper = std::make_shared<SignatureImageHelper>(std::make_unique<QTemporaryFile>(QDir::tempPath() + QStringLiteral("/okular_signature_XXXXXXX.png")), oSignatureAnnotation->imagePath());
+    auto helper = std::make_shared<SignatureImageHelper>(std::make_unique<QTemporaryFile>(QDir::tempPath() + QStringLiteral("/scholia_signature_XXXXXXX.png")), oSignatureAnnotation->imagePath());
     helper->imageFile->setAutoRemove(true);
     if (!helper->imageFile->open()) {
         return {};

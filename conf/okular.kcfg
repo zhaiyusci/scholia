@@ -52,7 +52,7 @@
     <code>
       QStringList drawingTools;
       // load the default tool list from the 'xml tools definition' file
-      QFile infoDrawingFile( QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/drawingtools.xml")) );
+      QFile infoDrawingFile( QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/drawingtools.xml")) );
       if ( infoDrawingFile.exists() &amp;&amp; infoDrawingFile.open( QIODevice::ReadOnly ) )
       {
           QDomDocument doc;
@@ -90,7 +90,7 @@
     <code>
       QStringList builtinAnnotationTools;
       // load the default tool list from the 'xml tools definition' file
-      QFile infoFile( QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/tools.xml")) );
+      QFile infoFile( QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/tools.xml")) );
       if ( infoFile.exists() &amp;&amp; infoFile.open( QIODevice::ReadOnly ) )
       {
           QDomDocument doc;
@@ -129,7 +129,7 @@
     <code>
       QStringList quickAnnotationTools;
       // load the default tool list from the 'xml tools definition' file
-      QFile quickAnnFile( QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("okular/toolsQuick.xml")) );
+      QFile quickAnnFile( QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/toolsQuick.xml")) );
       if ( quickAnnFile.exists() &amp;&amp; quickAnnFile.open( QIODevice::ReadOnly ) )
       {
           QDomDocument doc;

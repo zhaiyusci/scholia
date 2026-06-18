@@ -114,7 +114,7 @@ QTemporaryDir *latexAppearanceSessionRoot()
 {
     static const std::unique_ptr<QTemporaryDir> sessionRoot = []() {
         const QString baseLocation = latexTemporaryPath();
-        auto tempDir = std::make_unique<QTemporaryDir>(QDir(baseLocation).filePath(QStringLiteral("okular-latex-appearances-XXXXXX")));
+        auto tempDir = std::make_unique<QTemporaryDir>(QDir(baseLocation).filePath(QStringLiteral("scholia-latex-appearances-XXXXXX")));
         tempDir->setAutoRemove(true);
         return tempDir;
     }();
@@ -126,7 +126,7 @@ QDir latexAppearanceSessionDir()
 {
     QTemporaryDir *sessionRoot = latexAppearanceSessionRoot();
     if (!sessionRoot || !sessionRoot->isValid()) {
-        return QDir(QDir(latexTemporaryPath()).filePath(QStringLiteral("okular-latex-appearances-unavailable/latex-notes")));
+        return QDir(QDir(latexTemporaryPath()).filePath(QStringLiteral("scholia-latex-appearances-unavailable/latex-notes")));
     }
 
     QDir rootDir(sessionRoot->path());
@@ -234,7 +234,7 @@ QString defaultLatexAppearancePdfFileName()
         return targetFileName;
     }
 
-    QFile resourceFile(QStringLiteral(":/okular/data/latex-default-note.pdf"));
+    QFile resourceFile(QStringLiteral(":/scholia/data/latex-default-note.pdf"));
     if (!resourceFile.exists()) {
         qCWarning(OkularUiDebug) << "Default LaTeX note appearance resource is missing.";
         return QString();

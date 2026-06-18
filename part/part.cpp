@@ -350,7 +350,7 @@ Part::Part(QObject *parent, const QVariantList &args)
     // create browser extension (for printing when embedded into browser)
     m_bExtension = new BrowserExtension(this);
 
-    const QStringList iconDirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("okular/pics"), QStandardPaths::LocateDirectory);
+    const QStringList iconDirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/pics"), QStandardPaths::LocateDirectory);
     QIcon::setFallbackSearchPaths(QIcon::fallbackSearchPaths() << iconDirs);
 
     m_sidebar = new Sidebar(widget());
@@ -628,7 +628,7 @@ Part::Part(QObject *parent, const QVariantList &args)
 
 void Part::setupConfigSkeleton(const QVariantList &args)
 {
-    const QLatin1String configFileName("okularpartrc");
+    const QLatin1String configFileName("scholiarc");
 
     // first, we check if a config file name has been specified
     QString configFilePath = detectConfigFileName(args);
@@ -1370,7 +1370,7 @@ bool Part::slotImportPSFile()
 
     QUrl url = QFileDialog::getOpenFileUrl(widget(), QString(), QUrl(), filter);
     if (url.isLocalFile()) {
-        QTemporaryFile tf(QDir::tempPath() + QLatin1String("/okular_XXXXXX.pdf"));
+        QTemporaryFile tf(QDir::tempPath() + QLatin1String("/scholia_XXXXXX.pdf"));
         tf.setAutoRemove(false);
         if (!tf.open()) {
             return false;
@@ -3153,9 +3153,9 @@ void Part::slotPrintPreview()
     QString tempFilePattern;
 
     if (m_document->printingSupport() == Okular::Document::PostscriptPrinting) {
-        tempFilePattern = (QDir::tempPath() + QLatin1String("/okular_XXXXXX.ps"));
+        tempFilePattern = (QDir::tempPath() + QLatin1String("/scholia_XXXXXX.ps"));
     } else if (m_document->printingSupport() == Okular::Document::NativePrinting) {
-        tempFilePattern = (QDir::tempPath() + QLatin1String("/okular_XXXXXX.pdf"));
+        tempFilePattern = (QDir::tempPath() + QLatin1String("/scholia_XXXXXX.pdf"));
     } else {
         return;
     }
