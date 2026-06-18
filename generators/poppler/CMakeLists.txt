@@ -41,9 +41,9 @@ kconfig_add_kcfg_files(okularGenerator_poppler_PART_SRCS GENERATE_MOC conf/pdfse
 
 okular_add_generator(okularGenerator_poppler ${okularGenerator_poppler_PART_SRCS})
 
-set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../poppler-local")
-if(WIN32 AND EXISTS "C:/CraftRoot/build/qt-libs/poppler/work/scholia-poppler-runtime-build/config.h")
-    set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "C:/CraftRoot/build/qt-libs/poppler/work/scholia-poppler-runtime-build")
+set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../thirdparty/poppler-custom")
+if(NOT EXISTS "${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/config.h")
+    set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../poppler-local")
 endif()
 
 target_include_directories(okularGenerator_poppler PRIVATE

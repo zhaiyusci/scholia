@@ -1,11 +1,15 @@
 # Scholia KF6 SDK Bootstrap
 
-This path is for building Scholia with the local MSVC toolchain and a normal Qt
-installation, without using Craft as the build driver or install tree.
+This path builds the KF6 development SDK used by the Windows standalone Scholia
+build. The default version is the stable KF6 tag `v6.27.0`.
 
-The first step intentionally builds only ECM into a standalone SDK prefix. Later
-steps can add the required KF6 modules to the same prefix. The default version
-is the stable KF6 tag `v6.27.0`, not a development branch.
+All output goes under the sibling workspace:
+
+```text
+..\windows_build\sources
+..\windows_build\build\kf6-sdk
+..\windows_build\sdk
+```
 
 ## Bootstrap ECM
 
@@ -26,37 +30,37 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
   -Kf6Version 6.26.0
 ```
 
-Default layout:
+The script writes `scholia-sdk-bootstrap.json` into the SDK prefix so later
+build steps reuse the same Qt, CMake, Ninja, and MSVC paths.
 
-```text
-..\windows_build\sources\extra-cmake-modules
-..\windows_build\build\kf6-sdk\extra-cmake-modules
-..\windows_build\sdk
-```
+## Support Libraries
 
-After the bootstrap finishes, load the generated environment:
+Build zlib and freetype before modules that need compression or font support:
 
 ```powershell
-. ..\windows_build\sdk\scholia-sdk-env.ps1
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-zlib-sdk.ps1
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-freetype-sdk.ps1
 ```
 
-The script writes `scholia-sdk-bootstrap.json` into the SDK prefix so later build
-steps can reuse the exact Qt, CMake, Ninja, and MSVC paths.
+Install the libintl compatibility shim used by KI18n on Windows:
 
-## Current Scope
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-libintl-shim-sdk.ps1
+```
 
-This does not remove KF6 from Scholia. It only starts replacing Craft as the
-thing that owns the build workspace and install prefix.
+This shim exports the gettext symbols needed by KI18n and provides minimal
+`msgfmt` and `msgmerge` tools. It is a build-enabling shim, not a full gettext
+replacement.
 
-The intended next steps are:
+Install pinned flex and bison wrappers for modules that generate parsers:
 
-1. Build the required KF6 modules into `..\windows_build\sdk`.
-2. Build Poppler from `external\poppler` into the same SDK prefix.
-3. Configure Scholia with `CMAKE_PREFIX_PATH=<QtPrefix>;..\windows_build\sdk`.
-4. Update staging to copy Scholia artifacts from the standalone install prefix,
-   using Craft only as a temporary fallback for DLL dependencies.
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\install-winflexbison-sdk.ps1
+```
 
-## Build One KF6 Module
+## Build KF6 Modules
 
 After ECM is installed, build individual stable KF6 modules with:
 
@@ -66,22 +70,14 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
   -Module kcoreaddons
 ```
 
-The script uses the same default stable version, `v6.27.0`, and records
-installed modules in:
+The script records installed modules in:
 
 ```text
 ..\windows_build\sdk\scholia-sdk-modules.json
 ```
 
-Some KF6 modules need third-party C libraries. Build zlib into the SDK with:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\build-zlib-sdk.ps1
-```
-
-For example, `KArchive` can then be built with the nonessential compression and
-crypto backends disabled:
+Some modules need extra CMake options. For example, build `KArchive` with
+nonessential compression and crypto backends disabled:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile `
@@ -90,28 +86,16 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
   -ExtraCMakeArgs -DWITH_BZIP2=OFF,-DWITH_LIBLZMA=OFF,-DWITH_OPENSSL=OFF,-DWITH_LIBZSTD=OFF
 ```
 
-`KI18n` needs a libintl-compatible development library and gettext command-line
-tools on Windows. The current SDK path provides a small compatibility shim that
-exports the gettext symbols needed by KI18n, plus minimal `msgfmt`/`msgmerge`
-tools, and falls back to untranslated source strings:
+## Build Poppler
+
+After zlib and freetype are installed in the SDK, build custom Poppler:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\build-libintl-shim-sdk.ps1
+  -File .\windows-build\scripts\build-poppler-sdk.ps1 `
+  -QtPrefix C:\Qt\6.11.1\msvc2022_64
 ```
 
-This is a build-enabling shim, not a full gettext replacement. Swap it for a
-complete gettext/libintl build before treating translated runtime UI as covered
-by the standalone SDK.
-
-`Solid` needs flex and bison to generate its predicate parser. Install pinned
-winflexbison tools into the SDK with:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\install-winflexbison-sdk.ps1
-```
-
-The script installs `flex.exe` and `bison.exe` wrappers into
-`..\windows_build\sdk\bin`, so later KF6 module builds find them through the SDK
-PATH.
+Scholia uses the installed Poppler libraries from `..\windows_build\sdk` and
+the generated private Poppler headers from
+`..\windows_build\build\thirdparty\poppler-custom`.

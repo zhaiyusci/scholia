@@ -1,27 +1,81 @@
 [CmdletBinding()]
 param(
-    [string] $CraftRoot = "C:\CraftRoot",
+    [string] $QtPrefix = "",
+    [string] $SdkPrefix = "",
+    [string] $WorkspaceRoot = "",
+    [string] $InstallPrefix = "",
     [string] $StageRoot = "",
     [string] $OutputDir = "",
     [string] $Version = "",
     [string] $FileVersion = "",
+    [int] $Jobs = 8,
     [string] $ISCC = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    [switch] $SkipBuild,
+    [switch] $SkipDeploy,
     [switch] $SkipStage
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
-$workspaceRoot = Split-Path -Parent $repoRoot
-$windowsBuildRoot = Join-Path $workspaceRoot "windows_build"
+if (!$WorkspaceRoot) {
+    $WorkspaceRoot = Join-Path (Split-Path -Parent $repoRoot) "windows_build"
+}
+$WorkspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+if (!$InstallPrefix) {
+    $InstallPrefix = Join-Path $WorkspaceRoot "install\scholia"
+}
+$InstallPrefix = [System.IO.Path]::GetFullPath($InstallPrefix)
+if (!$SdkPrefix) {
+    $SdkPrefix = Join-Path $WorkspaceRoot "sdk"
+}
+$SdkPrefix = [System.IO.Path]::GetFullPath($SdkPrefix)
 if (!$StageRoot) {
-    $StageRoot = Join-Path $windowsBuildRoot "dist\scholia-pdf\app"
+    $StageRoot = Join-Path $WorkspaceRoot "dist\scholia-pdf\app"
 }
 if (!$OutputDir) {
-    $OutputDir = Join-Path $windowsBuildRoot "dist"
+    $OutputDir = Join-Path $WorkspaceRoot "dist"
 }
 $StageRoot = [System.IO.Path]::GetFullPath($StageRoot)
 $OutputDir = [System.IO.Path]::GetFullPath($OutputDir)
+
+function Remove-DirectoryInside([string] $Path, [string] $AllowedRoot) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if (!$full.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove directory outside $allowed`: $full"
+    }
+    if (Test-Path -LiteralPath $full) {
+        Remove-Item -LiteralPath $full -Recurse -Force
+    }
+}
+
+function Copy-DirectoryContents([string] $Source, [string] $Destination) {
+    if (!(Test-Path -LiteralPath $Source)) {
+        throw "Cannot find source directory: $Source"
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Get-ChildItem -LiteralPath $Source -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $Destination -Recurse -Force
+    }
+}
+
+function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
+    $sourceBin = Join-Path $SourcePrefix "bin"
+    if (!(Test-Path -LiteralPath (Join-Path $sourceBin "scholia.exe"))) {
+        throw "Cannot find deployed Scholia runtime under $sourceBin. Run deploy-scholia-standalone-runtime.ps1 first."
+    }
+
+    New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+    Copy-DirectoryContents $sourceBin (Join-Path $DestinationRoot "bin")
+}
+
+function Invoke-ChildScript([string] $ScriptPath, [string[]] $Arguments) {
+    & powershell.exe -ExecutionPolicy Bypass -NoProfile -File $ScriptPath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
+}
 
 $buildDate = Get-Date -Format "yyyyMMdd"
 if (!$Version) {
@@ -33,10 +87,33 @@ if (!$FileVersion) {
 }
 
 if (!$SkipStage) {
-    & (Join-Path $PSScriptRoot "prepare-okular-pdf-only-stage.ps1") -CraftRoot $CraftRoot -StageRoot $StageRoot
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+    if (!$SkipBuild) {
+        $buildArgs = @(
+            "-WorkspaceRoot", $WorkspaceRoot,
+            "-InstallPrefix", $InstallPrefix,
+            "-Jobs", $Jobs
+        )
+        if ($QtPrefix) {
+            $buildArgs += @("-QtPrefix", $QtPrefix)
+        }
+        $buildArgs += @("-SdkPrefix", $SdkPrefix)
+        Invoke-ChildScript (Join-Path $PSScriptRoot "build-scholia-standalone.ps1") $buildArgs
     }
+
+    if (!$SkipDeploy) {
+        $deployArgs = @(
+            "-WorkspaceRoot", $WorkspaceRoot,
+            "-InstallPrefix", $InstallPrefix
+        )
+        if ($QtPrefix) {
+            $deployArgs += @("-QtPrefix", $QtPrefix)
+        }
+        $deployArgs += @("-SdkPrefix", $SdkPrefix)
+        Invoke-ChildScript (Join-Path $PSScriptRoot "deploy-scholia-standalone-runtime.ps1") $deployArgs
+    }
+
+    Remove-DirectoryInside $StageRoot $WorkspaceRoot
+    Copy-RuntimeStage $InstallPrefix $StageRoot
 }
 
 if (!(Test-Path -LiteralPath $ISCC)) {

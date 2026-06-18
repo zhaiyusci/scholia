@@ -1,8 +1,8 @@
 [CmdletBinding()]
 param(
     [string] $WslDistro = "openSUSE-Tumbleweed",
-    [string] $CraftRoot = "C:\CraftRoot",
-    [string] $MicroTeXSrc = "",
+    [string] $QtPrefix = "",
+    [string] $SdkPrefix = "",
     [string] $WindowsBuildRoot = "",
     [string] $WindowsVersion = "",
     [string] $WindowsFileVersion = "",
@@ -10,6 +10,7 @@ param(
     [string] $PackageOutputRoot = "",
     [string] $AppImageTool = "",
     [string] $AppImageRuntimeFile = "",
+    [int] $WindowsJobs = 8,
     [switch] $DownloadAppImageTool,
     [switch] $DownloadAppImageRuntime,
     [switch] $SkipWindows,
@@ -17,15 +18,7 @@ param(
     [switch] $SkipWindowsBuild,
     [switch] $SkipLinuxBuild,
     [switch] $SkipWindowsPackage,
-    [switch] $SkipAppImagePackage,
-    [switch] $WindowsPopplerIncremental,
-    [switch] $WindowsOkularPartIncremental,
-    [switch] $WindowsNoInstall,
-    [string[]] $WindowsOkularPartSourceFiles = @(
-        "part\latexnoteutils.cpp",
-        "part\annotationpopup.cpp",
-        "part\pageviewannotator.cpp"
-    )
+    [switch] $SkipAppImagePackage
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,11 +30,6 @@ if (!$WindowsBuildRoot) {
     $WindowsBuildRoot = Join-Path $workspaceRoot "windows_build"
 }
 $WindowsBuildRoot = [System.IO.Path]::GetFullPath($WindowsBuildRoot)
-
-if (!$MicroTeXSrc) {
-    $MicroTeXSrc = Join-Path $repoRoot "external\MicroTeX"
-}
-$MicroTeXSrc = [System.IO.Path]::GetFullPath($MicroTeXSrc)
 
 if (!$AppImageVersion) {
     $AppImageVersion = Get-Date -Format "yyyyMMdd"
@@ -91,7 +79,7 @@ function Get-NewestFile([string] $Directory, [string] $Filter) {
         Select-Object -First 1
 }
 
-Write-Host "Okular local package build"
+Write-Host "Scholia local package build"
 Write-Host "  Repo:               $repoRoot"
 Write-Host "  Windows build root: $WindowsBuildRoot"
 Write-Host "  Linux AppImage dir: $linuxAppImageDir"
@@ -99,57 +87,22 @@ Write-Host "  Package output:     $PackageOutputRoot"
 Write-Host "  WSL distro:         $WslDistro"
 Write-Host "  AppImage version:   $AppImageVersion"
 
-$windowsBuildModes = @($SkipWindowsBuild, $WindowsPopplerIncremental, $WindowsOkularPartIncremental) |
-    Where-Object { $_ }
-if ($windowsBuildModes.Count -gt 1) {
-    throw "Choose only one Windows build mode: -SkipWindowsBuild, -WindowsPopplerIncremental, or -WindowsOkularPartIncremental."
-}
-if ($WindowsNoInstall -and !$SkipWindowsPackage) {
-    throw "-WindowsNoInstall cannot be used while building the Windows package. Add -SkipWindowsPackage for build-only verification."
-}
-
 if (!$SkipWindows) {
-    if ($WindowsPopplerIncremental) {
-        Invoke-Step "Windows Poppler incremental build" {
+    if (!$SkipWindowsBuild) {
+        Invoke-Step "Windows standalone build" {
             $args = @(
                 "-ExecutionPolicy", "Bypass",
                 "-NoProfile",
-                "-File", (Join-Path $repoRoot "windows-build\scripts\build-poppler-incremental.ps1"),
-                "-CraftRoot", $CraftRoot,
-                "-OkularSource", $repoRoot
-            )
-            if ($WindowsNoInstall) {
-                $args += "-NoInstall"
-            }
-            Invoke-External "powershell.exe" $args
-        }
-    } elseif ($WindowsOkularPartIncremental) {
-        Invoke-Step "Windows okularpart incremental build" {
-            $args = @(
-                "-ExecutionPolicy", "Bypass",
-                "-NoProfile",
-                "-File", (Join-Path $repoRoot "windows-build\scripts\build-okularpart-incremental.ps1"),
-                "-WorkspaceRoot", $workspaceRoot,
-                "-LogRoot", $WindowsBuildRoot,
-                "-CraftRoot", $CraftRoot,
-                "-SourceFiles"
-            ) + $WindowsOkularPartSourceFiles
-            if ($WindowsNoInstall) {
-                $args += "-NoInstall"
-            }
-            Invoke-External "powershell.exe" $args
-        }
-    } elseif (!$SkipWindowsBuild) {
-        Invoke-Step "Windows full build" {
-            $args = @(
-                "-ExecutionPolicy", "Bypass",
-                "-NoProfile",
-                "-File", (Join-Path $repoRoot "windows-build\scripts\build-okular-local.ps1"),
+                "-File", (Join-Path $repoRoot "windows-build\scripts\build-scholia-standalone.ps1"),
                 "-WorkspaceRoot", $WindowsBuildRoot,
-                "-CraftRoot", $CraftRoot,
-                "-PdfOnly",
-                "-MicroTeXSrc", $MicroTeXSrc
+                "-Jobs", $WindowsJobs
             )
+            if ($QtPrefix) {
+                $args += @("-QtPrefix", $QtPrefix)
+            }
+            if ($SdkPrefix) {
+                $args += @("-SdkPrefix", $SdkPrefix)
+            }
             Invoke-External "powershell.exe" $args
         }
     }
@@ -160,8 +113,16 @@ if (!$SkipWindows) {
                 "-ExecutionPolicy", "Bypass",
                 "-NoProfile",
                 "-File", (Join-Path $repoRoot "windows-build\scripts\build-okular-pdf-only-installer.ps1"),
-                "-CraftRoot", $CraftRoot
+                "-WorkspaceRoot", $WindowsBuildRoot,
+                "-Jobs", $WindowsJobs,
+                "-SkipBuild"
             )
+            if ($QtPrefix) {
+                $args += @("-QtPrefix", $QtPrefix)
+            }
+            if ($SdkPrefix) {
+                $args += @("-SdkPrefix", $SdkPrefix)
+            }
             if ($WindowsVersion) {
                 $args += @("-Version", $WindowsVersion)
             }
@@ -170,7 +131,7 @@ if (!$SkipWindows) {
             }
             Invoke-External "powershell.exe" $args
 
-            $installer = Get-NewestFile $windowsDist "Okular-PDF-*-Setup.exe"
+            $installer = Get-NewestFile $windowsDist "Scholia-*-Setup.exe"
             if (!$installer) {
                 throw "Windows installer was not found under $windowsDist"
             }
