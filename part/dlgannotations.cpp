@@ -84,6 +84,7 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "Auto (system TeX, then MicroTeX fallback)"));
     latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "System TeX only"));
     latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "MicroTeX only"));
+    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "StemTeX hot XeTeX only"));
     latexRenderBackend->setObjectName(QStringLiteral("kcfg_LatexRenderBackend"));
     layout->addRow(i18nc("@label:listbox Config dialog, annotations page", "LaTeX renderer:"), latexRenderBackend);
 

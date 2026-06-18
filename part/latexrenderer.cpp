@@ -1,4 +1,4 @@
-/*
+﻿/*
     SPDX-FileCopyrightText: 2004 Duncan Mac-Vicar Prett <duncan@kde.org>
     SPDX-FileCopyrightText: 2004-2005 Olivier Goffart <ogoffart@kde.org>
     SPDX-FileCopyrightText: 2011 Niels Ole Salscheider
@@ -12,6 +12,7 @@
 #include <cmath>
 #include <memory>
 #include <mutex>
+#include <utility>
 
 #include <QDebug>
 
@@ -20,11 +21,13 @@
 
 #include <QColor>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QLibrary>
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPainter>
@@ -101,6 +104,11 @@ QString sourceLatexBackendName(const QString &executable)
 }
 
 bool canUseMicrotexForRender(bool renderSource, QString *pdfFileName, int resolution)
+{
+    return renderSource && pdfFileName && resolution <= 0;
+}
+
+bool canUseStemtexForRender(bool renderSource, QString *pdfFileName, int resolution)
 {
     return renderSource && pdfFileName && resolution <= 0;
 }
@@ -597,6 +605,275 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
 }
 #endif
 
+bool cropPdfWithPdfcrop(const QString &sourcePdfFile, const QString &croppedPdfFile, QString &latexOutput, QStringList &fileList)
+{
+    const QString pdfCropExecutable = QStandardPaths::findExecutable(QStringLiteral("pdfcrop"));
+    if (pdfCropExecutable.isEmpty()) {
+        qCDebug(OkularUiDebug) << "Could not find pdfcrop!";
+        latexOutput += QStringLiteral("\npdfcrop was not found.");
+        return false;
+    }
+
+    QFile::remove(croppedPdfFile);
+    KProcess pdfCropProc;
+    pdfCropProc << pdfCropExecutable << QStringLiteral("--hires") << QStringLiteral("--margins") << QStringLiteral("0 0 0 0") << sourcePdfFile << croppedPdfFile;
+    pdfCropProc.setWorkingDirectory(QFileInfo(croppedPdfFile).absolutePath());
+    pdfCropProc.setOutputChannelMode(KProcess::MergedChannels);
+    logTexInvocation("texlive-pdfcrop",
+                     QStringLiteral("pdfcrop"),
+                     QStringLiteral("source-pdf-crop"),
+                     {QStringLiteral("executable: %1").arg(pdfCropExecutable), QStringLiteral("input: %1").arg(sourcePdfFile), QStringLiteral("output: %1").arg(croppedPdfFile)});
+    const int pdfCropExitCode = pdfCropProc.execute();
+    const QString pdfCropOutput = QString::fromLocal8Bit(pdfCropProc.readAll());
+    if (pdfCropExitCode != 0 || !QFile::exists(croppedPdfFile)) {
+        qCWarning(OkularUiDebug) << "Could not crop rendered LaTeX PDF; exit code:" << pdfCropExitCode << "output:" << pdfCropOutput;
+        latexOutput += QLatin1Char('\n') + pdfCropOutput;
+        return false;
+    }
+
+    fileList << croppedPdfFile;
+    return true;
+}
+
+#ifdef Q_OS_WIN
+struct StemTeXConfig {
+    const char *repo_root_utf8;
+    const char *runtime_root_utf8;
+    const char *state_root_utf8;
+    const char *renders_root_utf8;
+    int request_timeout_ms;
+    int xdvipdfmx_timeout_ms;
+    int min_width_pt;
+    int max_width_pt;
+    int default_width_pt;
+    int spare_worker_count;
+    int auto_restart;
+    int delete_intermediates;
+    const char *warmup_tex_utf8;
+    const char *worker_template_utf8;
+    const char *preamble_tex_utf8;
+};
+
+struct StemTeXRenderResult {
+    char *request_id_utf8;
+    char *pdf_path_utf8;
+    char *summary_json_utf8;
+};
+
+struct StemtexApi {
+    using Create = void *(*)(const StemTeXConfig *, int *, char **);
+    using Render = int (*)(void *, const char *, int, StemTeXRenderResult *, int *, char **);
+    using FreeResult = void (*)(StemTeXRenderResult *);
+    using FreeString = void (*)(char *);
+    using Destroy = void (*)(void *);
+
+    QLibrary library;
+    Create create = nullptr;
+    Render render = nullptr;
+    FreeResult freeResult = nullptr;
+    FreeString freeString = nullptr;
+    Destroy destroy = nullptr;
+
+    explicit StemtexApi(const QString &dllPath)
+        : library(dllPath)
+    {
+    }
+
+    bool load(QString *error)
+    {
+        if (!library.load()) {
+            if (error) {
+                *error = library.errorString();
+            }
+            return false;
+        }
+
+        create = reinterpret_cast<Create>(library.resolve("stemtex_renderer_create"));
+        render = reinterpret_cast<Render>(library.resolve("stemtex_renderer_render"));
+        freeResult = reinterpret_cast<FreeResult>(library.resolve("stemtex_renderer_free_result"));
+        freeString = reinterpret_cast<FreeString>(library.resolve("stemtex_renderer_free_string"));
+        destroy = reinterpret_cast<Destroy>(library.resolve("stemtex_renderer_destroy"));
+        const bool ok = create && render && freeResult && freeString && destroy;
+        if (!ok && error) {
+            *error = QStringLiteral("stemtex-renderer.dll does not export the expected renderer ABI.");
+        }
+        return ok;
+    }
+};
+
+class StemtexRendererSession
+{
+public:
+    ~StemtexRendererSession()
+    {
+        if (m_renderer && m_api.destroy) {
+            m_api.destroy(m_renderer);
+        }
+    }
+
+    static StemtexRendererSession *instance(QString *error)
+    {
+        static std::mutex sessionMutex;
+        static std::unique_ptr<StemtexRendererSession> session;
+
+        std::lock_guard<std::mutex> guard(sessionMutex);
+        if (session) {
+            return session.get();
+        }
+
+        std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtimeRoot(), rendererDllPath()));
+        if (!created->initialize(error)) {
+            return nullptr;
+        }
+        session = std::move(created);
+        return session.get();
+    }
+
+    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList)
+    {
+        if (!m_renderer) {
+            latexOutput = i18n("StemTeX renderer is not initialized.");
+            return LatexRenderer::LatexFailed;
+        }
+
+        const int widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? qRound(maxWidth) : 360;
+        const QColor effectiveColor = textColor.isValid() ? textColor : QColor(Qt::black);
+        const double baselineSkip = qMax(1, fontSize) * 1.2;
+        const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\\fontsize{%4}{%5}\\selectfont\n%6\n\\par}")
+                                          .arg(effectiveColor.redF(), 0, 'f', 6)
+                                          .arg(effectiveColor.greenF(), 0, 'f', 6)
+                                          .arg(effectiveColor.blueF(), 0, 'f', 6)
+                                          .arg(qMax(1, fontSize))
+                                          .arg(baselineSkip, 0, 'f', 3)
+                                          .arg(latexSource);
+        const QByteArray snippet = coloredSource.toUtf8();
+
+        StemTeXRenderResult result{};
+        int errorCode = 0;
+        char *error = nullptr;
+        int ok = 0;
+        {
+            std::lock_guard<std::mutex> guard(m_renderMutex);
+            ok = m_api.render(m_renderer, snippet.constData(), widthPt, &result, &errorCode, &error);
+        }
+
+        const QString errorText = error ? QString::fromUtf8(error) : QString();
+        if (error) {
+            m_api.freeString(error);
+        }
+        const QString sourcePdfFile = result.pdf_path_utf8 ? QString::fromUtf8(result.pdf_path_utf8) : QString();
+        const QString summary = result.summary_json_utf8 ? QString::fromUtf8(result.summary_json_utf8) : QString();
+        m_api.freeResult(&result);
+
+        if (!ok || sourcePdfFile.isEmpty() || !QFileInfo::exists(sourcePdfFile)) {
+            latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
+            return LatexRenderer::LatexFailed;
+        }
+
+        QTemporaryFile croppedFile(QDir(latexTemporaryPath()).filePath(QStringLiteral("scholia_stemtex-XXXXXX.pdf")));
+        croppedFile.setAutoRemove(false);
+        if (!croppedFile.open()) {
+            latexOutput = i18n("Could not create a temporary PDF file for StemTeX output.");
+            return LatexRenderer::LatexFailed;
+        }
+        const QString croppedPdfFile = croppedFile.fileName();
+        croppedFile.close();
+        QFile::remove(croppedPdfFile);
+
+        latexOutput = summary;
+        if (!cropPdfWithPdfcrop(sourcePdfFile, croppedPdfFile, latexOutput, fileList)) {
+            QFile::remove(croppedPdfFile);
+            return LatexRenderer::LatexFailed;
+        }
+
+        pdfFileName = croppedPdfFile;
+        qCDebug(OkularUiDebug) << "StemTeX render finished; source PDF:" << sourcePdfFile << "cropped PDF:" << pdfFileName << "summary:" << summary;
+        return LatexRenderer::NoError;
+    }
+
+private:
+    StemtexRendererSession(QString runtimeRoot, QString dllPath)
+        : m_runtimeRoot(std::move(runtimeRoot))
+        , m_dllPath(std::move(dllPath))
+        , m_api(m_dllPath)
+    {
+    }
+
+    static QString runtimeRoot()
+    {
+        const QString envRuntime = QString::fromLocal8Bit(qgetenv("STEMTEX_RUNTIME_ROOT")).trimmed();
+        if (!envRuntime.isEmpty()) {
+            return QDir::cleanPath(envRuntime);
+        }
+
+        const QString installedRuntime = QStringLiteral("C:/StemTeX/runtime");
+        if (QFileInfo::exists(QDir(installedRuntime).filePath(QStringLiteral("preamble.tex")))) {
+            return installedRuntime;
+        }
+
+        return QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../StemTeX/runtime"));
+    }
+
+    static QString rendererDllPath()
+    {
+        const QString envDll = QString::fromLocal8Bit(qgetenv("STEMTEX_RENDERER_DLL")).trimmed();
+        if (!envDll.isEmpty()) {
+            return QDir::cleanPath(envDll);
+        }
+        return QDir(runtimeRoot()).filePath(QStringLiteral("bin/sdk/stemtex-renderer.dll"));
+    }
+
+    bool initialize(QString *error)
+    {
+        if (!QFileInfo::exists(m_dllPath)) {
+            if (error) {
+                *error = i18n("StemTeX renderer DLL was not found: %1", QDir::toNativeSeparators(m_dllPath));
+            }
+            return false;
+        }
+        if (!QFileInfo::exists(QDir(m_runtimeRoot).filePath(QStringLiteral("preamble.tex")))) {
+            if (error) {
+                *error = i18n("StemTeX runtime was not found: %1", QDir::toNativeSeparators(m_runtimeRoot));
+            }
+            return false;
+        }
+        if (!m_api.load(error)) {
+            return false;
+        }
+
+        const QByteArray runtime = QDir::cleanPath(m_runtimeRoot).toUtf8();
+        StemTeXConfig config{};
+        config.runtime_root_utf8 = runtime.constData();
+        config.request_timeout_ms = 90000;
+        config.xdvipdfmx_timeout_ms = 90000;
+        config.spare_worker_count = 1;
+        config.delete_intermediates = 1;
+
+        int errorCode = 0;
+        char *errorUtf8 = nullptr;
+        m_renderer = m_api.create(&config, &errorCode, &errorUtf8);
+        const QString errorText = errorUtf8 ? QString::fromUtf8(errorUtf8) : QString();
+        if (errorUtf8) {
+            m_api.freeString(errorUtf8);
+        }
+        if (!m_renderer) {
+            if (error) {
+                *error = i18n("StemTeX renderer failed to start: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
+            }
+            return false;
+        }
+
+        qCDebug(OkularUiDebug) << "StemTeX renderer initialized; runtime:" << m_runtimeRoot << "dll:" << m_dllPath;
+        return true;
+    }
+
+    QString m_runtimeRoot;
+    QString m_dllPath;
+    StemtexApi m_api;
+    void *m_renderer = nullptr;
+    std::mutex m_renderMutex;
+};
+#endif
 QString compactWarningLine(const QString &line)
 {
     QString message = line.simplified();
@@ -877,6 +1154,39 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
 #endif
     };
 
+    auto renderWithStemtex = [&](const char *reason) -> Error {
+        fileName.clear();
+#ifdef Q_OS_WIN
+        logTexInvocation("stemtex-render",
+                         QStringLiteral("stemtex"),
+                         QString::fromLatin1(reason),
+                         {QStringLiteral("font size: %1").arg(fontSize),
+                          QStringLiteral("max width: %1").arg(maxWidth),
+                          QStringLiteral("source length: %1").arg(latexSource.size())});
+        QString stemtexError;
+        StemtexRendererSession *session = StemtexRendererSession::instance(&stemtexError);
+        if (!session) {
+            pdfFileName->clear();
+            latexOutput = stemtexError.isEmpty() ? i18n("StemTeX renderer is not available.") : stemtexError;
+            return LatexFailed;
+        }
+
+        const Error stemtexErrorCode = session->render(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList);
+        if (stemtexErrorCode == NoError) {
+            m_lastBackendName = QStringLiteral("stemtex");
+        }
+        return stemtexErrorCode;
+#else
+        pdfFileName->clear();
+        latexOutput = i18n("StemTeX rendering is only available on Windows.");
+        return LatexFailed;
+#endif
+    };
+
+    if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Stemtex && canUseStemtexForRender(renderSource, pdfFileName, resolution)) {
+        return renderWithStemtex("configured-stemtex");
+    }
+
     if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Microtex && canUseMicrotexForRender(renderSource, pdfFileName, resolution)) {
         return renderWithMicrotex("configured-microtex");
     }
@@ -995,43 +1305,17 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
             return LatexFailed;
         }
 
-        const QString pdfCropExecutable = QStandardPaths::findExecutable(QStringLiteral("pdfcrop"));
-        if (pdfCropExecutable.isEmpty()) {
-            qCDebug(OkularUiDebug) << "Could not find pdfcrop!";
-            QFile::remove(temporaryPdfFile);
-            fileName = QString();
-            if (pdfFileName) {
-                pdfFileName->clear();
-            }
-            latexOutput += QStringLiteral("\npdfcrop was not found.");
-            return LatexFailed;
-        }
-
         const QString croppedPdfFile = tempFileNameNS + QStringLiteral("-crop.pdf");
-        QFile::remove(croppedPdfFile);
-        KProcess pdfCropProc;
-        pdfCropProc << pdfCropExecutable << QStringLiteral("--hires") << QStringLiteral("--margins") << QStringLiteral("0 0 0 0") << temporaryPdfFile << croppedPdfFile;
-        pdfCropProc.setWorkingDirectory(tempFilePath);
-        pdfCropProc.setOutputChannelMode(KProcess::MergedChannels);
-        logTexInvocation("texlive-pdfcrop",
-                         QStringLiteral("pdfcrop"),
-                         QStringLiteral("source-pdf-crop"),
-                         {QStringLiteral("executable: %1").arg(pdfCropExecutable), QStringLiteral("input: %1").arg(temporaryPdfFile), QStringLiteral("output: %1").arg(croppedPdfFile)});
-        const int pdfCropExitCode = pdfCropProc.execute();
-        const QString pdfCropOutput = QString::fromLocal8Bit(pdfCropProc.readAll());
-        if (pdfCropExitCode != 0 || !QFile::exists(croppedPdfFile)) {
-            qCWarning(OkularUiDebug) << "Could not crop rendered LaTeX PDF; exit code:" << pdfCropExitCode << "output:" << pdfCropOutput;
+        if (!cropPdfWithPdfcrop(temporaryPdfFile, croppedPdfFile, latexOutput, m_fileList)) {
             QFile::remove(temporaryPdfFile);
             fileName = QString();
             if (pdfFileName) {
                 pdfFileName->clear();
             }
-            latexOutput += QLatin1Char('\n') + pdfCropOutput;
             return LatexFailed;
         }
         QFile::remove(temporaryPdfFile);
         temporaryPdfFile = croppedPdfFile;
-        m_fileList << temporaryPdfFile;
 
         if (resolution <= 0) {
             fileName.clear();

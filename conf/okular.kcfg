@@ -189,6 +189,7 @@
     <choice name="Auto" />
     <choice name="SystemTex" />
     <choice name="Microtex" />
+    <choice name="Stemtex" />
    </choices>
   </entry>
   <entry key="LatexPreamble" type="String">
