@@ -10,6 +10,7 @@
 #include "latexrenderer.h"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -673,8 +674,10 @@ struct StemTeXEngineSnapshot {
 };
 
 struct StemtexApi {
+    using RenderCallback = void (*)(uint64_t, int, const StemTeXRenderResult *, int, const char *, void *);
     using Create = void *(*)(const StemTeXConfig *, int *, char **);
     using Render = int (*)(void *, const char *, int, StemTeXRenderResult *, int *, char **);
+    using RenderAsync = int (*)(void *, const char *, int, uint64_t *, RenderCallback, void *, int *, char **);
     using EngineSnapshot = int (*)(void *, StemTeXEngineSnapshot *);
     using FreeResult = void (*)(StemTeXRenderResult *);
     using FreeString = void (*)(char *);
@@ -683,6 +686,7 @@ struct StemtexApi {
     QLibrary library;
     Create create = nullptr;
     Render render = nullptr;
+    RenderAsync renderAsync = nullptr;
     EngineSnapshot engineSnapshot = nullptr;
     FreeResult freeResult = nullptr;
     FreeString freeString = nullptr;
@@ -704,11 +708,12 @@ struct StemtexApi {
 
         create = reinterpret_cast<Create>(library.resolve("stemtex_renderer_create"));
         render = reinterpret_cast<Render>(library.resolve("stemtex_renderer_render"));
+        renderAsync = reinterpret_cast<RenderAsync>(library.resolve("stemtex_renderer_render_async"));
         engineSnapshot = reinterpret_cast<EngineSnapshot>(library.resolve("stemtex_renderer_engine_snapshot"));
         freeResult = reinterpret_cast<FreeResult>(library.resolve("stemtex_renderer_free_result"));
         freeString = reinterpret_cast<FreeString>(library.resolve("stemtex_renderer_free_string"));
         destroy = reinterpret_cast<Destroy>(library.resolve("stemtex_renderer_destroy"));
-        const bool ok = create && render && engineSnapshot && freeResult && freeString && destroy;
+        const bool ok = create && render && renderAsync && engineSnapshot && freeResult && freeString && destroy;
         if (!ok && error) {
             *error = QStringLiteral("stemtex-renderer.dll does not export the expected renderer ABI.");
         }
@@ -781,38 +786,46 @@ public:
             bool done = false;
             int ok = 0;
             int errorCode = 0;
+            uint64_t jobId = 0;
+            uint64_t callbackJobId = 0;
             QString errorText;
             QString sourcePdfFile;
             QString summary;
         };
         auto state = std::make_shared<RenderState>();
 
-        std::thread worker([this, snippet, widthPt, state]() {
-            StemTeXRenderResult result{};
-            int errorCode = 0;
-            char *error = nullptr;
-            int ok = 0;
-            {
-                std::lock_guard<std::mutex> guard(m_renderMutex);
-                ok = m_api.render(m_renderer, snippet.constData(), widthPt, &result, &errorCode, &error);
-            }
-
-            const QString errorText = error ? QString::fromUtf8(error) : QString();
-            if (error) {
-                m_api.freeString(error);
-            }
-            const QString sourcePdfFile = result.pdf_path_utf8 ? QString::fromUtf8(result.pdf_path_utf8) : QString();
-            const QString summary = result.summary_json_utf8 ? QString::fromUtf8(result.summary_json_utf8) : QString();
-            m_api.freeResult(&result);
-
+        const auto callback = [](uint64_t jobId, int ok, const StemTeXRenderResult *result, int errorCode, const char *error, void *userData) {
+            auto *state = static_cast<RenderState *>(userData);
             std::lock_guard<std::mutex> guard(state->mutex);
+            state->callbackJobId = jobId;
             state->ok = ok;
             state->errorCode = errorCode;
-            state->errorText = errorText;
-            state->sourcePdfFile = sourcePdfFile;
-            state->summary = summary;
+            state->errorText = error ? QString::fromUtf8(error) : QString();
+            state->sourcePdfFile = result && result->pdf_path_utf8 ? QString::fromUtf8(result->pdf_path_utf8) : QString();
+            state->summary = result && result->summary_json_utf8 ? QString::fromUtf8(result->summary_json_utf8) : QString();
             state->done = true;
-        });
+        };
+
+        int submitErrorCode = 0;
+        char *submitError = nullptr;
+        uint64_t jobId = 0;
+        std::unique_lock<std::mutex> renderGuard(m_renderMutex);
+        const int submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
+        {
+            std::lock_guard<std::mutex> guard(state->mutex);
+            state->jobId = jobId;
+        }
+        if (!submitted) {
+            const QString errorText = submitError ? QString::fromUtf8(submitError) : QString();
+            if (submitError) {
+                m_api.freeString(submitError);
+            }
+            latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(submitErrorCode) : errorText);
+            return LatexRenderer::LatexFailed;
+        }
+        if (submitError) {
+            m_api.freeString(submitError);
+        }
 
         QEventLoop waitLoop;
         QTimer pollTimer;
@@ -825,10 +838,11 @@ public:
         });
         pollTimer.start();
         waitLoop.exec();
-        worker.join();
+        renderGuard.unlock();
 
         int ok = 0;
         int errorCode = 0;
+        uint64_t callbackJobId = 0;
         QString errorText;
         QString sourcePdfFile;
         QString summary;
@@ -836,11 +850,16 @@ public:
             std::lock_guard<std::mutex> guard(state->mutex);
             ok = state->ok;
             errorCode = state->errorCode;
+            callbackJobId = state->callbackJobId;
             errorText = state->errorText;
             sourcePdfFile = state->sourcePdfFile;
             summary = state->summary;
         }
 
+        if (callbackJobId != jobId) {
+            latexOutput = i18n("StemTeX rendering failed: stale async job result.");
+            return LatexRenderer::LatexFailed;
+        }
         if (!ok || sourcePdfFile.isEmpty() || !QFileInfo::exists(sourcePdfFile)) {
             latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
             return LatexRenderer::LatexFailed;
