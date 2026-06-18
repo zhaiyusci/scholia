@@ -41,12 +41,17 @@ kconfig_add_kcfg_files(okularGenerator_poppler_PART_SRCS GENERATE_MOC conf/pdfse
 
 okular_add_generator(okularGenerator_poppler ${okularGenerator_poppler_PART_SRCS})
 
+set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../poppler-local")
+if(WIN32 AND EXISTS "C:/CraftRoot/build/qt-libs/poppler/work/scholia-poppler-runtime-build/config.h")
+    set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "C:/CraftRoot/build/qt-libs/poppler/work/scholia-poppler-runtime-build")
+endif()
+
 target_include_directories(okularGenerator_poppler PRIVATE
     ${CMAKE_SOURCE_DIR}/external/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/qt6/src
-    ${CMAKE_BINARY_DIR}/../poppler-local
-    ${CMAKE_BINARY_DIR}/../poppler-local/poppler
+    ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}
+    ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/poppler
 )
 target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Qt6 Qt6::Xml)
 if(POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)

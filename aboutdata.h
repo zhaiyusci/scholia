@@ -18,7 +18,7 @@ inline KAboutData okularAboutData()
     KAboutData about(QStringLiteral("scholia"),
                      i18n("Scholia"),
                      QStringLiteral(OKULAR_VERSION_STRING),
-                     i18n("A PDF-centered document viewer and annotation tool based on KDE Okular"),
+                     i18n("A PDF-centered document viewer and annotation tool based on Okular"),
                      KAboutLicense::GPL_V2,
                      i18n("(C) 2026 Yu Zhai and the Scholia contributors\n"
                           "(C) 2002 Wilco Greven, Christophe Devriese\n"
@@ -27,7 +27,7 @@ inline KAboutData okularAboutData()
                           "(C) 2004-2017 Albert Astals Cid\n"
                           "(C) 2006-2009 Pino Toscano"),
                      i18n("Scholia is a modified distribution of KDE Okular. It is not an official KDE Okular release and is not affiliated with or endorsed by KDE."),
-                     QStringLiteral("https://github.com/ye-jair/okular"));
+                     QStringLiteral("https://github.com/zhaiyusci/scholia"));
     about.setDesktopFileName(QStringLiteral("org.jairy.scholia"));
 
     about.addAuthor(i18n("Yu Zhai"), i18n("Scholia maintainer and PDF annotation changes"));

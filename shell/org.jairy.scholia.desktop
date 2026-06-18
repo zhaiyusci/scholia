@@ -2,13 +2,13 @@
 Terminal=false
 Name=Scholia
 GenericName=PDF Document Viewer
-Comment=PDF-centered document viewer and annotation tool based on KDE Okular
+Comment=PDF-centered document viewer and annotation tool based on Okular
 Exec=scholia %U
 Icon=scholia
 Type=Application
 X-DocPath=okular/index.html
 InitialPreference=7
-Categories=Qt;KDE;Graphics;Office;Viewer;
-MimeType=application/pdf;application/vnd.kde.okular-archive;
+Categories=Qt;Graphics;Office;Viewer;
+MimeType=application/pdf;
 X-DBUS-ServiceName=org.jairy.scholia
 StartupWMClass=scholia

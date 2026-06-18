@@ -1,0 +1,4 @@
+# Scholia logging categories
+org.jairy.scholia.core Scholia (Core) DEFAULT_SEVERITY [WARNING] IDENTIFIER [OkularCoreDebug]
+org.jairy.scholia.generators.pdf Scholia (Generator PDF) DEFAULT_SEVERITY [WARNING] IDENTIFIER [OkularPdfDebug]
+org.jairy.scholia.ui Scholia (UI) DEFAULT_SEVERITY [WARNING] IDENTIFIER [OkularUiDebug]

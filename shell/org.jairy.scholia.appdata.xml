@@ -7,7 +7,7 @@
   <summary>PDF-centered document viewer and annotation tool</summary>
   <description>
     <p>
-      Scholia is a modified distribution of KDE Okular focused on PDF annotation,
+      Scholia is a modified distribution of Okular focused on PDF annotation,
       LaTeX-backed notes, and Windows packaging.
     </p>
     <p>
@@ -20,8 +20,8 @@
   <provides>
     <binary>scholia</binary>
   </provides>
-  <url type="homepage">https://github.com/ye-jair/okular</url>
-  <url type="bugtracker">https://github.com/ye-jair/okular/issues</url>
+  <url type="homepage">https://github.com/zhaiyusci/scholia</url>
+  <url type="bugtracker">https://github.com/zhaiyusci/scholia/issues</url>
   <url type="help">https://docs.kde.org/?application=okular</url>
   <project_group>Scholia</project_group>
   <developer_name translate="no">Scholia Contributors</developer_name>

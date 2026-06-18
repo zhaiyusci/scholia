@@ -6,7 +6,7 @@ set (RELEASE_SERVICE_VERSION_MINOR "07")
 set (RELEASE_SERVICE_VERSION_MICRO "70")
 set (RELEASE_SERVICE_VERSION "${RELEASE_SERVICE_VERSION_MAJOR}.${RELEASE_SERVICE_VERSION_MINOR}.${RELEASE_SERVICE_VERSION_MICRO}")
 
-project(okular VERSION ${RELEASE_SERVICE_VERSION})
+project(scholia VERSION ${RELEASE_SERVICE_VERSION})
 
 set(QT_REQUIRED_VERSION "6.6.0") # Remember to update the QT_DEPRECATED_WARNINGS_SINCE below
 set(KF_REQUIRED_VERSION "5.240.0") # Remember to update the KF_DEPRECATED_WARNINGS_SINCE below
@@ -314,7 +314,7 @@ set_okular_optional_package_properties(Discount PROPERTIES
         URL "https://www.pell.portland.or.us/~orc/Code/discount/"
         PURPOSE "Support for Markdown documents in Okular.")
 
-add_definitions(-DTRANSLATION_DOMAIN="okular")
+add_definitions(-DTRANSLATION_DOMAIN="scholia")
 add_definitions(-DQT_DEPRECATED_WARNINGS_SINCE=0x060600)
 add_definitions(-DKF_DEPRECATED_WARNINGS_SINCE=0x05F000)
 
@@ -687,7 +687,7 @@ endif()# End of BUILD_DESKTOP if
 
 ########### install files ###############
 
-install(FILES okular.categories  DESTINATION  ${KDE_INSTALL_LOGGINGCATEGORIESDIR})
+install(FILES scholia.categories DESTINATION ${KDE_INSTALL_LOGGINGCATEGORIESDIR})
 
 ki18n_install(po)
 if(KF6DocTools_FOUND)
