@@ -45,6 +45,7 @@
 #include <QDragMoveEvent>
 #include <QFileDialog>
 #include <QJsonArray>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
 #include <QObject>
@@ -893,6 +894,7 @@ void Shell::setActiveTab(int tab)
     // to save and restore it
     const bool isSidebarVisible = m_sidebar->isVisible();
     createGUI(m_tabs[tab].part);
+    ensurePartSettingsActions(m_tabs[tab].part);
     m_sidebar->setVisible(isSidebarVisible);
 
     // dock KPart's sidebar if new and make it current
@@ -915,6 +917,39 @@ void Shell::setActiveTab(int tab)
 
     m_printAction->setEnabled(m_tabs[tab].printEnabled);
     m_closeAction->setEnabled(m_tabs[tab].closeEnabled);
+}
+
+void Shell::ensurePartSettingsActions(KParts::ReadWritePart *part)
+{
+    if (!part) {
+        return;
+    }
+
+    auto *annotationConfig = part->actionCollection()->action(QStringLiteral("options_configure_annotations"));
+    if (!annotationConfig) {
+        return;
+    }
+
+    QMenu *settingsMenu = qobject_cast<QMenu *>(guiFactory()->container(QStringLiteral("settings"), part));
+    if (!settingsMenu) {
+        settingsMenu = qobject_cast<QMenu *>(guiFactory()->container(QStringLiteral("settings"), this));
+    }
+    if (!settingsMenu) {
+        for (QAction *action : menuBar()->actions()) {
+            QMenu *menu = action ? action->menu() : nullptr;
+            if (menu && menu->objectName() == QLatin1String("settings")) {
+                settingsMenu = menu;
+                break;
+            }
+        }
+    }
+    if (!settingsMenu || settingsMenu->actions().contains(annotationConfig)) {
+        return;
+    }
+
+    QAction *mainConfig = part->actionCollection()->action(QStringLiteral("options_configure"));
+    QAction *before = settingsMenu->actions().contains(mainConfig) ? mainConfig : nullptr;
+    settingsMenu->insertAction(before, annotationConfig);
 }
 
 void Shell::closeTab(int tab)
