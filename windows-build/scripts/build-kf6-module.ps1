@@ -77,7 +77,7 @@ function Invoke-VsCmd([string] $Command) {
     Write-Host ">>> $Command" -ForegroundColor Cyan
     $qtBin = Join-Path $script:QtPrefix "bin"
     $sdkBin = Join-Path $script:SdkPrefix "bin"
-    & cmd.exe /d /s /c "call ""$VcVars"" >nul && set ""PATH=$qtBin;$sdkBin;%PATH%"" && $Command"
+    & cmd.exe /d /s /c "set ""PATH=$qtBin;$sdkBin;%PATH%"" && call ""$VcVars"" >nul && $Command"
     if ($LASTEXITCODE -ne 0) {
         throw "Command failed with exit code $LASTEXITCODE"
     }
