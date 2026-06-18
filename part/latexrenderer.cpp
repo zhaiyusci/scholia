@@ -9,6 +9,7 @@
 
 #include "latexrenderer.h"
 
+#include <condition_variable>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -26,7 +27,6 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
-#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
@@ -42,7 +42,6 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
-#include <QTimer>
 
 #include "gui/debug_ui.h"
 #include "settings.h"
@@ -788,6 +787,7 @@ public:
 
         struct RenderState {
             std::mutex mutex;
+            std::condition_variable condition;
             bool done = false;
             int ok = 0;
             int errorCode = 0;
@@ -809,12 +809,12 @@ public:
             state->sourcePdfFile = result && result->pdf_path_utf8 ? QString::fromUtf8(result->pdf_path_utf8) : QString();
             state->summary = result && result->summary_json_utf8 ? QString::fromUtf8(result->summary_json_utf8) : QString();
             state->done = true;
+            state->condition.notify_all();
         };
 
         int submitErrorCode = 0;
         char *submitError = nullptr;
         uint64_t jobId = 0;
-        std::unique_lock<std::mutex> renderGuard(m_renderMutex);
         const int submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
         {
             std::lock_guard<std::mutex> guard(state->mutex);
@@ -832,18 +832,12 @@ public:
             m_api.freeString(submitError);
         }
 
-        QEventLoop waitLoop;
-        QTimer pollTimer;
-        pollTimer.setInterval(25);
-        QObject::connect(&pollTimer, &QTimer::timeout, &waitLoop, [&waitLoop, &state]() {
-            std::lock_guard<std::mutex> guard(state->mutex);
-            if (state->done) {
-                waitLoop.quit();
-            }
-        });
-        pollTimer.start();
-        waitLoop.exec();
-        renderGuard.unlock();
+        {
+            std::unique_lock<std::mutex> guard(state->mutex);
+            state->condition.wait(guard, [&state]() {
+                return state->done;
+            });
+        }
 
         int ok = 0;
         int errorCode = 0;
@@ -1049,7 +1043,6 @@ private:
     QString m_dllPath;
     StemtexApi m_api;
     void *m_renderer = nullptr;
-    std::mutex m_renderMutex;
 };
 #endif
 QString compactWarningLine(const QString &line)

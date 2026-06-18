@@ -82,6 +82,28 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
                                           bool boxed,
                                           double visualScale,
                                           bool prepareModification = true);
+void updateLatexTextAnnotationAppearanceAsync(QWidget *parent,
+                                              Okular::Document *document,
+                                              int pageNumber,
+                                              const QString &annotationUniqueName,
+                                              const QString &latexInput,
+                                              const QColor &textColor,
+                                              const QColor &fillColor,
+                                              const QColor &borderColor,
+                                              double layoutWidthPoints,
+                                              bool boxed,
+                                              double visualScale);
+void updateLatexStampAnnotationAppearanceAsync(QWidget *parent,
+                                               Okular::Document *document,
+                                               int pageNumber,
+                                               const QString &annotationUniqueName,
+                                               const QString &latexInput,
+                                               const QColor &textColor,
+                                               const QColor &fillColor,
+                                               const QColor &borderColor,
+                                               double layoutWidthPoints,
+                                               bool boxed,
+                                               double visualScale);
 QString warningText(const GuiUtils::LatexRenderWarning &warning);
 void showRenderWarning(QWidget *parent, const QString &warningMessage);
 void showRenderWarning(QWidget *parent, const GuiUtils::LatexRenderWarning &warning);

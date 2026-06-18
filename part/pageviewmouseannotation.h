@@ -155,6 +155,7 @@ private:
     void performCommand(const QPoint newPos);
     void finishCommand();
     void rollbackCommand();
+    bool updateLatexNoteAfterResizeAsync(const AnnotationDescription &ad, const Okular::NormalizedRect &resizedRect, ResizeHandle handle, Okular::Rotation rotation);
     void updateViewport(const AnnotationDescription &ad) const;
     QRect controlGeometryForInteraction(const AnnotationDescription &ad) const;
     ResizeHandle getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const;
@@ -204,6 +205,7 @@ private:
     QPoint m_mousePosition; // in page view item coordinates
     Okular::Annotation *m_latexRenderWarningAnnotation;
     GuiUtils::LatexRenderWarning m_latexRenderWarning;
+    quint64 m_latexResizeRequestId;
 
     QList<ResizeHandle> m_resizeHandleList;
 };
