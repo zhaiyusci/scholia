@@ -10,8 +10,16 @@ install(FILES
    annotation-advanced-settings.svg
    annotation-favorite.svg
    annotation-font.svg
+   annotation-highlight.svg
+   annotation-image-note.svg
+   annotation-latex-callout.svg
+   annotation-latex-inline-note.svg
+   annotation-latex-note.svg
    annotation-opacity.svg
    annotation-pin.svg
+   annotation-squiggle.svg
+   annotation-strikeout.svg
+   annotation-underline.svg
    tool-base-okular.png
    tool-base-okular@2x.png
    tool-highlighter-okular-colorizable.png

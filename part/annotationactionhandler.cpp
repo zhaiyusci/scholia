@@ -171,9 +171,6 @@ public:
     KSelectAction *colorPickerAction(AnnotationColor colorType);
 
     QIcon toolIcon(const QString &type, const QString &name = QString()) const;
-    QIcon imageNoteIcon() const;
-    QIcon latexNoteIcon(bool boxed) const;
-    QIcon latexCalloutIcon() const;
     QIcon strokeColorIcon(const QColor &color, bool textColorIcon = false) const;
     QIcon fillColorIcon(const QColor &color) const;
     QIcon scholiaIcon(const QString &fileName) const;
@@ -272,82 +269,6 @@ QIcon AnnotationActionHandlerPrivate::toolIcon(const QString &type, const QStrin
         }
     }
     return QIcon::fromTheme(QStringLiteral("draw-freehand"));
-}
-
-QIcon AnnotationActionHandlerPrivate::imageNoteIcon() const
-{
-    QPixmap pixmap(32 * qApp->devicePixelRatio(), 32 * qApp->devicePixelRatio());
-    pixmap.setDevicePixelRatio(qApp->devicePixelRatio());
-    pixmap.fill(Qt::transparent);
-
-    QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QPen(QColor(80, 90, 100), 1.6));
-    p.setBrush(QColor(245, 248, 252));
-    p.drawRoundedRect(QRectF(5, 7, 18, 16), 2, 2);
-    p.setPen(QPen(QColor(80, 140, 190), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    QPainterPath mountains;
-    mountains.moveTo(8, 20);
-    mountains.lineTo(13, 14);
-    mountains.lineTo(16, 18);
-    mountains.lineTo(19, 15);
-    mountains.lineTo(22, 20);
-    p.drawPath(mountains);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(255, 205, 60));
-    p.drawEllipse(QRectF(17, 10, 3.5, 3.5));
-    p.setPen(QPen(QColor(20, 130, 80), 2, Qt::SolidLine, Qt::RoundCap));
-    p.drawLine(QPointF(24, 22), QPointF(30, 22));
-    p.drawLine(QPointF(27, 19), QPointF(27, 25));
-    return QIcon(pixmap);
-}
-
-QIcon AnnotationActionHandlerPrivate::latexNoteIcon(bool boxed) const
-{
-    QPixmap pixmap(32 * qApp->devicePixelRatio(), 32 * qApp->devicePixelRatio());
-    pixmap.setDevicePixelRatio(qApp->devicePixelRatio());
-    pixmap.fill(Qt::transparent);
-
-    QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing);
-    if (boxed) {
-        p.setPen(QPen(QColor(120, 70, 160), 1.7));
-        p.setBrush(QColor(255, 255, 160, 180));
-        p.drawRoundedRect(QRectF(5, 7, 22, 18), 2, 2);
-    }
-    QFont font = qApp->font();
-    font.setItalic(true);
-    font.setBold(true);
-    font.setPointSize(boxed ? 16 : 22);
-    p.setFont(font);
-    p.setPen(QColor(120, 70, 160));
-    p.drawText(QRectF(0, boxed ? 4 : 0, 32, 28), Qt::AlignCenter, QString::fromUtf8("\xcf\x80"));
-    return QIcon(pixmap);
-}
-
-QIcon AnnotationActionHandlerPrivate::latexCalloutIcon() const
-{
-    QPixmap pixmap(32 * qApp->devicePixelRatio(), 32 * qApp->devicePixelRatio());
-    pixmap.setDevicePixelRatio(qApp->devicePixelRatio());
-    pixmap.fill(Qt::transparent);
-
-    QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing);
-    const QColor purple(120, 70, 160);
-    p.setPen(QPen(purple, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    p.drawLine(QPointF(4, 25), QPointF(12, 17));
-    p.drawLine(QPointF(12, 17), QPointF(17, 17));
-    p.setBrush(QColor(255, 255, 160, 180));
-    p.drawRoundedRect(QRectF(16, 7, 12, 15), 2, 2);
-
-    QFont font = qApp->font();
-    font.setItalic(true);
-    font.setBold(true);
-    font.setPointSize(13);
-    p.setFont(font);
-    p.setPen(purple);
-    p.drawText(QRectF(14, 5, 16, 18), Qt::AlignCenter, QString::fromUtf8("\xcf\x80"));
-    return QIcon(pixmap);
 }
 
 QIcon AnnotationActionHandlerPrivate::strokeColorIcon(const QColor &color, bool textColorIcon) const
@@ -961,10 +882,10 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aShowToolBar = new QAction(QIcon::fromTheme(QStringLiteral("draw-freehand")), i18nc("@action:intoolbar Show the builtin annotation toolbar", "Show more annotation tools"), this);
 
     // Text markup actions
-    KToggleAction *aHighlighter = new KToggleAction(d->toolIcon(QStringLiteral("highlight")), i18nc("@action:intoolbar Annotation tool", "Highlighter"), this);
-    KToggleAction *aUnderline = new KToggleAction(d->toolIcon(QStringLiteral("underline")), i18nc("@action:intoolbar Annotation tool", "Underline"), this);
-    KToggleAction *aSquiggle = new KToggleAction(d->toolIcon(QStringLiteral("squiggly")), i18nc("@action:intoolbar Annotation tool", "Squiggle"), this);
-    KToggleAction *aStrikeout = new KToggleAction(d->toolIcon(QStringLiteral("strikeout")), i18nc("@action:intoolbar Annotation tool", "Strike Out"), this);
+    KToggleAction *aHighlighter = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-highlight.svg")), i18nc("@action:intoolbar Annotation tool", "Highlighter"), this);
+    KToggleAction *aUnderline = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-underline.svg")), i18nc("@action:intoolbar Annotation tool", "Underline"), this);
+    KToggleAction *aSquiggle = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-squiggle.svg")), i18nc("@action:intoolbar Annotation tool", "Squiggle"), this);
+    KToggleAction *aStrikeout = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-strikeout.svg")), i18nc("@action:intoolbar Annotation tool", "Strike Out"), this);
     // Notes actions
     KToggleAction *aTypewriter = new KToggleAction(d->toolIcon(QStringLiteral("typewriter")), i18nc("@action:intoolbar Annotation tool", "Typewriter"), this);
     KToggleAction *aInlineNote = new KToggleAction(d->toolIcon(QStringLiteral("note-inline")), i18nc("@action:intoolbar Annotation tool", "Inline Note"), this);
@@ -1031,20 +952,20 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     aStampSeparator->setSeparator(true);
     d->aStamp->addAction(aStampSeparator);
     d->aSelectCustomStamp = new QAction(QIcon::fromTheme(QStringLiteral("image-x-generic")), i18nc("@action:intoolbar Annotation tool", "Add Image Note…"), this);
-    d->aSelectCustomStamp->setIcon(d->imageNoteIcon());
+    d->aSelectCustomStamp->setIcon(d->scholiaIcon(QStringLiteral("annotation-image-note.svg")));
     d->aSelectCustomStamp->setToolTip(i18nc("@info:tooltip", "Add an image as a movable annotation"));
     d->aStamp->addAction(d->aSelectCustomStamp);
     connect(d->aSelectCustomStamp, &QAction::triggered, this, [this]() { d->slotSelectCustomStamp(); });
     d->aAddLatexNote = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Note"), this);
-    d->aAddLatexNote->setIcon(d->latexNoteIcon(false));
+    d->aAddLatexNote->setIcon(d->scholiaIcon(QStringLiteral("annotation-latex-note.svg")));
     d->aAddLatexNote->setToolTip(i18nc("@info:tooltip", "Add a movable LaTeX annotation"));
     connect(d->aAddLatexNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(); });
     d->aAddLatexInlineNote = new QAction(QIcon::fromTheme(QStringLiteral("note")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Inline Note"), this);
-    d->aAddLatexInlineNote->setIcon(d->latexNoteIcon(true));
+    d->aAddLatexInlineNote->setIcon(d->scholiaIcon(QStringLiteral("annotation-latex-inline-note.svg")));
     d->aAddLatexInlineNote->setToolTip(i18nc("@info:tooltip", "Add a LaTeX annotation with an inline-note background and border"));
     connect(d->aAddLatexInlineNote, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true); });
     d->aAddLatexCallout = new QAction(QIcon::fromTheme(QStringLiteral("text-x-tex")), i18nc("@action:intoolbar Annotation tool", "Add LaTeX Callout"), this);
-    d->aAddLatexCallout->setIcon(d->latexCalloutIcon());
+    d->aAddLatexCallout->setIcon(d->scholiaIcon(QStringLiteral("annotation-latex-callout.svg")));
     d->aAddLatexCallout->setToolTip(i18nc("@info:tooltip", "Add a stamp-based LaTeX callout note"));
     connect(d->aAddLatexCallout, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true, true); });
     connect(d->aStamp->menu(), &QMenu::triggered, this, [this](QAction *action) {
