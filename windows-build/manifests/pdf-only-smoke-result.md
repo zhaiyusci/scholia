@@ -9,7 +9,7 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 
 Expected result:
 
-- The staged `bin\okular.exe` starts.
+- The staged `bin\scholia.exe` starts.
 - The PDF opens.
 - No loaded module comes from `C:\CraftRoot`.
 - The staged generator directory contains only `okularGenerator_poppler.dll`.

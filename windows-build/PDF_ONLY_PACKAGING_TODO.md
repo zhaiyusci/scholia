@@ -33,14 +33,14 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 
 The stage must include the PDF runtime and omit non-PDF generators:
 
-- `bin\okular.exe`
+- `bin\scholia.exe`
 - `bin\kioworker.exe`
 - `bin\Okular6Core.dll`
 - `plugins\kf6\parts\okularpart.dll`
 - `plugins\kf6\kio\kio_file.dll`
 - `plugins\okular_generators\okularGenerator_poppler.dll`
-- `bin\data\okular`
-- `bin\data\okular\microtex\res`
+- `bin\data\scholia`
+- `bin\data\scholia\microtex\res`
 - `share\poppler`
 
 Check generator trimming:

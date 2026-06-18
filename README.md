@@ -1,4 +1,4 @@
-# Scholia – PDF-Centered Document Viewer
+# Scholia - PDF-Centered Document Viewer
 
 Scholia is a modified distribution of KDE Okular focused on PDF annotation,
 LaTeX-backed notes, and Windows packaging. It is not an official KDE Okular
@@ -208,13 +208,13 @@ LaTeX notes separate the editable layout width from the visual scale:
   its measured vector bounds and writes the needed crop box itself. Therefore a
   MicroTeX-only runtime is expected to work without any system TeX Live tools.
 
-When debugging renderer selection, enable `org.kde.okular.ui.debug`. Every TeX
+When debugging renderer selection, enable `org.jairy.scholia.ui.debug`. Every TeX
 or TeX-like render operation writes a line to
-`okular-tex-debug.log` under the platform local application data directory. On
+`scholia-tex-debug.log` under the platform local application data directory. On
 Windows this is normally:
 
 ```text
-%LOCALAPPDATA%\okular\okular-tex-debug.log
+%LOCALAPPDATA%\scholia\scholia-tex-debug.log
 ```
 
 Expected operations are:
@@ -275,7 +275,7 @@ https://mail.kde.org/mailman/listinfo/okular-devel
 https://invent.kde.org/graphics/okular.git
 
 The Okular repository contains the source code for:
- * the `okular` desktop application (the “shell”),
+ * the `okular` desktop application (the "shell"),
  * the `okularpart` KParts plugin,
  * the `okularkirigami` mobile application,
  * several `okularGenerator_xyz` plugins, which provide backends for different document types.
@@ -287,7 +287,7 @@ https://api.kde.org/okular/html/index.html
 ## Contributing
 
 Okular uses the merge request workflow.
-Merge requests are required to run pre-commit CI jobs; please don’t push to the master branch directly.
+Merge requests are required to run pre-commit CI jobs; please don闁炽儲鐛?push to the master branch directly.
 See https://community.kde.org/Infrastructure/GitLab for an introduction.
 
 ### Build instructions

@@ -1,6 +1,6 @@
-# Okular Windows Build
+# Scholia Windows Build
 
-This directory contains the Windows build and packaging scripts for this Okular
+This directory contains the Windows build and packaging scripts for this Scholia
 checkout. Run the commands below from the repository root.
 
 Windows build logs and package staging output live outside the source checkout,
@@ -47,33 +47,33 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 Expected installer output:
 
 ```text
-..\windows_build\dist\Okular-PDF-26.07.70-patch<date>-Setup.exe
+..\windows_build\dist\Scholia-PDF-26.07.70-patch<date>-Setup.exe
 ```
 
 Run the installed local build:
 
 ```powershell
-C:\CraftRoot\bin\okular.exe
+C:\CraftRoot\bin\scholia.exe
 ```
 
 Run with TeX invocation logging enabled:
 
 ```powershell
-$env:QT_LOGGING_RULES = 'org.kde.okular.ui.debug=true'
-C:\CraftRoot\bin\okular.exe
+$env:QT_LOGGING_RULES = 'org.jairy.scholia.ui.debug=true'
+C:\CraftRoot\bin\scholia.exe
 ```
 
 ## Layout
 
-- Okular source: repository root, `.`
+- Scholia source: repository root, `.`
 - Poppler source: `external\poppler`
 - MicroTeX source: `external\MicroTeX`
 - Windows build workspace: `..\windows_build`
 - Craft root: `C:\CraftRoot`
-- Okular build dir: `C:\CraftRoot\build\kde\applications\okular\work\build`
+- Scholia build dir: `C:\CraftRoot\build\kde\applications\okular\work\build`
 - Poppler build dir: `C:\CraftRoot\build\qt-libs\poppler\work\build`
 - Installed runtime:
-  - `C:\CraftRoot\bin\okular.exe`
+  - `C:\CraftRoot\bin\scholia.exe`
   - `C:\CraftRoot\bin\Okular6Core.dll`
   - `C:\CraftRoot\plugins\kf6\parts\okularpart.dll`
   - `C:\CraftRoot\plugins\okular_generators\okularGenerator_poppler.dll`
@@ -107,8 +107,8 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 
 ## Full PDF-Only Build
 
-This is the normal full Windows build for testing `C:\CraftRoot\bin\okular.exe`.
-It builds local Poppler first, then builds Okular with only the PDF generator and
+This is the normal full Windows build for testing `C:\CraftRoot\bin\scholia.exe`.
+It builds local Poppler first, then builds Scholia with only the PDF generator and
 with MicroTeX enabled.
 
 ```powershell
@@ -124,7 +124,7 @@ directory should be treated as untrusted.
 This repository's Windows full build means PDF-only. Do not remove `-PdfOnly`
 for the normal Windows runtime or installer build.
 
-To rebuild Okular from scratch while reusing the already installed local
+To rebuild Scholia from scratch while reusing the already installed local
 Poppler:
 
 ```powershell
@@ -135,7 +135,7 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
   -MicroTeXSrc .\external\MicroTeX
 ```
 
-The full-build script also makes sure Okular's Craft work directory contains a
+The full-build script also makes sure Scholia's Craft work directory contains a
 `poppler-local` junction pointing at the local Poppler build directory. The PDF
 generator includes private Poppler headers from `external\poppler`, and those
 headers need generated files such as `config.h` from the Poppler build tree.
@@ -161,25 +161,25 @@ MICROTEX_SRC:PATH=<repo>/external/MicroTeX
 Verify the installed files:
 
 ```powershell
-Get-Item C:\CraftRoot\bin\okular.exe,
+Get-Item C:\CraftRoot\bin\scholia.exe,
          C:\CraftRoot\bin\Okular6Core.dll,
          C:\CraftRoot\plugins\kf6\parts\okularpart.dll,
          C:\CraftRoot\plugins\okular_generators\okularGenerator_poppler.dll,
          C:\CraftRoot\bin\poppler-qt6.dll |
   Select-Object FullName,Length,LastWriteTime
 
-Test-Path C:\CraftRoot\bin\data\okular\microtex\res
+Test-Path C:\CraftRoot\bin\data\scholia\microtex\res
 ```
 
 Run the build:
 
 ```powershell
-C:\CraftRoot\bin\okular.exe
+C:\CraftRoot\bin\scholia.exe
 ```
 
-## Incremental Okular Rebuild
+## Incremental Scholia Rebuild
 
-Use this for ordinary source edits in Okular when the Craft build directory is
+Use this for ordinary source edits in Scholia when the Craft build directory is
 valid. It rebuilds the requested source files, relinks `okularpart.dll`, and
 installs it into Craft.
 
@@ -222,8 +222,8 @@ It then installs the runtime files to:
 - `C:\CraftRoot\bin\poppler.dll`
 - `C:\CraftRoot\bin\poppler-qt6.dll`
 
-No Okular rebuild is needed for implementation-only Poppler changes because the
-installed Okular runtime dynamically loads those DLLs. Rebuild Okular only when
+No Scholia rebuild is needed for implementation-only Poppler changes because the
+installed Scholia runtime dynamically loads those DLLs. Rebuild Scholia only when
 Poppler headers, exported ABI, generator code, CMake options, or resources
 changed.
 
@@ -254,9 +254,9 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\scripts\build-local-pa
   -SkipWindowsBuild
 ```
 
-## Clean Okular Build Directory
+## Clean Scholia Build Directory
 
-Use this only when a full Okular rebuild is needed. It removes Okular's Craft
+Use this only when a full Scholia rebuild is needed. It removes Scholia's Craft
 build and image directories, not the whole Craft root.
 
 ```powershell
@@ -307,13 +307,13 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\
 The stage keeps only the PDF generator. It must still include the runtime pieces
 needed for opening and saving local PDFs, including:
 
-- `bin\okular.exe`
+- `bin\scholia.exe`
 - `bin\kioworker.exe`
 - `bin\Okular6Core.dll`
 - `plugins\kf6\parts\okularpart.dll`
 - `plugins\kf6\kio\kio_file.dll`
 - `plugins\okular_generators\okularGenerator_poppler.dll`
-- `bin\data\okular`, including `bin\data\okular\microtex\res`
+- `bin\data\scholia`, including `bin\data\scholia\microtex\res`
 - `share\poppler`
 
 ## TeX And LaTeX Notes
@@ -321,38 +321,38 @@ needed for opening and saving local PDFs, including:
 The Windows build supports two LaTeX note renderers:
 
 - System TeX, discovered from the user's normal `PATH` or configured executable.
-- MicroTeX, built from `external\MicroTeX` and shipped with Okular resources.
+- MicroTeX, built from `external\MicroTeX` and shipped with Scholia resources.
 
 This repository does not require or install a bundled TeX distribution.
 
-For system-TeX rendering, Okular expects `xelatex.exe` or `lualatex.exe` and
+For system-TeX rendering, Scholia expects `xelatex.exe` or `lualatex.exe` and
 `pdfcrop.exe` to be available. The renderer compiles a source appearance once on
 an A0 page with page numbers disabled, then uses `pdfcrop` to crop the result to
 the actual drawn content. This replaces the old overflow-compensation behavior
-that ran TeX a second time. `Overfull \hbox` remains a warning shown by Okular;
+that ran TeX a second time. `Overfull \hbox` remains a warning shown by Scholia;
 it is not a reason to compile twice.
 
 MicroTeX rendering does not require `pdfcrop.exe` or a system TeX distribution.
-If Okular is in Auto mode and no system TeX executable is found, it falls back
+If Scholia is in Auto mode and no system TeX executable is found, it falls back
 to MicroTeX when the runtime was built with `OKULAR_ENABLE_MICROTEX=ON`.
-Okular uses MicroTeX's text-mode entry point for note fallback rendering. Plain
+Scholia uses MicroTeX's text-mode entry point for note fallback rendering. Plain
 text is parsed outside math mode; `$...`, `$$...$$`, `\(...\)`, and `\[...\]`
 enter math mode explicitly. The forked MicroTeX text mode follows the
 single-paragraph behavior expected for notes: `\textbf{...}` and
 `\textit{...}` use TeX text fonts, consecutive spaces collapse to one space,
 and line breaks are treated as one inter-word space.
 
-To log TeX rendering calls, start Okular with:
+To log TeX rendering calls, start Scholia with:
 
 ```powershell
-$env:QT_LOGGING_RULES = 'org.kde.okular.ui.debug=true'
-C:\CraftRoot\bin\okular.exe
+$env:QT_LOGGING_RULES = 'org.jairy.scholia.ui.debug=true'
+C:\CraftRoot\bin\scholia.exe
 ```
 
 The persistent log file is:
 
 ```powershell
-Get-Content "$env:LOCALAPPDATA\okular\okular-tex-debug.log" -Tail 80
+Get-Content "$env:LOCALAPPDATA\scholia\scholia-tex-debug.log" -Tail 80
 ```
 
 Expected log operations:
@@ -362,11 +362,11 @@ Expected log operations:
 - `microtex-render` for MicroTeX rendering or Auto fallback.
 
 To test the MicroTeX fallback without changing the machine-wide environment,
-start Okular from a PowerShell session that removes TeX distributions from
+start Scholia from a PowerShell session that removes TeX distributions from
 `PATH` but keeps Craft available:
 
 ```powershell
-$env:QT_LOGGING_RULES = 'org.kde.okular.ui.debug=true'
+$env:QT_LOGGING_RULES = 'org.jairy.scholia.ui.debug=true'
 $craftBin = 'C:\CraftRoot\bin'
 $env:PATH = ($env:PATH -split ';' |
   Where-Object {
@@ -377,7 +377,7 @@ $env:PATH = ($env:PATH -split ';' |
   }) -join ';'
 $env:PATH = "$craftBin;$env:PATH"
 
-& 'C:\CraftRoot\bin\okular.exe'
+& 'C:\CraftRoot\bin\scholia.exe'
 ```
 
 With system TeX hidden, the log should contain `microtex-render` and should not

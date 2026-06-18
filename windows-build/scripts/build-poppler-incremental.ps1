@@ -41,7 +41,7 @@ try {
     Write-Host "Poppler incremental Windows build started at $(Get-Date -Format o)"
     Write-Host "Log: $logPath"
     Write-Host "Craft root: $CraftRoot"
-    Write-Host "Okular source: $OkularSource"
+    Write-Host "Scholia source: $OkularSource"
     Write-Host "Build dir: $BuildDir"
     Write-Host "Install runtime: $(!$NoInstall)"
     Write-Host ""

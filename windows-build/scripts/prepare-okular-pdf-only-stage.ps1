@@ -136,7 +136,7 @@ Copy-FileFromCraft "plugins\kf6\parts\okularpart.dll" "Scholia KParts UI plugin"
 Copy-FileFromCraft "plugins\kf6\kio\kio_file.dll" "KIO file protocol worker required for file:// save/load operations"
 Copy-FileFromCraft "plugins\okular_generators\okularGenerator_poppler.dll" "PDF generator"
 
-Copy-DirectoryFromCraft "bin\data\okular" "Scholia annotation tools, stamps, and app data"
+Copy-DirectoryFromCraft "bin\data\scholia" "Scholia annotation tools, stamps, and app data"
 Copy-FileFromCraft "bin\data\applications\org.jairy.scholia.desktop" "Scholia shell desktop metadata"
 Copy-FileFromCraft "bin\data\applications\okularApplication_pdf.desktop" "PDF-only application metadata"
 Copy-FileFromCraft "bin\data\metainfo\org.kde.okular-poppler.metainfo.xml" "PDF generator metadata"

@@ -1,4 +1,4 @@
-﻿# Required components for Scholia PDF staging
+# Required components for Scholia PDF staging
 # Generated: 2026-06-13T19:07:20.6152213+08:00
 # StageRoot: C:\Users\jairy\Documents\okular\windows_build\dist\scholia-pdf\app
 
@@ -17,7 +17,7 @@ bin\data\kf6	KF6 runtime service metadata
 bin\data\metainfo\org.jairy.scholia.appdata.xml	Scholia app metadata
 bin\data\metainfo\org.kde.okular-poppler.metainfo.xml	PDF generator metadata
 bin\data\mime	MIME database used by KDE/Qt file type lookup
-bin\data\okular	Scholia annotation tools, stamps, and app data
+bin\data\scholia	Scholia annotation tools, stamps, and app data
 bin\data\qlogging-categories6	Qt/KF6 logging category metadata
 bin\dav1d.dll	DLL import required by avif.dll
 bin\freetype.dll	DLL import required by Qt6Gui.dll

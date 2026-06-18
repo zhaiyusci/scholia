@@ -71,7 +71,7 @@ try {
     Write-Host "Okular local build started at $(Get-Date -Format o)"
     Write-Host "Log: $logPath"
     Write-Host "Craft root: $CraftRoot"
-    Write-Host "Okular source: $OkularSrc"
+    Write-Host "Scholia source: $OkularSrc"
     Write-Host "Poppler source: $PopplerSrc"
     Write-Host "Okular version override: $OkularVersion"
     Write-Host "Poppler version override: $PopplerVersion"

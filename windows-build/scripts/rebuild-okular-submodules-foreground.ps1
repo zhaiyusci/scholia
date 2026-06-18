@@ -45,7 +45,7 @@ function Reset-BuildDir([string] $Path) {
 
 Write-Host "Scholia from-submodule rebuild" -ForegroundColor Green
 Write-Host "CraftRoot     : $CraftRoot"
-Write-Host "Okular source : $OkularSource"
+Write-Host "Scholia source : $OkularSource"
 Write-Host "Poppler source: $popplerSource"
 Write-Host "Jobs          : $Jobs"
 Write-Host "Clean         : $Clean"
@@ -53,7 +53,7 @@ Write-Host "Poppler incr. : $PopplerIncrementalOnly"
 Write-Host "No install    : $NoInstall"
 
 if (!(Test-Path -LiteralPath (Join-Path $OkularSource ".gitmodules"))) {
-    throw "Okular source does not look like a submodule-enabled checkout: $OkularSource"
+    throw "Scholia source does not look like a submodule-enabled checkout: $OkularSource"
 }
 if (!(Test-Path -LiteralPath (Join-Path $popplerSource "CMakeLists.txt"))) {
     throw "Poppler submodule is missing or not initialized: $popplerSource"
