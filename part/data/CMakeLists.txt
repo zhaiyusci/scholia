@@ -7,6 +7,11 @@ install(FILES
 
 # install annotation tool images
 install(FILES
+   annotation-advanced-settings.svg
+   annotation-favorite.svg
+   annotation-font.svg
+   annotation-opacity.svg
+   annotation-pin.svg
    tool-base-okular.png
    tool-base-okular@2x.png
    tool-highlighter-okular-colorizable.png

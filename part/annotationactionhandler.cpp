@@ -26,6 +26,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -175,6 +176,7 @@ public:
     QIcon latexCalloutIcon() const;
     QIcon strokeColorIcon(const QColor &color, bool textColorIcon = false) const;
     QIcon fillColorIcon(const QColor &color) const;
+    QIcon scholiaIcon(const QString &fileName) const;
     const QIcon widthIcon(double width);
     const QIcon stampIcon(const QString &stampIconName);
 
@@ -399,6 +401,12 @@ QIcon AnnotationActionHandlerPrivate::fillColorIcon(const QColor &color) const
     p.setPen(QPen(QColor(80, 80, 80), 1.4));
     p.drawRoundedRect(swatch, 2, 2);
     return QIcon(pixmap);
+}
+
+QIcon AnnotationActionHandlerPrivate::scholiaIcon(const QString &fileName) const
+{
+    const QString iconPath = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/pics/") + fileName);
+    return iconPath.isEmpty() ? QIcon() : QIcon(iconPath);
 }
 
 QAction *AnnotationActionHandlerPrivate::selectActionItem(KSelectAction *aList, QAction *aCustomCurrent, double value, const QList<double> &defaultValues, const QIcon &icon, const QString &label)
@@ -1073,10 +1081,10 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->populateQuickAnnotations();
 
     // Add to quick annotation action
-    d->aAddToQuickTools = new QAction(QIcon::fromTheme(QStringLiteral("favorite")), i18nc("@action:intoolbar Add current annotation tool to the quick annotations list", "Add to Quick Annotations"), this);
+    d->aAddToQuickTools = new QAction(d->scholiaIcon(QStringLiteral("annotation-favorite.svg")), i18nc("@action:intoolbar Add current annotation tool to the quick annotations list", "Add to Quick Annotations"), this);
 
     // Pin action
-    d->aContinuousMode = new KToggleAction(QIcon::fromTheme(QStringLiteral("pin")), i18nc("@action:intoolbar When checked keep the current annotation tool active after use", "Keep Active"), this);
+    d->aContinuousMode = new KToggleAction(d->scholiaIcon(QStringLiteral("annotation-pin.svg")), i18nc("@action:intoolbar When checked keep the current annotation tool active after use", "Keep Active"), this);
     d->aContinuousMode->setToolTip(i18nc("@info:tooltip", "Keep the annotation tool active after use"));
     d->aContinuousMode->setChecked(d->annotator->continuousMode());
 
@@ -1089,8 +1097,8 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::Color);
     d->aInnerColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::InnerColor);
     d->aTextColor = d->colorPickerAction(AnnotationActionHandlerPrivate::AnnotationColor::TextColor);
-    d->aFont = new QAction(QIcon::fromTheme(QStringLiteral("font-face")), i18nc("@action:intoolbar Current annotation config option", "Font"), this);
-    d->aAdvancedSettings = new QAction(QIcon::fromTheme(QStringLiteral("settings-configure")), i18nc("@action:intoolbar Current annotation advanced settings", "Annotation Settings"), this);
+    d->aFont = new QAction(d->scholiaIcon(QStringLiteral("annotation-font.svg")), i18nc("@action:intoolbar Current annotation config option", "Font"), this);
+    d->aAdvancedSettings = new QAction(d->scholiaIcon(QStringLiteral("annotation-advanced-settings.svg")), i18nc("@action:intoolbar Current annotation advanced settings", "Annotation Settings"), this);
 
     // Width list
     d->aWidth = new KSelectAction(QIcon::fromTheme(QStringLiteral("edit-line-width")), i18nc("@action:intoolbar Current annotation config option", "Line width"), this);
@@ -1102,7 +1110,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     }
 
     // Opacity list
-    d->aOpacity = new KSelectAction(QIcon::fromTheme(QStringLiteral("edit-opacity")), i18nc("@action:intoolbar Current annotation config option", "Opacity"), this);
+    d->aOpacity = new KSelectAction(d->scholiaIcon(QStringLiteral("annotation-opacity.svg")), i18nc("@action:intoolbar Current annotation config option", "Opacity"), this);
     d->aOpacity->setToolBarMode(KSelectAction::MenuMode);
     for (double opacity : d->opacityStandardValues) {
         KToggleAction *ann = new KToggleAction(GuiUtils::createOpacityIcon(opacity), i18nc("@item:inlistbox Annotation opacity percentage level, make sure to include %1 in your translation", "%1%", opacity * 100), this);
