@@ -34,9 +34,10 @@ Get-Process -Name scholia -ErrorAction SilentlyContinue |
     Stop-Process -Force
 
 $oldPath = $env:PATH
+$process = $null
 try {
     $env:PATH = "$StageRoot\bin;$env:SystemRoot\System32;$env:SystemRoot"
-    Start-Process -FilePath $scholiaExe -ArgumentList "`"$PdfPath`"" -WorkingDirectory (Join-Path $StageRoot "bin")
+    Start-Process -FilePath $scholiaExe -ArgumentList "`"$PdfPath`"" -WorkingDirectory (Join-Path $StageRoot "bin") -WindowStyle Minimized
     Start-Sleep -Seconds $WaitSeconds
 
     $process = Get-Process -Name scholia -ErrorAction Stop |
@@ -48,27 +49,29 @@ try {
     }
 
     $modules = $process.Modules | ForEach-Object FileName | Where-Object { $_ }
-    $craftRootModules = $modules | Where-Object { $_ -like "C:\CraftRoot\*" }
+    $unexpectedWorkspaceModules = $modules | Where-Object {
+        $_ -like "$workspaceRoot\*" -and $_ -notlike "$StageRoot\*"
+    }
     $pdfModules = $modules | Where-Object { $_ -match "okularGenerator|poppler|okularpart" } | Sort-Object
 
     [pscustomobject]@{
         ProcessId = $process.Id
         Responding = $process.Responding
         MainWindowTitle = $process.MainWindowTitle
-        CraftRootModuleCount = @($craftRootModules).Count
+        UnexpectedWorkspaceModuleCount = @($unexpectedWorkspaceModules).Count
         PdfModules = $pdfModules
     } | Format-List
 
-    if ($craftRootModules) {
-        Write-Warning "Staged Scholia loaded modules from CraftRoot:"
-        $craftRootModules | Sort-Object | ForEach-Object { Write-Warning "  $_" }
+    if ($unexpectedWorkspaceModules) {
+        Write-Warning "Staged Scholia loaded project-local modules from outside the stage:"
+        $unexpectedWorkspaceModules | Sort-Object | ForEach-Object { Write-Warning "  $_" }
         exit 2
     }
 
     $requiredPdfModules = @(
         Join-Path $StageRoot "bin\poppler.dll"
         Join-Path $StageRoot "bin\poppler-qt6.dll"
-        Join-Path $StageRoot "plugins\kf6\parts\okularpart.dll"
+        Join-Path $StageRoot "bin\plugins\kf6\parts\okularpart.dll"
     )
     $missingPdfModules = $requiredPdfModules | Where-Object { $pdfModules -notcontains $_ }
     if ($missingPdfModules) {
@@ -77,7 +80,7 @@ try {
         exit 3
     }
 
-    $pdfGenerator = Join-Path $StageRoot "plugins\okular_generators\okularGenerator_poppler.dll"
+    $pdfGenerator = Join-Path $StageRoot "bin\plugins\okular_generators\okularGenerator_poppler.dll"
     if ($pdfModules -notcontains $pdfGenerator) {
         Write-Warning "PDF generator module was not visible in the process module list. If the PDF opened successfully, this can be a loader-timing false negative."
     }
@@ -86,4 +89,11 @@ try {
 }
 finally {
     $env:PATH = $oldPath
+    if ($process) {
+        $process.CloseMainWindow() | Out-Null
+        Start-Sleep -Seconds 2
+        if (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) {
+            Stop-Process -Id $process.Id -Force
+        }
+    }
 }

@@ -21,6 +21,7 @@
 #define _OKULAR_PAGEVIEWMOUSEANNOTATION_H_
 
 #include <QObject>
+#include <QString>
 
 #include "core/annotations.h"
 #include "latexrenderer.h"
@@ -143,6 +144,7 @@ public:
         RH_CalloutTip = 32,
         RH_CalloutKnee = 64,
         RH_CalloutAnchor = 128,
+        RH_LinePoint = 256,
         RH_CalloutHandles = RH_CalloutTip | RH_CalloutKnee | RH_CalloutAnchor,
         RH_AllHandles = RH_Top | RH_Right | RH_Bottom | RH_Left
     };
@@ -154,10 +156,13 @@ private:
     void performCommand(const QPoint newPos);
     void finishCommand();
     void rollbackCommand();
+    bool updateLatexNoteAfterResizeAsync(const AnnotationDescription &ad, const Okular::NormalizedRect &resizedRect, ResizeHandle handle, Okular::Rotation rotation);
     void updateViewport(const AnnotationDescription &ad) const;
     QRect controlGeometryForInteraction(const AnnotationDescription &ad) const;
     ResizeHandle getHandleAt(const QPoint eventPos, const AnnotationDescription &ad) const;
     QRect getHandleRect(ResizeHandle handle, const AnnotationDescription &ad) const;
+    QRect getLinePointHandleRect(int pointIndex, const AnnotationDescription &ad) const;
+    QRect getLinePointsRect(const AnnotationDescription &ad) const;
     QRect getCalloutLineRect(const AnnotationDescription &ad) const;
     QRect getLatexWarningMarkerRect(const AnnotationDescription &ad) const;
     QRect viewportRectForPageRect(const QRect &rect, const AnnotationDescription &ad) const;
@@ -167,6 +172,8 @@ private:
     void clearLatexRenderWarning();
     void rememberOriginalCalloutGeometry(const AnnotationDescription &ad);
     void restoreOriginalCalloutGeometry(const AnnotationDescription &ad);
+    void rememberOriginalLineGeometry(const AnnotationDescription &ad);
+    void restoreOriginalLineGeometry(const AnnotationDescription &ad);
     static void handleToAdjust(const QPointF dIn, QPointF &dOut1, QPointF &dOut2, MouseAnnotation::ResizeHandle handle, Okular::Rotation rotation);
     static QPointF rotateInRect(const QPointF rotated, Okular::Rotation rotation);
     static ResizeHandle rotateHandle(ResizeHandle handle, Okular::Rotation rotation);
@@ -187,6 +194,10 @@ private:
     Okular::NormalizedPoint m_originalCalloutPoints[3];
     Okular::NormalizedRect m_originalCalloutBoundingRect;
     bool m_hasOriginalCalloutGeometry;
+    QList<Okular::NormalizedPoint> m_originalLinePoints;
+    Okular::NormalizedRect m_originalLineBoundingRect;
+    bool m_hasOriginalLineGeometry;
+    mutable int m_linePointHandleIndex;
     Okular::NormalizedRect m_latexResizeLayoutRect;
     bool m_hasLatexResizeLayoutRect;
 
@@ -195,6 +206,10 @@ private:
     QPoint m_mousePosition; // in page view item coordinates
     Okular::Annotation *m_latexRenderWarningAnnotation;
     GuiUtils::LatexRenderWarning m_latexRenderWarning;
+    quint64 m_latexResizeRequestId;
+    QString m_pendingLatexResizeAnnotationUniqueName;
+    Okular::NormalizedRect m_pendingLatexResizePreviewRect;
+    bool m_hasPendingLatexResizePreview;
 
     QList<ResizeHandle> m_resizeHandleList;
 };

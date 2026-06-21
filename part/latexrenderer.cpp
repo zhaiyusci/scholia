@@ -1,4 +1,4 @@
-/*
+﻿/*
     SPDX-FileCopyrightText: 2004 Duncan Mac-Vicar Prett <duncan@kde.org>
     SPDX-FileCopyrightText: 2004-2005 Olivier Goffart <ogoffart@kde.org>
     SPDX-FileCopyrightText: 2011 Niels Ole Salscheider
@@ -9,9 +9,13 @@
 
 #include "latexrenderer.h"
 
+#include <condition_variable>
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <mutex>
+#include <thread>
+#include <utility>
 
 #include <QDebug>
 
@@ -20,11 +24,16 @@
 
 #include <QColor>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
+#include <QLibrary>
 #include <QPageLayout>
 #include <QPageSize>
 #include <QPainter>
@@ -36,6 +45,11 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTextStream>
+#include <QThread>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 
 #include "gui/debug_ui.h"
 #include "settings.h"
@@ -101,6 +115,11 @@ QString sourceLatexBackendName(const QString &executable)
 }
 
 bool canUseMicrotexForRender(bool renderSource, QString *pdfFileName, int resolution)
+{
+    return renderSource && pdfFileName && resolution <= 0;
+}
+
+bool canUseStemtexForRender(bool renderSource, QString *pdfFileName, int resolution)
 {
     return renderSource && pdfFileName && resolution <= 0;
 }
@@ -480,17 +499,6 @@ bool addIncrementalPdfCropBox(const QString &pdfFileName, double left, double bo
     return ok;
 }
 
-LatexRenderWarning microtexOverflowWarning(int renderedWidth, int availableWidth)
-{
-    LatexRenderWarning warning;
-    warning.type = LatexRenderWarningType::ClippingRisk;
-    warning.severity = renderedWidth - availableWidth;
-    warning.message = i18n("LaTeX output is wider than the layout width. The note is shown fully; the blue width handle marks the requested layout width. Rendered width is %1 pt, layout width is %2 pt.",
-                           renderedWidth,
-                           availableWidth);
-    return warning;
-}
-
 LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList, LatexRenderWarning *warning)
 {
     std::lock_guard<std::mutex> guard(microtexMutex);
@@ -574,17 +582,7 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
         qCDebug(OkularUiDebug) << "MicroTeX render finished; output PDF:" << pdfFileName << "bytes:" << QFileInfo(pdfFileName).size();
         QStringList outputLines;
         outputLines << i18n("Rendered with MicroTeX fallback. LaTeX preamble and external packages are not supported by MicroTeX.");
-        if (fixedWidth) {
-            const int availableWidth = requestedWidth;
-            const int renderedWidth = qCeil(qMax(static_cast<double>(render->getWidth()), vectorRect.right()));
-            if (renderedWidth > availableWidth) {
-                const LatexRenderWarning overflowWarning = microtexOverflowWarning(renderedWidth, availableWidth);
-                if (warning) {
-                    *warning = overflowWarning;
-                }
-                outputLines << overflowWarning.message;
-            }
-        }
+        Q_UNUSED(warning);
         latexOutput = outputLines.join(QLatin1Char('\n'));
         return LatexRenderer::NoError;
     } catch (const std::exception &e) {
@@ -597,55 +595,687 @@ LatexRenderer::Error renderMicrotexToPdf(const QString &latexSource, const QColo
 }
 #endif
 
-QString compactWarningLine(const QString &line)
+bool cropPdfWithPdfcrop(const QString &sourcePdfFile, const QString &croppedPdfFile, QString &latexOutput, QStringList &fileList)
 {
-    QString message = line.simplified();
-    constexpr int maxLength = 180;
-    if (message.size() > maxLength) {
-        message = message.left(maxLength - 3) + QStringLiteral("...");
+    const QString pdfCropExecutable = QStandardPaths::findExecutable(QStringLiteral("pdfcrop"));
+    if (pdfCropExecutable.isEmpty()) {
+        qCDebug(OkularUiDebug) << "Could not find pdfcrop!";
+        latexOutput += QStringLiteral("\npdfcrop was not found.");
+        return false;
     }
-    return message;
+
+    QFile::remove(croppedPdfFile);
+    KProcess pdfCropProc;
+    pdfCropProc << pdfCropExecutable << QStringLiteral("--hires") << QStringLiteral("--margins") << QStringLiteral("0 0 0 0") << sourcePdfFile << croppedPdfFile;
+    pdfCropProc.setWorkingDirectory(QFileInfo(croppedPdfFile).absolutePath());
+    pdfCropProc.setOutputChannelMode(KProcess::MergedChannels);
+    logTexInvocation("texlive-pdfcrop",
+                     QStringLiteral("pdfcrop"),
+                     QStringLiteral("source-pdf-crop"),
+                     {QStringLiteral("executable: %1").arg(pdfCropExecutable), QStringLiteral("input: %1").arg(sourcePdfFile), QStringLiteral("output: %1").arg(croppedPdfFile)});
+    const int pdfCropExitCode = pdfCropProc.execute();
+    const QString pdfCropOutput = QString::fromLocal8Bit(pdfCropProc.readAll());
+    if (pdfCropExitCode != 0 || !QFile::exists(croppedPdfFile)) {
+        qCWarning(OkularUiDebug) << "Could not crop rendered LaTeX PDF; exit code:" << pdfCropExitCode << "output:" << pdfCropOutput;
+        latexOutput += QLatin1Char('\n') + pdfCropOutput;
+        return false;
+    }
+
+    fileList << croppedPdfFile;
+    return true;
 }
 
-LatexRenderWarning latexWarningMessage(const QString &latexOutput)
-{
-    static const QRegularExpression overfullRegex(QStringLiteral("^Overfull \\\\([hv])box \\(([0-9]+(?:\\.[0-9]+)?)pt too (?:wide|high)\\)"));
-    static const QRegularExpression underfullRegex(QStringLiteral("^Underfull \\\\([hv])box .*badness ([0-9]+)"));
-    constexpr double overfullThresholdPt = 0.5;
-    constexpr int underfullThresholdBadness = 1000;
+#ifdef Q_OS_WIN
+struct StemTeXConfig {
+    const char *repo_root_utf8;
+    const char *runtime_root_utf8;
+    const char *texmf_root_utf8;
+    const char *profile_root_utf8;
+    const char *state_root_utf8;
+    const char *renders_root_utf8;
+    int request_timeout_ms;
+    int xdvipdfmx_timeout_ms;
+    int min_width_pt;
+    int max_width_pt;
+    int default_width_pt;
+    int spare_worker_count;
+    int auto_restart;
+    int delete_intermediates;
+    const char *worker_template_utf8;
+};
 
-    const QStringList lines = latexOutput.split(QLatin1Char('\n'));
-    for (const QString &line : lines) {
-        const QString trimmed = line.trimmed();
-        const QRegularExpressionMatch overfullMatch = overfullRegex.match(trimmed);
-        if (overfullMatch.hasMatch()) {
-            const double overfullPoints = overfullMatch.captured(2).toDouble();
-            if (overfullPoints <= overfullThresholdPt) {
-                continue;
+struct StemTeXRenderResult {
+    char *request_id_utf8;
+    char *pdf_path_utf8;
+    char *summary_json_utf8;
+};
+
+struct StemTeXEngineSnapshot {
+    int status;
+    int stage;
+    int primary_ready;
+    int spare_ready;
+    int spare_target;
+    int spare_rebuilding;
+    int async_running;
+    int async_pending;
+    uint64_t running_job_id;
+    uint64_t pending_job_id;
+    int last_error;
+};
+
+struct StemtexApi {
+    using RenderCallback = void (*)(uint64_t, int, const StemTeXRenderResult *, int, const char *, void *);
+    using Create = void *(*)(const StemTeXConfig *, int *, char **);
+    using Render = int (*)(void *, const char *, int, StemTeXRenderResult *, int *, char **);
+    using RenderAsync = int (*)(void *, const char *, int, uint64_t *, RenderCallback, void *, int *, char **);
+    using EngineSnapshot = int (*)(void *, StemTeXEngineSnapshot *);
+    using ProfileInfo = char *(*)(const char *, int *, char **);
+    using FreeResult = void (*)(StemTeXRenderResult *);
+    using FreeString = void (*)(char *);
+    using Destroy = void (*)(void *);
+
+    QLibrary library;
+    Create create = nullptr;
+    Render render = nullptr;
+    RenderAsync renderAsync = nullptr;
+    EngineSnapshot engineSnapshot = nullptr;
+    ProfileInfo profileInfo = nullptr;
+    FreeResult freeResult = nullptr;
+    FreeString freeString = nullptr;
+    Destroy destroy = nullptr;
+
+    explicit StemtexApi(const QString &dllPath)
+        : library(dllPath)
+    {
+    }
+
+    bool load(QString *error)
+    {
+        if (!library.load()) {
+            if (error) {
+                *error = library.errorString();
             }
-
-            LatexRenderWarning warning;
-            warning.type = LatexRenderWarningType::ClippingRisk;
-            warning.severity = overfullPoints;
-            warning.message = i18n("LaTeX output is wider than the layout width. The note is shown fully; the blue width handle marks the requested layout width:\n%1", compactWarningLine(trimmed));
-            return warning;
+            return false;
         }
 
-        const QRegularExpressionMatch underfullMatch = underfullRegex.match(trimmed);
-        if (underfullMatch.hasMatch()) {
-            const int badness = underfullMatch.captured(2).toInt();
-            if (badness < underfullThresholdBadness) {
-                continue;
-            }
+        create = reinterpret_cast<Create>(library.resolve("stemtex_renderer_create"));
+        render = reinterpret_cast<Render>(library.resolve("stemtex_renderer_render"));
+        renderAsync = reinterpret_cast<RenderAsync>(library.resolve("stemtex_renderer_render_async"));
+        engineSnapshot = reinterpret_cast<EngineSnapshot>(library.resolve("stemtex_renderer_engine_snapshot"));
+        profileInfo = reinterpret_cast<ProfileInfo>(library.resolve("stemtex_renderer_profile_info_json"));
+        freeResult = reinterpret_cast<FreeResult>(library.resolve("stemtex_renderer_free_result"));
+        freeString = reinterpret_cast<FreeString>(library.resolve("stemtex_renderer_free_string"));
+        destroy = reinterpret_cast<Destroy>(library.resolve("stemtex_renderer_destroy"));
+        const bool ok = create && render && renderAsync && engineSnapshot && profileInfo && freeResult && freeString && destroy;
+        if (!ok && error) {
+            *error = QStringLiteral("stemtex-renderer.dll does not export the expected renderer ABI.");
+        }
+        return ok;
+    }
+};
 
-            LatexRenderWarning warning;
-            warning.type = LatexRenderWarningType::LooseLayout;
-            warning.severity = badness;
-            warning.message = i18n("LaTeX produced a loose layout:\n%1", compactWarningLine(trimmed));
-            return warning;
+class StemtexRendererSession
+{
+public:
+    ~StemtexRendererSession()
+    {
+        if (m_renderer && m_api.destroy) {
+            m_api.destroy(m_renderer);
         }
     }
 
+    static void prewarm()
+    {
+        (void)sharedSession(false, false, nullptr);
+    }
+
+    static void reset()
+    {
+        std::unique_ptr<StemtexRendererSession> oldSession;
+        SharedState &state = sharedState();
+        {
+            std::lock_guard<std::mutex> guard(state.mutex);
+            ++state.generation;
+            oldSession = std::move(state.session);
+            state.initializing = false;
+            state.attempted = false;
+            state.lastError.clear();
+        }
+        state.condition.notify_all();
+    }
+
+    static StemtexRendererSession *instance(QString *error, bool waitForInitialization = false)
+    {
+        return sharedSession(true, waitForInitialization, error);
+    }
+
+    static StemTeXStatus sharedStatus()
+    {
+        StemTeXStatus status;
+        status.supported = true;
+        SharedState &state = sharedState();
+        std::lock_guard<std::mutex> guard(state.mutex);
+        if (state.session) {
+            return state.session->status();
+        }
+
+        status.initializing = state.initializing;
+        if (!state.lastError.isEmpty()) {
+            status.note = state.lastError;
+        } else if (state.initializing) {
+            status.note = i18n("StemTeX renderer is starting.");
+        } else if (!state.attempted) {
+            status.note = i18n("StemTeX renderer has not started yet.");
+        }
+        return status;
+    }
+
+    static QStringList availableProfileNames()
+    {
+        const QString runtime = runtimeRoot();
+        const QString dllPath = rendererDllPath(runtime);
+        if (!QFileInfo::exists(dllPath)) {
+            return {};
+        }
+
+        configureRendererDllSearch(runtime);
+        StemtexApi api(dllPath);
+        QString error;
+        if (!api.load(&error)) {
+            return {};
+        }
+
+        const QString root = profilesRoot();
+        QDir profilesDir(root);
+        if (!profilesDir.exists()) {
+            return {};
+        }
+
+        QStringList names;
+        QString lastError;
+        const QFileInfoList candidates = profilesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QFileInfo &candidate : candidates) {
+            if (profileIsValid(api, candidate.absoluteFilePath(), &lastError)) {
+                names << candidate.fileName();
+            }
+        }
+        return names;
+    }
+
+    static QString defaultTexmfRoot()
+    {
+        return runtimeRoot();
+    }
+
+    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList)
+    {
+        if (!m_renderer) {
+            latexOutput = i18n("StemTeX renderer is not initialized.");
+            return LatexRenderer::LatexFailed;
+        }
+
+        const int widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? qRound(maxWidth) : 360;
+        const QColor effectiveColor = textColor.isValid() ? textColor : QColor(Qt::black);
+        const double baselineSkip = qMax(1, fontSize) * 1.2;
+        const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\\fontsize{%4}{%5}\\selectfont\n%6\n\\par}")
+                                          .arg(effectiveColor.redF(), 0, 'f', 6)
+                                          .arg(effectiveColor.greenF(), 0, 'f', 6)
+                                          .arg(effectiveColor.blueF(), 0, 'f', 6)
+                                          .arg(qMax(1, fontSize))
+                                          .arg(baselineSkip, 0, 'f', 3)
+                                          .arg(latexSource);
+        const QByteArray snippet = coloredSource.toUtf8();
+
+        struct RenderState {
+            std::mutex mutex;
+            std::condition_variable condition;
+            bool done = false;
+            int ok = 0;
+            int errorCode = 0;
+            uint64_t jobId = 0;
+            uint64_t callbackJobId = 0;
+            QString errorText;
+            QString sourcePdfFile;
+            QString summary;
+        };
+        auto state = std::make_shared<RenderState>();
+
+        const auto callback = [](uint64_t jobId, int ok, const StemTeXRenderResult *result, int errorCode, const char *error, void *userData) {
+            auto *state = static_cast<RenderState *>(userData);
+            std::lock_guard<std::mutex> guard(state->mutex);
+            state->callbackJobId = jobId;
+            state->ok = ok;
+            state->errorCode = errorCode;
+            state->errorText = error ? QString::fromUtf8(error) : QString();
+            state->sourcePdfFile = result && result->pdf_path_utf8 ? QString::fromUtf8(result->pdf_path_utf8) : QString();
+            state->summary = result && result->summary_json_utf8 ? QString::fromUtf8(result->summary_json_utf8) : QString();
+            state->done = true;
+            state->condition.notify_all();
+        };
+
+        int submitErrorCode = 0;
+        char *submitError = nullptr;
+        uint64_t jobId = 0;
+        const int submitted = m_api.renderAsync(m_renderer, snippet.constData(), widthPt, &jobId, callback, state.get(), &submitErrorCode, &submitError);
+        {
+            std::lock_guard<std::mutex> guard(state->mutex);
+            state->jobId = jobId;
+        }
+        if (!submitted) {
+            const QString errorText = submitError ? QString::fromUtf8(submitError) : QString();
+            if (submitError) {
+                m_api.freeString(submitError);
+            }
+            latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(submitErrorCode) : errorText);
+            return LatexRenderer::LatexFailed;
+        }
+        if (submitError) {
+            m_api.freeString(submitError);
+        }
+
+        {
+            std::unique_lock<std::mutex> guard(state->mutex);
+            state->condition.wait(guard, [&state]() {
+                return state->done;
+            });
+        }
+
+        int ok = 0;
+        int errorCode = 0;
+        uint64_t callbackJobId = 0;
+        QString errorText;
+        QString sourcePdfFile;
+        QString summary;
+        {
+            std::lock_guard<std::mutex> guard(state->mutex);
+            ok = state->ok;
+            errorCode = state->errorCode;
+            callbackJobId = state->callbackJobId;
+            errorText = state->errorText;
+            sourcePdfFile = state->sourcePdfFile;
+            summary = state->summary;
+        }
+
+        if (callbackJobId != jobId) {
+            latexOutput = i18n("StemTeX rendering failed: stale async job result.");
+            return LatexRenderer::LatexFailed;
+        }
+        if (!ok || sourcePdfFile.isEmpty() || !QFileInfo::exists(sourcePdfFile)) {
+            latexOutput = i18n("StemTeX rendering failed: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
+            return LatexRenderer::LatexFailed;
+        }
+
+        latexOutput = summary;
+        pdfFileName = sourcePdfFile;
+        fileList << sourcePdfFile;
+        qCDebug(OkularUiDebug) << "StemTeX render finished; PDF:" << pdfFileName << "summary:" << summary;
+        return LatexRenderer::NoError;
+    }
+
+private:
+    struct SharedState {
+        std::mutex mutex;
+        std::condition_variable condition;
+        std::unique_ptr<StemtexRendererSession> session;
+        uint64_t generation = 0;
+        bool initializing = false;
+        bool attempted = false;
+        QString lastError;
+    };
+
+    StemtexRendererSession(QString runtimeRoot, QString dllPath)
+        : m_runtimeRoot(std::move(runtimeRoot))
+        , m_dllPath(std::move(dllPath))
+        , m_api(m_dllPath)
+    {
+    }
+
+    static StemtexRendererSession *sharedSession(bool reportStarting, bool waitForInitialization, QString *error)
+    {
+        SharedState &state = sharedState();
+        bool startInitialization = false;
+        uint64_t generation = 0;
+
+        {
+            std::unique_lock<std::mutex> guard(state.mutex);
+            if (state.session) {
+                return state.session.get();
+            }
+            if (!state.initializing && !state.attempted) {
+                state.initializing = true;
+                startInitialization = true;
+                generation = state.generation;
+            } else if (state.initializing && !waitForInitialization) {
+                if (error && reportStarting) {
+                    *error = i18n("StemTeX renderer is still starting.");
+                }
+                return nullptr;
+            } else if (state.attempted) {
+                if (error) {
+                    *error = state.lastError;
+                }
+                return nullptr;
+            }
+        }
+
+        if (startInitialization) {
+            std::thread([generation]() {
+                QString initError;
+                const QString runtime = runtimeRoot();
+                std::unique_ptr<StemtexRendererSession> created(new StemtexRendererSession(runtime, rendererDllPath(runtime)));
+                const bool ok = created->initialize(&initError);
+
+                SharedState &state = sharedState();
+                {
+                    std::lock_guard<std::mutex> guard(state.mutex);
+                    if (generation == state.generation) {
+                        if (ok) {
+                            state.session = std::move(created);
+                            state.lastError.clear();
+                        } else {
+                            state.lastError = initError;
+                        }
+                        state.initializing = false;
+                        state.attempted = true;
+                    }
+                }
+                state.condition.notify_all();
+            }).detach();
+        }
+
+        if (waitForInitialization) {
+            std::unique_lock<std::mutex> guard(state.mutex);
+            state.condition.wait(guard, [&state]() {
+                return !state.initializing;
+            });
+            if (state.session) {
+                return state.session.get();
+            }
+            if (error) {
+                *error = state.lastError;
+            }
+            return nullptr;
+        }
+
+        if (error && reportStarting) {
+            *error = i18n("StemTeX renderer is starting.");
+        }
+        return nullptr;
+    }
+
+    static SharedState &sharedState()
+    {
+        static SharedState state;
+        return state;
+    }
+
+    static QString environmentPath(const char *name)
+    {
+        const QString value = QString::fromLocal8Bit(qgetenv(name)).trimmed();
+        if (value.isEmpty()) {
+            return {};
+        }
+        return QDir::cleanPath(QDir(value).absolutePath());
+    }
+
+    static QString normalizeRuntimeRoot(const QString &path)
+    {
+        QDir dir(QDir::cleanPath(QDir(path).absolutePath()));
+        const QString nestedRuntime = dir.filePath(QStringLiteral("runtime"));
+        if (QFileInfo::exists(QDir(nestedRuntime).filePath(QStringLiteral("bin/windows/xetexdaemon.exe")))) {
+            return QDir::cleanPath(nestedRuntime);
+        }
+        return QDir::cleanPath(dir.absolutePath());
+    }
+
+    static QString runtimeRoot()
+    {
+        const QString envRuntime = environmentPath("SCHOLIA_STEMTEX_RUNTIME_ROOT");
+        if (!envRuntime.isEmpty()) {
+            return normalizeRuntimeRoot(envRuntime);
+        }
+
+        return normalizeRuntimeRoot(QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../StemTeX/runtime")));
+    }
+
+    static QString texmfRoot(const QString &runtimeRoot)
+    {
+        const QString envTexmf = environmentPath("SCHOLIA_STEMTEX_TEXMF_ROOT");
+        if (!envTexmf.isEmpty()) {
+            return envTexmf;
+        }
+        const QString configuredTexmf = Okular::Settings::latexStemtexTexmfRoot().trimmed();
+        return configuredTexmf.isEmpty() ? runtimeRoot : QDir::cleanPath(QDir(configuredTexmf).absolutePath());
+    }
+
+    static QString profilesRoot()
+    {
+        const QString envProfiles = environmentPath("SCHOLIA_STEMTEX_PROFILES_ROOT");
+        if (!envProfiles.isEmpty()) {
+            return envProfiles;
+        }
+        return QDir::cleanPath(QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../StemTeX/profiles")));
+    }
+
+    static bool profileIsValid(const StemtexApi &api, const QString &profileRoot, QString *error)
+    {
+        if (profileRoot.isEmpty() || !QFileInfo::exists(QDir(profileRoot).filePath(QStringLiteral("preamble.tex"))) || !QFileInfo::exists(QDir(profileRoot).filePath(QStringLiteral("warmup.tex")))) {
+            if (error) {
+                *error = i18n("StemTeX profile is missing preamble.tex or warmup.tex: %1", QDir::toNativeSeparators(profileRoot));
+            }
+            return false;
+        }
+
+        QByteArray profile = QDir::cleanPath(profileRoot).toUtf8();
+        int errorCode = 0;
+        char *errorUtf8 = nullptr;
+        char *json = api.profileInfo(profile.constData(), &errorCode, &errorUtf8);
+        const QString errorText = errorUtf8 ? QString::fromUtf8(errorUtf8) : QString();
+        QByteArray jsonBytes;
+        if (json) {
+            jsonBytes = QByteArray(json);
+            api.freeString(json);
+        }
+        if (errorUtf8) {
+            api.freeString(errorUtf8);
+        }
+        if (!json) {
+            if (error) {
+                *error = i18n("StemTeX profile is not valid: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
+            }
+            return false;
+        }
+
+        QJsonParseError parseError{};
+        const QJsonDocument document = QJsonDocument::fromJson(jsonBytes, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            if (error) {
+                *error = i18n("StemTeX profile metadata is not valid JSON: %1", parseError.errorString());
+            }
+            return false;
+        }
+        if (!document.object().value(QLatin1String("valid")).toBool()) {
+            if (error) {
+                *error = i18n("StemTeX profile is not valid: %1", QDir::toNativeSeparators(profileRoot));
+            }
+            return false;
+        }
+        return true;
+    }
+
+    static QString selectProfileRoot(const StemtexApi &api, QString *error)
+    {
+        const QString explicitProfileRoot = environmentPath("SCHOLIA_STEMTEX_PROFILE_ROOT");
+        if (!explicitProfileRoot.isEmpty()) {
+            return profileIsValid(api, explicitProfileRoot, error) ? explicitProfileRoot : QString();
+        }
+
+        const QString root = profilesRoot();
+        QDir profilesDir(root);
+        if (!profilesDir.exists()) {
+            if (error) {
+                *error = i18n("StemTeX profiles directory was not found: %1", QDir::toNativeSeparators(root));
+            }
+            return {};
+        }
+
+        QStringList preferredNames;
+        const QString envProfileName = QString::fromLocal8Bit(qgetenv("SCHOLIA_STEMTEX_PROFILE_NAME")).trimmed();
+        const QString configuredProfileName = Okular::Settings::latexStemtexProfileName().trimmed();
+        if (!envProfileName.isEmpty()) {
+            preferredNames << envProfileName;
+        } else if (!configuredProfileName.isEmpty()) {
+            preferredNames << configuredProfileName;
+        }
+        preferredNames << QStringLiteral("unicodemath_cjk") << QStringLiteral("physics_cjk") << QStringLiteral("cjk_math_light") << QStringLiteral("math_light") << QStringLiteral("stem_units")
+                       << QStringLiteral("chemistry") << QStringLiteral("unicodemath");
+        preferredNames.removeDuplicates();
+
+        QString lastError;
+        for (const QString &name : preferredNames) {
+            const QString candidate = profilesDir.filePath(name);
+            if (!QFileInfo::exists(candidate)) {
+                continue;
+            }
+            if (profileIsValid(api, candidate, &lastError)) {
+                return QDir::cleanPath(candidate);
+            }
+        }
+
+        const QFileInfoList candidates = profilesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QFileInfo &candidate : candidates) {
+            if (profileIsValid(api, candidate.absoluteFilePath(), &lastError)) {
+                return QDir::cleanPath(candidate.absoluteFilePath());
+            }
+        }
+
+        if (error) {
+            *error = lastError.isEmpty() ? i18n("No valid StemTeX profile was found in %1", QDir::toNativeSeparators(root)) : lastError;
+        }
+        return {};
+    }
+
+    static QString rendererDllPath(const QString &runtimeRoot)
+    {
+        const QString envDll = QString::fromLocal8Bit(qgetenv("STEMTEX_RENDERER_DLL")).trimmed();
+        if (!envDll.isEmpty()) {
+            return QDir::cleanPath(envDll);
+        }
+        return QDir(runtimeRoot).filePath(QStringLiteral("bin/sdk/stemtex-renderer.dll"));
+    }
+
+    static void configureRendererDllSearch(const QString &runtimeRoot)
+    {
+        const QString appDir = QCoreApplication::applicationDirPath();
+        const QString sdkDir = QDir(runtimeRoot).filePath(QStringLiteral("bin/sdk"));
+        const std::wstring appDirWide = QDir::toNativeSeparators(QDir::cleanPath(appDir)).toStdWString();
+        const std::wstring sdkDirWide = QDir::toNativeSeparators(QDir::cleanPath(sdkDir)).toStdWString();
+        SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS);
+        AddDllDirectory(appDirWide.c_str());
+        AddDllDirectory(sdkDirWide.c_str());
+    }
+
+    bool initialize(QString *error)
+    {
+        if (!QFileInfo::exists(m_dllPath)) {
+            if (error) {
+                *error = i18n("StemTeX renderer DLL was not found: %1", QDir::toNativeSeparators(m_dllPath));
+            }
+            return false;
+        }
+        if (!QFileInfo::exists(QDir(m_runtimeRoot).filePath(QStringLiteral("bin/windows/xetexdaemon.exe"))) || !QFileInfo::exists(QDir(m_runtimeRoot).filePath(QStringLiteral("worker-template.tex")))) {
+            if (error) {
+                *error = i18n("StemTeX runtime was not found: %1", QDir::toNativeSeparators(m_runtimeRoot));
+            }
+            return false;
+        }
+        configureRendererDllSearch(m_runtimeRoot);
+        if (!m_api.load(error)) {
+            return false;
+        }
+
+        QString profileError;
+        const QString profile = selectProfileRoot(m_api, &profileError);
+        if (profile.isEmpty()) {
+            if (error) {
+                *error = profileError;
+            }
+            return false;
+        }
+
+        const QByteArray runtime = QDir::cleanPath(m_runtimeRoot).toUtf8();
+        const QString texmfRootPath = texmfRoot(m_runtimeRoot);
+        const QByteArray texmf = QDir::cleanPath(texmfRootPath).toUtf8();
+        const QByteArray profileRoot = QDir::cleanPath(profile).toUtf8();
+        StemTeXConfig config{};
+        config.repo_root_utf8 = runtime.constData();
+        config.runtime_root_utf8 = runtime.constData();
+        config.texmf_root_utf8 = texmf.constData();
+        config.profile_root_utf8 = profileRoot.constData();
+        config.request_timeout_ms = 90000;
+        config.xdvipdfmx_timeout_ms = 90000;
+        config.spare_worker_count = 2;
+        config.delete_intermediates = 1;
+
+        int errorCode = 0;
+        char *errorUtf8 = nullptr;
+        m_renderer = m_api.create(&config, &errorCode, &errorUtf8);
+        const QString errorText = errorUtf8 ? QString::fromUtf8(errorUtf8) : QString();
+        if (errorUtf8) {
+            m_api.freeString(errorUtf8);
+        }
+        if (!m_renderer) {
+            if (error) {
+                *error = i18n("StemTeX renderer failed to start: %1", errorText.isEmpty() ? QString::number(errorCode) : errorText);
+            }
+            return false;
+        }
+
+        qCDebug(OkularUiDebug) << "StemTeX renderer initialized; runtime:" << m_runtimeRoot << "texmf:" << texmfRootPath << "profile:" << profile << "dll:" << m_dllPath;
+        return true;
+    }
+
+    StemTeXStatus status()
+    {
+        StemTeXStatus status;
+        status.supported = true;
+        if (!m_renderer) {
+            status.note = i18n("StemTeX renderer is not initialized.");
+            return status;
+        }
+
+        StemTeXEngineSnapshot snapshot{};
+        if (!m_api.engineSnapshot(m_renderer, &snapshot)) {
+            status.ready = true;
+            status.note = i18n("StemTeX renderer status is unavailable.");
+            return status;
+        }
+
+        status.ready = true;
+        status.rendererStatus = snapshot.status;
+        status.renderStage = snapshot.stage;
+        status.primaryReady = snapshot.primary_ready != 0;
+        status.spareReady = qMax(0, snapshot.spare_ready);
+        status.spareTarget = qMax(0, snapshot.spare_target);
+        status.spareRebuilding = snapshot.spare_rebuilding != 0;
+        status.asyncRunning = snapshot.async_running != 0;
+        status.asyncPending = snapshot.async_pending != 0;
+        status.runningJobId = snapshot.running_job_id;
+        status.pendingJobId = snapshot.pending_job_id;
+        status.lastError = snapshot.last_error;
+        return status;
+    }
+
+    QString m_runtimeRoot;
+    QString m_dllPath;
+    StemtexApi m_api;
+    void *m_renderer = nullptr;
+};
+#endif
+LatexRenderWarning latexWarningMessage(const QString &latexOutput)
+{
+    Q_UNUSED(latexOutput);
     return {};
 }
 
@@ -806,6 +1436,50 @@ QString LatexRenderer::compactErrorMessage(const QString &latexOutput)
     return message;
 }
 
+void LatexRenderer::prewarmStemTeX()
+{
+#ifdef Q_OS_WIN
+    StemtexRendererSession::prewarm();
+#endif
+}
+
+QStringList LatexRenderer::stemTeXProfileNames()
+{
+#ifdef Q_OS_WIN
+    return StemtexRendererSession::availableProfileNames();
+#else
+    return {};
+#endif
+}
+
+QString LatexRenderer::defaultStemTeXTexmfRoot()
+{
+#ifdef Q_OS_WIN
+    return StemtexRendererSession::defaultTexmfRoot();
+#else
+    return {};
+#endif
+}
+
+void LatexRenderer::restartStemTeX()
+{
+#ifdef Q_OS_WIN
+    StemtexRendererSession::reset();
+    StemtexRendererSession::prewarm();
+#endif
+}
+
+StemTeXStatus LatexRenderer::stemTeXStatus()
+{
+#ifdef Q_OS_WIN
+    return StemtexRendererSession::sharedStatus();
+#else
+    StemTeXStatus status;
+    status.note = i18n("StemTeX renderer is only available on Windows.");
+    return status;
+#endif
+}
+
 LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormula, const QColor &textColor, int fontSize, int resolution, QString &fileName, QString &latexOutput)
 {
     m_lastBackendName.clear();
@@ -877,6 +1551,40 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
 #endif
     };
 
+    auto renderWithStemtex = [&](const char *reason) -> Error {
+        fileName.clear();
+#ifdef Q_OS_WIN
+        logTexInvocation("stemtex-render",
+                         QStringLiteral("stemtex"),
+                         QString::fromLatin1(reason),
+                         {QStringLiteral("font size: %1").arg(fontSize),
+                          QStringLiteral("max width: %1").arg(maxWidth),
+                          QStringLiteral("source length: %1").arg(latexSource.size())});
+        QString stemtexError;
+        const bool waitForStemTeXStartup = QCoreApplication::instance() && QThread::currentThread() != QCoreApplication::instance()->thread();
+        StemtexRendererSession *session = StemtexRendererSession::instance(&stemtexError, waitForStemTeXStartup);
+        if (!session) {
+            pdfFileName->clear();
+            latexOutput = stemtexError.isEmpty() ? i18n("StemTeX renderer is not available.") : stemtexError;
+            return LatexFailed;
+        }
+
+        const Error stemtexErrorCode = session->render(latexSource, textColor, fontSize, maxWidth, *pdfFileName, latexOutput, m_fileList);
+        if (stemtexErrorCode == NoError) {
+            m_lastBackendName = QStringLiteral("stemtex");
+        }
+        return stemtexErrorCode;
+#else
+        pdfFileName->clear();
+        latexOutput = i18n("StemTeX rendering is only available on Windows.");
+        return LatexFailed;
+#endif
+    };
+
+    if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Stemtex && canUseStemtexForRender(renderSource, pdfFileName, resolution)) {
+        return renderWithStemtex("configured-stemtex");
+    }
+
     if (latexRenderBackend == Okular::Settings::EnumLatexRenderBackend::Microtex && canUseMicrotexForRender(renderSource, pdfFileName, resolution)) {
         return renderWithMicrotex("configured-microtex");
     }
@@ -906,10 +1614,12 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
                        << fontSize << "pt]{article}\n"
                        << "\\usepackage[paper=a0paper,margin=0pt]{geometry}\n"
                        << effectiveSourcePreamble << "\n"
+                       << "\\usepackage[active,tightpage]{preview}\n"
                        << "\\pagestyle{empty}\n"
                           "\\setlength{\\parindent}{0pt}\n"
                           "\\begin{document}\n";
             tempStream << "\\thispagestyle{empty}\n";
+            tempStream << "\\begin{preview}\n";
             tempStream << "{\\color[rgb]{"
                        << textColor.redF()
                        << "," << textColor.greenF() << "," << textColor.blueF() << "} ";
@@ -941,8 +1651,11 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
                 tempStream << "\n\\end{minipage}%\n";
             }
         }
-        tempStream << "} \
-\\end{document}";
+        tempStream << "}";
+        if (renderSource) {
+            tempStream << "\n\\end{preview}\n";
+        }
+        tempStream << "\n\\end{document}";
         return true;
     };
 
@@ -994,44 +1707,6 @@ LatexRenderer::Error LatexRenderer::handleLatex(QString &fileName, QString *pdfF
             }
             return LatexFailed;
         }
-
-        const QString pdfCropExecutable = QStandardPaths::findExecutable(QStringLiteral("pdfcrop"));
-        if (pdfCropExecutable.isEmpty()) {
-            qCDebug(OkularUiDebug) << "Could not find pdfcrop!";
-            QFile::remove(temporaryPdfFile);
-            fileName = QString();
-            if (pdfFileName) {
-                pdfFileName->clear();
-            }
-            latexOutput += QStringLiteral("\npdfcrop was not found.");
-            return LatexFailed;
-        }
-
-        const QString croppedPdfFile = tempFileNameNS + QStringLiteral("-crop.pdf");
-        QFile::remove(croppedPdfFile);
-        KProcess pdfCropProc;
-        pdfCropProc << pdfCropExecutable << QStringLiteral("--hires") << QStringLiteral("--margins") << QStringLiteral("0 0 0 0") << temporaryPdfFile << croppedPdfFile;
-        pdfCropProc.setWorkingDirectory(tempFilePath);
-        pdfCropProc.setOutputChannelMode(KProcess::MergedChannels);
-        logTexInvocation("texlive-pdfcrop",
-                         QStringLiteral("pdfcrop"),
-                         QStringLiteral("source-pdf-crop"),
-                         {QStringLiteral("executable: %1").arg(pdfCropExecutable), QStringLiteral("input: %1").arg(temporaryPdfFile), QStringLiteral("output: %1").arg(croppedPdfFile)});
-        const int pdfCropExitCode = pdfCropProc.execute();
-        const QString pdfCropOutput = QString::fromLocal8Bit(pdfCropProc.readAll());
-        if (pdfCropExitCode != 0 || !QFile::exists(croppedPdfFile)) {
-            qCWarning(OkularUiDebug) << "Could not crop rendered LaTeX PDF; exit code:" << pdfCropExitCode << "output:" << pdfCropOutput;
-            QFile::remove(temporaryPdfFile);
-            fileName = QString();
-            if (pdfFileName) {
-                pdfFileName->clear();
-            }
-            latexOutput += QLatin1Char('\n') + pdfCropOutput;
-            return LatexFailed;
-        }
-        QFile::remove(temporaryPdfFile);
-        temporaryPdfFile = croppedPdfFile;
-        m_fileList << temporaryPdfFile;
 
         if (resolution <= 0) {
             fileName.clear();

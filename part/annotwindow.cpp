@@ -576,20 +576,25 @@ void AnnotWindow::updateLatexNoteAppearance()
         return;
     }
     m_lastLatexNoteCompileSource = latexSource;
+    const QString annotationUniqueName = m_annot->uniqueName();
+    if (annotationUniqueName.isEmpty()) {
+        return;
+    }
 
     const Okular::Page *page = m_document->page(m_page);
     const QColor textColor = LatexNoteUtils::colorForLatexAnnotation(m_annot);
     if (Okular::TextAnnotation *textAnnotation = LatexNoteUtils::annotationAsLatexTextAnnotation(m_annot)) {
-        LatexNoteUtils::updateLatexTextAnnotationAppearance(this,
-                                                            m_document,
-                                                            m_page,
-                                                            textAnnotation,
-                                                            textColor,
-                                                            textAnnotation->style().color(),
-                                                            textAnnotation->inplaceBorderColor(),
-                                                            LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page),
-                                                            textAnnotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter,
-                                                            LatexNoteUtils::scaleForLatexTextAnnotation(textAnnotation));
+        LatexNoteUtils::updateLatexTextAnnotationAppearanceAsync(this,
+                                                                 m_document,
+                                                                 m_page,
+                                                                 annotationUniqueName,
+                                                                 latexSource,
+                                                                 textColor,
+                                                                 textAnnotation->style().color(),
+                                                                 textAnnotation->inplaceBorderColor(),
+                                                                 LatexNoteUtils::layoutWidthForLatexTextAnnotation(textAnnotation, page),
+                                                                 textAnnotation->inplaceIntent() != Okular::TextAnnotation::TypeWriter,
+                                                                 LatexNoteUtils::scaleForLatexTextAnnotation(textAnnotation));
     } else if (Okular::StampAnnotation *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
         Q_UNUSED(page);
         const bool boxed = stampAnnotation->style().width() > 0.0;
@@ -601,16 +606,17 @@ void AnnotWindow::updateLatexNoteAppearance()
         if (boxed && (!borderColor.isValid() || borderColor.alpha() == 0)) {
             borderColor = textColor;
         }
-        LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
-                                                             m_document,
-                                                             m_page,
-                                                             stampAnnotation,
-                                                             textColor,
-                                                             fillColor,
-                                                             borderColor,
-                                                             stampAnnotation->latexLayoutWidth(),
-                                                             boxed,
-                                                             stampAnnotation->latexScale());
+        LatexNoteUtils::updateLatexStampAnnotationAppearanceAsync(this,
+                                                                  m_document,
+                                                                  m_page,
+                                                                  annotationUniqueName,
+                                                                  latexSource,
+                                                                  textColor,
+                                                                  fillColor,
+                                                                  borderColor,
+                                                                  stampAnnotation->latexLayoutWidth(),
+                                                                  boxed,
+                                                                  stampAnnotation->latexScale());
     }
 }
 

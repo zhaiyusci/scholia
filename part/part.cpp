@@ -23,6 +23,7 @@
 #include "part.h"
 
 #include "config-okular.h"
+#include "latexrenderer.h"
 
 // qt/kde includes
 #include <QApplication>
@@ -328,6 +329,10 @@ Part::Part(QObject *parent, const QVariantList &args)
     setComponentName(QStringLiteral("okular"), QString());
 
     setupConfigSkeleton(args);
+    m_latexRenderBackend = Okular::Settings::latexRenderBackend();
+    m_latexStemtexProfileName = Okular::Settings::latexStemtexProfileName();
+    m_latexStemtexTexmfRoot = Okular::Settings::latexStemtexTexmfRoot();
+    GuiUtils::LatexRenderer::prewarmStemTeX();
 
 #if HAVE_DBUS
     numberOfParts++;
@@ -3140,6 +3145,16 @@ void Part::slotNewConfig()
     if (m_maxRecentItems != Okular::Settings::maxRecentItems()) {
         m_maxRecentItems = Okular::Settings::maxRecentItems();
         Q_EMIT maxRecentItemsChanged(m_maxRecentItems);
+    }
+
+    const int latexRenderBackend = Okular::Settings::latexRenderBackend();
+    const QString stemtexProfileName = Okular::Settings::latexStemtexProfileName();
+    const QString stemtexTexmfRoot = Okular::Settings::latexStemtexTexmfRoot();
+    if (m_latexRenderBackend != latexRenderBackend || m_latexStemtexProfileName != stemtexProfileName || m_latexStemtexTexmfRoot != stemtexTexmfRoot) {
+        m_latexRenderBackend = latexRenderBackend;
+        m_latexStemtexProfileName = stemtexProfileName;
+        m_latexStemtexTexmfRoot = stemtexTexmfRoot;
+        GuiUtils::LatexRenderer::restartStemTeX();
     }
 }
 

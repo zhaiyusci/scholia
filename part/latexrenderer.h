@@ -17,7 +17,7 @@ class QColor;
 
 namespace GuiUtils
 {
-enum class LatexRenderWarningType { None, ClippingRisk, LooseLayout, BackendLimitation, CompileFallback };
+enum class LatexRenderWarningType { None, CompileError, BackendLimitation, CompileFallback };
 
 struct LatexRenderWarning {
     LatexRenderWarningType type = LatexRenderWarningType::None;
@@ -27,6 +27,24 @@ struct LatexRenderWarning {
     {
         return type != LatexRenderWarningType::None && !message.isEmpty();
     }
+};
+
+struct StemTeXStatus {
+    bool supported = false;
+    bool initializing = false;
+    bool ready = false;
+    bool primaryReady = false;
+    int spareReady = 0;
+    int spareTarget = 0;
+    bool spareRebuilding = false;
+    int rendererStatus = 0;
+    int renderStage = 0;
+    bool asyncRunning = false;
+    bool asyncPending = false;
+    quint64 runningJobId = 0;
+    quint64 pendingJobId = 0;
+    int lastError = 0;
+    QString note;
 };
 
 class LatexRenderer
@@ -49,6 +67,11 @@ public:
     static bool mightContainLatex(const QString &text);
     static QString defaultSourcePreamble();
     static QString compactErrorMessage(const QString &latexOutput);
+    static QStringList stemTeXProfileNames();
+    static QString defaultStemTeXTexmfRoot();
+    static void prewarmStemTeX();
+    static void restartStemTeX();
+    static StemTeXStatus stemTeXStatus();
 
 private:
     enum class BodyMode { Math, Source };

@@ -2986,7 +2986,9 @@ public:
     void resetTransformation() override;
     double distanceSqr(double x, double y, double xScale, double yScale) const override;
     void translate(const NormalizedPoint &coord) override;
+    void adjust(const NormalizedPoint &deltaCoord1, const NormalizedPoint &deltaCoord2) override;
     void setAnnotationProperties(const QDomNode &node) override;
+    bool canBeResized() const override;
     AnnotationPrivate *getNewAnnotationPrivate() override;
 
     QList<QList<NormalizedPoint>> m_inkPaths;
@@ -3116,6 +3118,30 @@ void InkAnnotationPrivate::translate(const NormalizedPoint &coord)
     }
 }
 
+void InkAnnotationPrivate::adjust(const NormalizedPoint &deltaCoord1, const NormalizedPoint &deltaCoord2)
+{
+    const NormalizedRect oldBoundary = m_boundary;
+    AnnotationPrivate::adjust(deltaCoord1, deltaCoord2);
+
+    const double oldWidth = oldBoundary.right - oldBoundary.left;
+    const double oldHeight = oldBoundary.bottom - oldBoundary.top;
+    const double newWidth = m_boundary.right - m_boundary.left;
+    const double newHeight = m_boundary.bottom - m_boundary.top;
+    if (oldWidth <= 0.0 || oldHeight <= 0.0 || newWidth <= 0.0 || newHeight <= 0.0) {
+        return;
+    }
+
+    for (QList<NormalizedPoint> &path : m_inkPaths) {
+        for (NormalizedPoint &point : path) {
+            const double relativeX = (point.x - oldBoundary.left) / oldWidth;
+            const double relativeY = (point.y - oldBoundary.top) / oldHeight;
+            point.x = m_boundary.left + relativeX * newWidth;
+            point.y = m_boundary.top + relativeY * newHeight;
+        }
+    }
+    m_transformedInkPaths = m_inkPaths;
+}
+
 void InkAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
 {
     Okular::AnnotationPrivate::setAnnotationProperties(node);
@@ -3168,6 +3194,11 @@ void InkAnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     }
 
     m_transformedInkPaths = m_inkPaths;
+}
+
+bool InkAnnotationPrivate::canBeResized() const
+{
+    return true;
 }
 
 AnnotationPrivate *InkAnnotationPrivate::getNewAnnotationPrivate()

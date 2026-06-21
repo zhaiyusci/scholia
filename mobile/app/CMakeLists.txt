@@ -41,7 +41,7 @@ if (ANDROID)
       target_link_libraries(okularkirigami PRIVATE ${okular_generator_dependencies})
     endforeach()
 
-    # Unfortunately gitlab CI for now doesn't use Craft so we need
+    # Unfortunately gitlab CI needs an explicit Android version code, so we need
     # to differentiate between gitlab CI and the binary factory
     if (ANDROID_LINK_EXTRA_LIBRARIES)
         message("Linking in extra libraries to help androiddeployqt")

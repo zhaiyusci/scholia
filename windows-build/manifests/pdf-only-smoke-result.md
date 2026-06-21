@@ -11,7 +11,7 @@ Expected result:
 
 - The staged `bin\scholia.exe` starts.
 - The PDF opens.
-- No loaded module comes from `C:\CraftRoot`.
+- No project-local runtime module is loaded from outside the stage tree.
 - The staged generator directory contains only `okularGenerator_poppler.dll`.
 
 Record the concrete smoke-test output here when preparing a release package.
