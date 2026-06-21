@@ -1,5 +1,5 @@
 #define AppName "Scholia"
-#define ScholiaVersionFile AddBackslash(SourcePath) + "..\..\VERSION"
+#define ScholiaVersionFile AddBackslash(SourcePath) + "..\..\VERSION.txt"
 #define ScholiaVersionHandle FileOpen(ScholiaVersionFile)
 #define ScholiaVersionFromFile Trim(FileRead(ScholiaVersionHandle))
 #expr FileClose(ScholiaVersionHandle)

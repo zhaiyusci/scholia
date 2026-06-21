@@ -78,20 +78,27 @@ function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
 }
 
 function Invoke-ChildScript([string] $ScriptPath, [string[]] $Arguments) {
-    & powershell.exe -ExecutionPolicy Bypass -NoProfile -File $ScriptPath @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & powershell.exe -ExecutionPolicy Bypass -NoProfile -File $ScriptPath @Arguments
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+    if ($exitCode -ne 0) {
+        exit $exitCode
     }
 }
 
 function Read-ScholiaVersion([string] $Root) {
-    $versionFile = Join-Path $Root "VERSION"
+    $versionFile = Join-Path $Root "VERSION.txt"
     if (!(Test-Path -LiteralPath $versionFile)) {
         throw "Cannot find Scholia version file: $versionFile"
     }
     $value = (Get-Content -LiteralPath $versionFile -Raw).Trim()
     if ($value -notmatch '^\d+\.\d+\.\d+$') {
-        throw "VERSION must contain MAJOR.MINOR.PATCH, got '$value'"
+        throw "VERSION.txt must contain MAJOR.MINOR.PATCH, got '$value'"
     }
     return $value
 }
@@ -154,5 +161,12 @@ Write-Host "  Version: $Version"
 Write-Host "  File version: $FileVersion"
 Write-Host ""
 
-& $ISCC $iss
-exit $LASTEXITCODE
+$oldErrorActionPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "Continue"
+    & $ISCC $iss
+    $exitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+}
+exit $exitCode
