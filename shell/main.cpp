@@ -25,9 +25,12 @@
 #include <QFileOpenEvent>
 #include <QDir>
 #include <QDebug>
+#include <QLibraryInfo>
+#include <QLocale>
 #include <QObject>
 #include <QStringList>
 #include <QTextStream>
+#include <QTranslator>
 #include <QtGlobal>
 
 #define HAVE_STYLE_MANAGER __has_include(<KStyleManager>)
@@ -78,6 +81,15 @@ int main(int argc, char **argv)
 
     QApplication app(argc, argv);
 
+    QTranslator qtTranslator;
+    if (qtTranslator.load(QLocale(), QStringLiteral("qt"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
+        app.installTranslator(&qtTranslator);
+    }
+    QTranslator qtBaseTranslator;
+    if (qtBaseTranslator.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {
+        app.installTranslator(&qtBaseTranslator);
+    }
+
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString prefixDir = QDir(appDir).absoluteFilePath(QStringLiteral(".."));
     const QStringList scholiaPluginPaths = {
@@ -99,6 +111,12 @@ int main(int argc, char **argv)
     QCoreApplication::setLibraryPaths(libraryPaths);
     if (qEnvironmentVariableIsSet("SCHOLIA_DEBUG_PLUGIN_PATHS")) {
         qDebug() << "Scholia plugin search paths:" << QCoreApplication::libraryPaths();
+    }
+
+    const QString bundledLocaleDir = QDir(appDir).absoluteFilePath(QStringLiteral("data/locale"));
+    if (QDir(bundledLocaleDir).exists()) {
+        KLocalizedString::addDomainLocaleDir(QByteArrayLiteral("okular"), bundledLocaleDir);
+        KLocalizedString::addDomainLocaleDir(QByteArrayLiteral("okular_poppler"), bundledLocaleDir);
     }
 
     /**

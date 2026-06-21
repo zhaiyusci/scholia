@@ -125,6 +125,20 @@ function Remove-LegacyLatexRuntimeArtifacts([string] $Prefix) {
     Remove-FileInside (Join-Path $Prefix "lib\LaTeX.lib") $Prefix
 }
 
+function Remove-EmptyGettextCatalogs([string] $Root) {
+    if (!(Test-Path -LiteralPath $Root)) {
+        return
+    }
+
+    $emptyCatalogs = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter "*.mo" -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -le 28 })
+    if ($emptyCatalogs.Count -eq 0) {
+        return
+    }
+
+    Write-Host "Removing $($emptyCatalogs.Count) empty gettext catalogs under $Root..." -ForegroundColor Cyan
+    $emptyCatalogs | Remove-Item -Force
+}
+
 function Sync-InstalledRuntimePlugins([string] $Prefix) {
     $pluginsDir = Join-Path $Prefix "plugins"
     if (!(Test-Path -LiteralPath $pluginsDir)) {
@@ -140,6 +154,7 @@ function Sync-InstalledRuntimePlugins([string] $Prefix) {
 $QtPrefix = Find-QtPrefix $QtPrefix
 $CMake = Resolve-CommandPath "cmake" @($CMake, (Join-Path $QtPrefix "..\..\Tools\CMake_64\bin\cmake.exe"), "C:\Program Files\CMake\bin\cmake.exe")
 $Ninja = Resolve-CommandPath "ninja" @($Ninja, (Join-Path $QtPrefix "..\..\Tools\Ninja\ninja.exe"))
+$MsgFmt = Resolve-CommandPath "msgfmt" @("C:\msys64\usr\bin\msgfmt.exe", "C:\Program Files\Git\usr\bin\msgfmt.exe")
 if (!(Test-Path -LiteralPath $VcVars)) {
     throw "Cannot find vcvars64.bat: $VcVars"
 }
@@ -180,6 +195,7 @@ Write-Host "QtPrefix    : $QtPrefix"
 Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "BuildDir    : $buildDir"
 Write-Host "Install     : $InstallPrefix"
+Write-Host "msgfmt      : $MsgFmt"
 
 $configureArgs = @(
     """$CMake""",
@@ -190,6 +206,7 @@ $configureArgs = @(
     "-DCMAKE_BUILD_TYPE=$BuildType",
     "-DCMAKE_INSTALL_PREFIX=""$InstallPrefix""",
     "-DCMAKE_PREFIX_PATH=""$QtPrefix;$SdkPrefix""",
+    "-DGETTEXT_MSGFMT_EXECUTABLE=""$MsgFmt""",
     "-DBUILD_TESTING=OFF",
     "-DOKULAR_PDF_ONLY=ON",
     "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON",
@@ -197,6 +214,9 @@ $configureArgs = @(
     "-DFORCE_NOT_REQUIRED_DEPENDENCIES=""$forceNotRequired"""
 )
 Invoke-VsCmd ($configureArgs -join " ")
+
+Remove-EmptyGettextCatalogs (Join-Path $buildDir "locale")
+Remove-EmptyGettextCatalogs (Join-Path $InstallPrefix "bin\data\locale")
 
 $build = """$CMake"" --build ""$buildDir"" --target install --parallel $Jobs"
 Invoke-VsCmd $build

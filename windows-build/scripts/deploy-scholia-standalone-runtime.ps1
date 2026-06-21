@@ -103,6 +103,34 @@ function Remove-ExpandedBreezeIconTheme([string] $Prefix) {
     Remove-DirectoryInside (Join-Path $Prefix "bin\data\icons\breeze-dark") $Prefix
 }
 
+function Copy-QtChineseTranslations([string] $QtRoot, [string] $DestinationBinDir) {
+    $sourceDir = Join-Path $QtRoot "translations"
+    if (!(Test-Path -LiteralPath $sourceDir)) {
+        Write-Host "Qt translations directory not found: $sourceDir" -ForegroundColor DarkYellow
+        return
+    }
+
+    $destinationDir = Join-Path $DestinationBinDir "translations"
+    New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
+    foreach ($fileName in @("qt_zh_CN.qm", "qtbase_zh_CN.qm")) {
+        $source = Join-Path $sourceDir $fileName
+        if (Test-Path -LiteralPath $source) {
+            Copy-Item -LiteralPath $source -Destination $destinationDir -Force
+        } else {
+            Write-Host "Skipping missing Qt translation: $fileName" -ForegroundColor DarkYellow
+        }
+    }
+}
+
+function Write-QtRuntimeConfig([string] $DestinationBinDir) {
+    @"
+[Paths]
+Prefix=.
+Plugins=plugins
+Translations=translations
+"@ | Set-Content -LiteralPath (Join-Path $DestinationBinDir "qt.conf") -Encoding ASCII
+}
+
 function Copy-PluginFile([string] $SourceRoot, [string] $RelativePath, [string] $DestinationRoot) {
     $source = Join-Path $SourceRoot $RelativePath
     if (!(Test-Path -LiteralPath $source)) {
@@ -258,6 +286,10 @@ foreach ($dll in @(
         throw "Required Qt runtime DLL is missing from QtPrefix: $source"
     }
 }
+
+Write-Host "Copying Qt Chinese translations..."
+Copy-QtChineseTranslations $QtPrefix $binDir
+Write-QtRuntimeConfig $binDir
 
 Write-Host "Copying bundled StemTeX runtime..."
 $stemTeXDestination = Join-Path $InstallPrefix "StemTeX"

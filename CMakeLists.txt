@@ -274,7 +274,7 @@ set_okular_optional_package_properties(Discount PROPERTIES
         URL "https://www.pell.portland.or.us/~orc/Code/discount/"
         PURPOSE "Support for Markdown documents in Okular.")
 
-add_definitions(-DTRANSLATION_DOMAIN="scholia")
+add_definitions(-DTRANSLATION_DOMAIN="okular")
 add_definitions(-DQT_DEPRECATED_WARNINGS_SINCE=0x060600)
 add_definitions(-DKF_DEPRECATED_WARNINGS_SINCE=0x05F000)
 
