@@ -68,6 +68,13 @@ function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
 
     New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
     Copy-DirectoryContents $sourceBin (Join-Path $DestinationRoot "bin")
+
+    $sourceStemTeX = Join-Path $SourcePrefix "StemTeX"
+    if (Test-Path -LiteralPath $sourceStemTeX) {
+        Copy-DirectoryContents $sourceStemTeX (Join-Path $DestinationRoot "StemTeX")
+    } else {
+        Write-Warning "StemTeX runtime was not found under $sourceStemTeX. LaTeX StemTeX backend will be unavailable in the installer stage."
+    }
 }
 
 function Invoke-ChildScript([string] $ScriptPath, [string[]] $Arguments) {

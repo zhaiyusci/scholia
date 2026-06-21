@@ -4,6 +4,7 @@ param(
     [string] $SdkPrefix = "",
     [string] $WorkspaceRoot = "",
     [string] $InstallPrefix = "",
+    [string] $StemTeXRoot = "",
     [string] $WinDeployQt = ""
 )
 
@@ -89,8 +90,64 @@ function Copy-PluginFile([string] $SourceRoot, [string] $RelativePath, [string] 
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
+function Find-StemTeXRoot([string] $RequestedRoot) {
+    $candidates = @()
+    if ($RequestedRoot) {
+        $candidates += $RequestedRoot
+    }
+    if ($env:SCHOLIA_STEMTEX_SOURCE_ROOT) {
+        $candidates += $env:SCHOLIA_STEMTEX_SOURCE_ROOT
+    }
+    $documentsRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
+    $candidates += Join-Path $documentsRoot "xetex\stemtex"
+
+    foreach ($candidate in ($candidates | Where-Object { $_ } | Select-Object -Unique)) {
+        $full = [System.IO.Path]::GetFullPath($candidate)
+        if ((Test-Path -LiteralPath (Join-Path $full "cpp-daemon\stemtex_renderer.h")) -and
+            ((Test-Path -LiteralPath (Join-Path $full "staging\runtime")) -or (Test-Path -LiteralPath (Join-Path $full "dist\stemtex-installer\StemTeX\runtime")))) {
+            return $full
+        }
+    }
+
+    throw "Cannot find StemTeX source/staging tree. Pass -StemTeXRoot or set SCHOLIA_STEMTEX_SOURCE_ROOT."
+}
+
+function Resolve-StemTeXRuntimeSource([string] $Root) {
+    foreach ($candidate in @(
+        (Join-Path $Root "staging\runtime"),
+        (Join-Path $Root "dist\stemtex-installer\StemTeX\runtime"),
+        (Join-Path $Root "dist\stemtex-texlive-daemon-static")
+    )) {
+        if ((Test-Path -LiteralPath (Join-Path $candidate "bin\sdk\stemtex-renderer.dll")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\xetexdaemon.exe")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "worker-template.tex"))) {
+            return [System.IO.Path]::GetFullPath($candidate)
+        }
+    }
+    throw "Cannot find a staged StemTeX runtime under $Root."
+}
+
+function Resolve-StemTeXProfilesSource([string] $Root) {
+    foreach ($candidate in @(
+        (Join-Path $Root "staging\gui\profiles"),
+        (Join-Path $Root "dist\stemtex-installer\StemTeX\gui\profiles"),
+        (Join-Path $Root "gui\profiles")
+    )) {
+        if ((Test-Path -LiteralPath $candidate) -and (Get-ChildItem -LiteralPath $candidate -Directory -ErrorAction SilentlyContinue | Where-Object {
+                    (Test-Path -LiteralPath (Join-Path $_.FullName "preamble.tex")) -and
+                    (Test-Path -LiteralPath (Join-Path $_.FullName "warmup.tex"))
+                } | Select-Object -First 1)) {
+            return [System.IO.Path]::GetFullPath($candidate)
+        }
+    }
+    throw "Cannot find staged StemTeX profiles under $Root."
+}
+
 $QtPrefix = Find-QtPrefix $QtPrefix
 $WinDeployQt = Resolve-CommandPath "windeployqt" @($WinDeployQt, (Join-Path $QtPrefix "bin\windeployqt.exe"))
+$StemTeXRoot = Find-StemTeXRoot $StemTeXRoot
+$StemTeXRuntimeSource = Resolve-StemTeXRuntimeSource $StemTeXRoot
+$StemTeXProfilesSource = Resolve-StemTeXProfilesSource $StemTeXRoot
 
 $binDir = Join-Path $InstallPrefix "bin"
 $exe = Join-Path $binDir "scholia.exe"
@@ -102,6 +159,7 @@ Write-Host "Scholia standalone runtime deploy" -ForegroundColor Green
 Write-Host "QtPrefix  : $QtPrefix"
 Write-Host "SdkPrefix : $SdkPrefix"
 Write-Host "Install   : $InstallPrefix"
+Write-Host "StemTeX   : $StemTeXRoot"
 
 Write-Host ""
 Write-Host "Copying SDK DLLs..."
@@ -146,9 +204,17 @@ Get-ChildItem -LiteralPath $binDir -Filter "Qt6*.dll" -File -ErrorAction Silentl
     Remove-Item -Force
 
 Write-Host "Running windeployqt..."
-& $WinDeployQt --no-translations --no-system-d3d-compiler --no-opengl-sw $exe
-if ($LASTEXITCODE -ne 0) {
-    throw "windeployqt failed with exit code $LASTEXITCODE"
+$oldErrorActionPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "Continue"
+    $winDeployQtOutput = & $WinDeployQt --no-translations --no-system-d3d-compiler --no-opengl-sw $exe 2>&1
+    $winDeployQtExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $oldErrorActionPreference
+}
+$winDeployQtOutput | ForEach-Object { Write-Host $_ }
+if ($winDeployQtExitCode -ne 0) {
+    throw "windeployqt failed with exit code $winDeployQtExitCode"
 }
 
 Write-Host "Copying indirect Qt runtime DLLs..."
@@ -166,6 +232,12 @@ foreach ($dll in @(
         throw "Required Qt runtime DLL is missing from QtPrefix: $source"
     }
 }
+
+Write-Host "Copying bundled StemTeX runtime..."
+$stemTeXDestination = Join-Path $InstallPrefix "StemTeX"
+Remove-DirectoryInside $stemTeXDestination $InstallPrefix
+Copy-DirectoryContents $StemTeXRuntimeSource (Join-Path $stemTeXDestination "runtime")
+Copy-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "profiles")
 
 Remove-DirectoryInside (Join-Path $InstallPrefix "plugins") $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "lib\plugins") $InstallPrefix

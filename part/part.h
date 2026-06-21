@@ -482,6 +482,9 @@ private:
 
     // Current value of maxRecentItems to detect value change, and inform shell
     int m_maxRecentItems;
+    int m_latexRenderBackend = -1;
+    QString m_latexStemtexProfileName;
+    QString m_latexStemtexTexmfRoot;
 
 private Q_SLOTS:
     void slotAccessibilityPreferences();

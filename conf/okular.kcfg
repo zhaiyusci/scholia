@@ -192,6 +192,12 @@
     <choice name="Stemtex" />
    </choices>
   </entry>
+  <entry key="LatexStemtexProfileName" type="String">
+   <default></default>
+  </entry>
+  <entry key="LatexStemtexTexmfRoot" type="String">
+   <default></default>
+  </entry>
   <entry key="LatexPreamble" type="String">
    <default code="true">QStringLiteral("\\usepackage{xcolor}\n\\usepackage{amsmath,mathtools,latexsym}\n\\usepackage[version=4]{mhchem}\n\\usepackage{physics}\n\\usepackage{unicode-math}")</default>
   </entry>

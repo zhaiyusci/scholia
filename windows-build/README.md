@@ -159,9 +159,17 @@ Expected installer output:
 ## LaTeX Notes
 
 Scholia supports system TeX and the StemTeX renderer. System TeX is discovered
-from the user's normal `PATH` or configured executable. StemTeX is provided by
-the local StemTeX installation and is started by Scholia when that backend is
-selected.
+from the user's normal `PATH` or configured executable. The standalone Windows
+runtime bundles StemTeX under `StemTeX\runtime` with profiles under
+`StemTeX\profiles`; Scholia starts that bundled renderer when the StemTeX
+backend is selected.
+
+The StemTeX profile and TeXLive package/font tree can be selected from
+`Settings -> Configure Scholia -> Annotations`. Leave the TeX tree empty to use
+the bundled tree under `StemTeX\runtime`; choose another directory when testing a
+different TeX distribution. Environment variables such as
+`SCHOLIA_STEMTEX_PROFILE_NAME` and `SCHOLIA_STEMTEX_TEXMF_ROOT` still override
+the saved UI settings for diagnostics.
 
 To inspect TeX rendering logs:
 

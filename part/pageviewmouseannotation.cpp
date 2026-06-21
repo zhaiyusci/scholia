@@ -669,35 +669,11 @@ static QRect geometryForBoundingRect(const AnnotationDescription &ad, Okular::No
     return rect.geometry(ad.pageViewItem->uncroppedWidth(), ad.pageViewItem->uncroppedHeight());
 }
 
-static GuiUtils::LatexRenderWarning layoutOverflowWarningForLatexNote(const AnnotationDescription &ad)
+static GuiUtils::LatexRenderWarning compileErrorWarningForLatexNote(const LatexNoteUtils::RenderResult &rendered)
 {
-    const auto *latexAnnotation = LatexNoteUtils::annotationIsLatex(ad.annotation) ? ad.annotation : nullptr;
-    const Okular::Page *page = ad.pageViewItem ? ad.pageViewItem->page() : nullptr;
-    if (!latexAnnotation || !page) {
-        return {};
-    }
-
-    const double layoutWidthPoints = latexAnnotationLayoutWidth(latexAnnotation, page);
-    if (!std::isfinite(layoutWidthPoints) || layoutWidthPoints <= 0.0) {
-        return {};
-    }
-
-    const QSizeF pdfSize = GuiUtils::pdfPageSizeInPoints(latexAnnotation->latexAppearancePdfFileName());
-    if (!pdfSize.isValid() || pdfSize.isEmpty() || !std::isfinite(pdfSize.width())) {
-        return {};
-    }
-
-    constexpr double overflowThresholdPoints = 0.5;
-    const double overflowPoints = pdfSize.width() - layoutWidthPoints;
-    if (overflowPoints <= overflowThresholdPoints) {
-        return {};
-    }
-
     GuiUtils::LatexRenderWarning warning;
-    warning.type = GuiUtils::LatexRenderWarningType::ClippingRisk;
-    warning.severity = overflowPoints;
-    warning.message = i18n("LaTeX output is %1 pt wider than the layout width. The note is shown fully; the blue width handle marks the requested layout width.",
-                           QString::number(overflowPoints, 'f', 1));
+    warning.type = GuiUtils::LatexRenderWarningType::CompileError;
+    warning.message = rendered.errorMessage.trimmed().isEmpty() ? i18n("LaTeX rendering failed. The previous appearance is still shown.") : rendered.errorMessage;
     return warning;
 }
 
@@ -862,12 +838,14 @@ static bool applyLatexResizeUpdate(Okular::Document *document, const LatexResize
     if (rendered) {
         if (!rendered->ok) {
             qCWarning(OkularUiDebug) << "LaTeX note resize render failed:" << rendered->errorMessage;
+            if (warning) {
+                *warning = compileErrorWarningForLatexNote(*rendered);
+            }
             return false;
         }
-        renderWarning = rendered->warning;
         pdfFileName = rendered->pdfFileName;
         pdfSize = rendered->pdfSizePoints;
-        qCDebug(OkularUiDebug) << "LaTeX note resize render produced PDF; path:" << pdfFileName << "size:" << pdfSize << "warning:" << LatexNoteUtils::warningText(renderWarning);
+        qCDebug(OkularUiDebug) << "LaTeX note resize render produced PDF; path:" << pdfFileName << "size:" << pdfSize;
     }
     if (!pdfSize.isValid() || pdfSize.isEmpty() || pdfFileName.isEmpty()) {
         return false;
@@ -968,18 +946,17 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
             }
 
             if (!ok) {
-                updateViewport(m_focusedAnnotation);
+                if (warning.isValid()) {
+                    setLatexRenderWarning(m_focusedAnnotation, warning);
+                } else {
+                    updateViewport(m_focusedAnnotation);
+                }
                 return false;
             }
 
-            const GuiUtils::LatexRenderWarning effectiveWarning = warning.isValid() ? warning : layoutOverflowWarningForLatexNote(m_focusedAnnotation);
-            if (effectiveWarning.isValid()) {
-                setLatexRenderWarning(m_focusedAnnotation, effectiveWarning);
-            } else {
-                updateViewport(m_focusedAnnotation);
-                clearLatexRenderWarning();
-                updateViewport(m_focusedAnnotation);
-            }
+            updateViewport(m_focusedAnnotation);
+            clearLatexRenderWarning();
+            updateViewport(m_focusedAnnotation);
         }
         return ok;
     };
@@ -2025,16 +2002,12 @@ void MouseAnnotation::refreshLatexRenderWarning(const AnnotationDescription &ad)
         return;
     }
 
-    const bool hadWarning = hasLatexRenderWarning(ad);
-    if (hadWarning) {
-        updateViewport(ad);
+    if (m_latexRenderWarningAnnotation && m_latexRenderWarningAnnotation != ad.annotation) {
+        clearLatexRenderWarning();
+        return;
     }
-    clearLatexRenderWarning();
 
-    const GuiUtils::LatexRenderWarning warning = layoutOverflowWarningForLatexNote(ad);
-    if (warning.isValid()) {
-        setLatexRenderWarning(ad, warning);
-    } else if (hadWarning) {
+    if (hasLatexRenderWarning(ad)) {
         updateViewport(ad);
     }
 }

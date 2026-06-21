@@ -17,7 +17,7 @@ class QColor;
 
 namespace GuiUtils
 {
-enum class LatexRenderWarningType { None, ClippingRisk, LooseLayout, BackendLimitation, CompileFallback };
+enum class LatexRenderWarningType { None, CompileError, BackendLimitation, CompileFallback };
 
 struct LatexRenderWarning {
     LatexRenderWarningType type = LatexRenderWarningType::None;
@@ -67,7 +67,10 @@ public:
     static bool mightContainLatex(const QString &text);
     static QString defaultSourcePreamble();
     static QString compactErrorMessage(const QString &latexOutput);
+    static QStringList stemTeXProfileNames();
+    static QString defaultStemTeXTexmfRoot();
     static void prewarmStemTeX();
+    static void restartStemTeX();
     static StemTeXStatus stemTeXStatus();
 
 private:
