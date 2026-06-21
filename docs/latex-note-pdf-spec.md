@@ -48,7 +48,7 @@ that identifies and restores a LaTeX note.
 
 `/AP /N`
 : The normal appearance stream. It must be self-contained and display the
-rendered note without requiring TeX, MicroTeX, or a temporary source PDF file.
+rendered note without requiring TeX or a temporary source PDF file.
 
 Optional fields:
 
@@ -267,7 +267,7 @@ LaTeX notes separate layout from visual scale:
 - changing `layout.widthPt` may require re-rendering;
 - changing only `layout.scale` should reuse the existing appearance whenever
   possible;
-- vertical-only resizing should not invoke TeX or MicroTeX.
+- vertical-only resizing should not invoke TeX or StemTeX.
 
 All dimensions ending in `Pt` are PDF points. Values ending in `Norm` are
 normalized page coordinates.

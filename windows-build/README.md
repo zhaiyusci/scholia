@@ -158,11 +158,10 @@ Expected installer output:
 
 ## LaTeX Notes
 
-Scholia supports system TeX and the StemTeX renderer. System TeX is discovered
-from the user's normal `PATH` or configured executable. The standalone Windows
+Scholia supports the StemTeX renderer for LaTeX notes. The standalone Windows
 runtime bundles StemTeX under `StemTeX\runtime` with profiles under
-`StemTeX\profiles`; Scholia starts that bundled renderer when the StemTeX
-backend is selected.
+`StemTeX\profiles`; Scholia starts that bundled renderer during application
+startup.
 
 The StemTeX profile and TeXLive package/font tree can be selected from
 `Settings -> Configure Scholia -> Annotations`. Leave the TeX tree empty to use
@@ -179,5 +178,4 @@ Get-Content "$env:LOCALAPPDATA\scholia\scholia-tex-debug.log" -Tail 80
 
 Expected log operations include:
 
-- `system-latex` for a system `xelatex` or `lualatex` compile.
 - `stemtex-render` for the StemTeX backend.

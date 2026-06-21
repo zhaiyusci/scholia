@@ -329,7 +329,6 @@ Part::Part(QObject *parent, const QVariantList &args)
     setComponentName(QStringLiteral("okular"), QString());
 
     setupConfigSkeleton(args);
-    m_latexRenderBackend = Okular::Settings::latexRenderBackend();
     m_latexStemtexProfileName = Okular::Settings::latexStemtexProfileName();
     m_latexStemtexTexmfRoot = Okular::Settings::latexStemtexTexmfRoot();
     GuiUtils::LatexRenderer::prewarmStemTeX();
@@ -651,6 +650,7 @@ void Part::setupConfigSkeleton(const QVariantList &args)
         slidesConfigGroup.writeEntry("SlidesTransition", "NoTransitions");
     }
     slidesConfigGroup.deleteEntry("SlidesTransitionsEnabled");
+
     config.data()->sync();
 
     Okular::Settings::instance(config);
@@ -3147,11 +3147,9 @@ void Part::slotNewConfig()
         Q_EMIT maxRecentItemsChanged(m_maxRecentItems);
     }
 
-    const int latexRenderBackend = Okular::Settings::latexRenderBackend();
     const QString stemtexProfileName = Okular::Settings::latexStemtexProfileName();
     const QString stemtexTexmfRoot = Okular::Settings::latexStemtexTexmfRoot();
-    if (m_latexRenderBackend != latexRenderBackend || m_latexStemtexProfileName != stemtexProfileName || m_latexStemtexTexmfRoot != stemtexTexmfRoot) {
-        m_latexRenderBackend = latexRenderBackend;
+    if (m_latexStemtexProfileName != stemtexProfileName || m_latexStemtexTexmfRoot != stemtexTexmfRoot) {
         m_latexStemtexProfileName = stemtexProfileName;
         m_latexStemtexTexmfRoot = stemtexTexmfRoot;
         GuiUtils::LatexRenderer::restartStemTeX();

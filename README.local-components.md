@@ -1,37 +1,23 @@
 # Local component submodules
 
-This fork pins two non-upstream components as git submodules:
+This fork pins one non-upstream component as a git submodule:
 
 - `external/poppler`: the Poppler fork/branch used for vector stamp appearance and Okular LaTeX note metadata.
-- `external/MicroTeX`: the MicroTeX fallback renderer used when a system TeX executable is unavailable.
 
-Initialize them after cloning:
+Initialize it after cloning:
 
 ```sh
 git submodule update --init --recursive
 ```
 
-MicroTeX is consumed directly by Okular when configuring with:
+Poppler is consumed through `find_package(Poppler)`. Build and install the
+Poppler submodule to a local prefix first, then configure Okular with that
+prefix in `CMAKE_PREFIX_PATH`. The local Poppler build should also use bundled
+poppler-data from `$HOME/.local/opt/okular/share/poppler`, not the system
+`/usr/share/poppler`.
 
-```sh
--DOKULAR_ENABLE_MICROTEX=ON
-```
-
-If `MICROTEX_SRC` is not set, Okular first looks at `external/MicroTeX`.
-This fork uses the submodule MicroTeX as a source dependency, not as a system
-library. Okular calls MicroTeX's text-mode entry point for LaTeX note fallback
-rendering, so note text starts outside math mode and `$...`, `$$...$$`,
-`\(...\)`, and `\[...\]` enter math mode explicitly. The forked MicroTeX text
-mode is expected to preserve TeX-like single-paragraph text behavior: normal
-formatting commands such as `\textbf{...}` and `\textit{...}` keep TeX text
-fonts and word spacing, consecutive spaces are collapsed, and line breaks are
-treated as a single inter-word space. Notes are intended to be short, usually no
-more than one paragraph.
-
-Poppler is different: Okular still consumes Poppler through `find_package(Poppler)`.
-Build and install the Poppler submodule to a local prefix first, then configure Okular with that prefix in `CMAKE_PREFIX_PATH`.
-The local Poppler build should also use bundled poppler-data from
-`$HOME/.local/opt/okular/share/poppler`, not the system `/usr/share/poppler`.
+LaTeX note rendering uses the StemTeX renderer. StemTeX is a runtime dependency
+copied into the Windows package, not a git submodule of this repository.
 
 The detailed Linux local build and install workflow is documented in
 `README.local-linux-build.md`.
@@ -55,7 +41,6 @@ cmake --install ../linux_build/poppler-local
 PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig \
 cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH=$PREFIX \
-  -DOKULAR_ENABLE_MICROTEX=ON \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DKDE_INSTALL_LIBDIR=lib \
   -DCMAKE_INSTALL_PREFIX=$PREFIX

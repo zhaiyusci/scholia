@@ -65,32 +65,20 @@ Okular::NormalizedRect fitRectInsidePage(Okular::NormalizedRect rect)
 QString latexErrorMessage(GuiUtils::LatexRenderer::Error errorCode, const QString &latexOutput)
 {
     switch (errorCode) {
-    case GuiUtils::LatexRenderer::LatexNotFound:
-        return i18n("Cannot find xelatex or lualatex executable.");
-    case GuiUtils::LatexRenderer::DvipngNotFound:
-        return i18n("Cannot find dvipng executable.");
     case GuiUtils::LatexRenderer::LatexFailed:
         return i18n("LaTeX rendering failed:\n%1", GuiUtils::LatexRenderer::compactErrorMessage(latexOutput));
-    case GuiUtils::LatexRenderer::DvipngFailed:
-        return i18n("A problem occurred during the execution of the 'dvipng' command.");
-    case GuiUtils::LatexRenderer::PdfToImageNotFound:
-        return i18n("Cannot find pdftocairo executable.");
-    case GuiUtils::LatexRenderer::PdfToImageFailed:
-        return i18n("A problem occurred during the execution of the 'pdftocairo' command.");
-    case GuiUtils::LatexRenderer::MicrotexFailed:
-        return i18n("MicroTeX fallback failed:\n%1", GuiUtils::LatexRenderer::compactErrorMessage(latexOutput));
     case GuiUtils::LatexRenderer::NoError:
         break;
     }
     return QString();
 }
 
-QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &sourcePreamble, const QString &backendName)
+QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &backendName)
 {
     const bool fixedWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0;
     const QString widthText = fixedWidth ? QString::number(layoutWidthPoints, 'f', 3) : QStringLiteral("0");
     const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-content-v6") : QStringLiteral("natural-width-content-v6");
-    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5|%6").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, sourcePreamble, renderMode, backendName);
+    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, renderMode, backendName);
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
@@ -515,8 +503,7 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
     GuiUtils::LatexRenderer renderer;
     QString latexOutput;
     QString temporaryPdfFile;
-    const QString sourcePreamble = Okular::Settings::latexPreamble();
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, fontSize, temporaryPdfFile, latexOutput, layoutWidthPoints, sourcePreamble);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, fontSize, temporaryPdfFile, latexOutput, layoutWidthPoints);
     if (errorCode != GuiUtils::LatexRenderer::NoError) {
         qCWarning(OkularUiDebug) << "LaTeX note PDF render failed; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "error:" << errorCode
                                  << "message:" << latexErrorMessage(errorCode, latexOutput);
@@ -542,7 +529,7 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
         return result;
     }
 
-    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, sourcePreamble, renderer.lastBackendName());
+    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, renderer.lastBackendName());
     const QString appearancePdfFileName = dataDir.filePath(QStringLiteral("%1.pdf").arg(noteBaseName));
     if (QFile::exists(appearancePdfFileName)) {
         QFile::remove(appearancePdfFileName);

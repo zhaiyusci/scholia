@@ -129,7 +129,6 @@ fi
 PKG_CONFIG_PATH="$prefix/lib/pkgconfig:$prefix/lib64/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
 cmake -S . -B "$okular_build" \
     -DCMAKE_PREFIX_PATH="$prefix" \
-    -DOKULAR_ENABLE_MICROTEX=ON \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DKDE_INSTALL_LIBDIR=lib \
     -DCMAKE_INSTALL_PREFIX="$prefix"

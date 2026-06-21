@@ -79,6 +79,24 @@ function Remove-DirectoryInside([string] $Path, [string] $AllowedRoot) {
     }
 }
 
+function Remove-FileInside([string] $Path, [string] $AllowedRoot) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if (!$full.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove file outside $allowed`: $full"
+    }
+    if (Test-Path -LiteralPath $full) {
+        Remove-Item -LiteralPath $full -Force
+    }
+}
+
+function Remove-LegacyLatexRuntimeArtifacts([string] $Prefix) {
+    Write-Host "Removing legacy LaTeX runtime artifacts..." -ForegroundColor Cyan
+    Remove-DirectoryInside (Join-Path $Prefix "bin\data\scholia\microtex") $Prefix
+    Remove-FileInside (Join-Path $Prefix "bin\LaTeX.dll") $Prefix
+    Remove-FileInside (Join-Path $Prefix "lib\LaTeX.lib") $Prefix
+}
+
 function Copy-PluginFile([string] $SourceRoot, [string] $RelativePath, [string] $DestinationRoot) {
     $source = Join-Path $SourceRoot $RelativePath
     if (!(Test-Path -LiteralPath $source)) {
@@ -160,6 +178,8 @@ Write-Host "QtPrefix  : $QtPrefix"
 Write-Host "SdkPrefix : $SdkPrefix"
 Write-Host "Install   : $InstallPrefix"
 Write-Host "StemTeX   : $StemTeXRoot"
+
+Remove-LegacyLatexRuntimeArtifacts $InstallPrefix
 
 Write-Host ""
 Write-Host "Copying SDK DLLs..."

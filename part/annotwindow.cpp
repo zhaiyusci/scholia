@@ -633,23 +633,8 @@ void AnnotWindow::renderLatex(bool render)
         QString latexOutput;
         GuiUtils::LatexRenderer::Error errorCode = m_latexRenderer->renderLatexInHtml(contents, fontColor, fontSize, Okular::Utils::realDpi(nullptr).width(), latexOutput);
         switch (errorCode) {
-        case GuiUtils::LatexRenderer::LatexNotFound:
-            KMessageBox::error(this, i18n("Cannot find latex executable."), i18n("LaTeX rendering failed"));
-            m_title->uncheckLatexButton();
-            renderLatex(false);
-            break;
-        case GuiUtils::LatexRenderer::DvipngNotFound:
-            KMessageBox::error(this, i18n("Cannot find dvipng executable."), i18n("LaTeX rendering failed"));
-            m_title->uncheckLatexButton();
-            renderLatex(false);
-            break;
         case GuiUtils::LatexRenderer::LatexFailed:
-            KMessageBox::detailedError(this, i18n("A problem occurred during the execution of the 'latex' command."), latexOutput, i18n("LaTeX rendering failed"));
-            m_title->uncheckLatexButton();
-            renderLatex(false);
-            break;
-        case GuiUtils::LatexRenderer::DvipngFailed:
-            KMessageBox::error(this, i18n("A problem occurred during the execution of the 'dvipng' command."), i18n("LaTeX rendering failed"));
+            KMessageBox::error(this, latexOutput, i18n("LaTeX rendering failed"));
             m_title->uncheckLatexButton();
             renderLatex(false);
             break;

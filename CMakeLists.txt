@@ -102,50 +102,6 @@ ecm_setup_version(${PROJECT_VERSION}
 
 find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml)
 
-option(OKULAR_ENABLE_MICROTEX "Enable MicroTeX fallback rendering for LaTeX notes" OFF)
-set(MICROTEX_SRC "" CACHE PATH "Path to the MicroTeX source tree")
-if(OKULAR_ENABLE_MICROTEX)
-    if(NOT MICROTEX_SRC)
-        set(_okular_default_microtex_sources
-            "${CMAKE_CURRENT_SOURCE_DIR}/external/MicroTeX"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../../veusz_latex/veusz/third_party/MicroTeX"
-        )
-        foreach(_okular_default_microtex_src IN LISTS _okular_default_microtex_sources)
-            if(EXISTS "${_okular_default_microtex_src}/CMakeLists.txt")
-                set(MICROTEX_SRC "${_okular_default_microtex_src}" CACHE PATH "Path to the MicroTeX source tree" FORCE)
-                break()
-            endif()
-        endforeach()
-        if(MICROTEX_SRC)
-            unset(_okular_default_microtex_src)
-        endif()
-        unset(_okular_default_microtex_sources)
-    endif()
-
-    if(NOT EXISTS "${MICROTEX_SRC}/CMakeLists.txt")
-        message(FATAL_ERROR "OKULAR_ENABLE_MICROTEX is ON, but MICROTEX_SRC does not point to a MicroTeX source tree")
-    endif()
-
-    set(QT ON CACHE BOOL "Build MicroTeX with Qt support" FORCE)
-    set(BUILD_EXAMPLE OFF CACHE BOOL "Build MicroTeX examples" FORCE)
-    set(HAVE_LOG OFF CACHE BOOL "Enable MicroTeX logging" FORCE)
-    set(GRAPHICS_DEBUG OFF CACHE BOOL "Enable MicroTeX graphics debugging" FORCE)
-    add_subdirectory("${MICROTEX_SRC}" "${CMAKE_CURRENT_BINARY_DIR}/microtex" EXCLUDE_FROM_ALL)
-    set_target_properties(LaTeX PROPERTIES
-        CXX_VISIBILITY_PRESET default
-        VISIBILITY_INLINES_HIDDEN OFF
-    )
-    target_compile_options(LaTeX PRIVATE
-        $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-fexceptions>
-        $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-UQT_NO_CAST_FROM_ASCII>
-        $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-UQT_NO_CAST_TO_ASCII>
-        $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-UQT_NO_CAST_FROM_BYTEARRAY>
-    )
-    set(OKULAR_MICROTEX_RES_DIR "${MICROTEX_SRC}/res")
-    install(TARGETS LaTeX ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
-    install(DIRECTORY "${MICROTEX_SRC}/res" DESTINATION "${KDE_INSTALL_DATADIR}/scholia/microtex")
-endif()
-
 find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
     Archive
     Bookmarks
@@ -655,15 +611,6 @@ endif()
 
 if (KF6Purpose_FOUND)
     target_link_libraries(okularpart KF6::PurposeWidgets)
-endif()
-
-if(OKULAR_ENABLE_MICROTEX)
-    target_link_libraries(okularpart LaTeX)
-    target_compile_definitions(okularpart PRIVATE
-        OKULAR_ENABLE_MICROTEX
-        OKULAR_MICROTEX_RES_DIR="${OKULAR_MICROTEX_RES_DIR}"
-    )
-    set_property(SOURCE part/latexrenderer.cpp APPEND PROPERTY COMPILE_OPTIONS $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-fexceptions>)
 endif()
 
 set_target_properties(okularpart PROPERTIES PREFIX "")

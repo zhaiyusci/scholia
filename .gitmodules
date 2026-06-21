@@ -2,7 +2,3 @@
 	path = external/poppler
 	url = ../poppler.git
 	branch = local-okular-vector-stamp
-[submodule "external/MicroTeX"]
-	path = external/MicroTeX
-	url = https://github.com/zhaiyusci/MicroTeX.git
-	branch = master

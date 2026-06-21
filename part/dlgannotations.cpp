@@ -20,7 +20,6 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSpinBox>
@@ -110,19 +109,6 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     latexTextAnnotationFontSize->setSuffix(i18nc("@item:spinbox Config dialog, annotations page, font size unit", " pt"));
     layout->addRow(i18nc("@label:spinbox Config dialog, annotations page", "Converted text font size:"), latexTextAnnotationFontSize);
 
-    QLineEdit *latexExecutablePath = new QLineEdit(this);
-    latexExecutablePath->setObjectName(QStringLiteral("kcfg_LatexExecutablePath"));
-    latexExecutablePath->setPlaceholderText(i18nc("@info:placeholder Config dialog, annotations page", "Leave empty to search PATH"));
-    layout->addRow(i18nc("@label:textbox Config dialog, annotations page", "XeLaTeX executable:"), latexExecutablePath);
-
-    QComboBox *latexRenderBackend = new QComboBox(this);
-    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "Auto (system TeX, then MicroTeX fallback)"));
-    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "System TeX only"));
-    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "MicroTeX only"));
-    latexRenderBackend->addItem(i18nc("@item:inlistbox Config dialog, annotations page", "StemTeX hot XeTeX only"));
-    latexRenderBackend->setObjectName(QStringLiteral("kcfg_LatexRenderBackend"));
-    layout->addRow(i18nc("@label:listbox Config dialog, annotations page", "LaTeX renderer:"), latexRenderBackend);
-
     m_stemTeXProfileNameEdit = new QLineEdit(this);
     m_stemTeXProfileNameEdit->setObjectName(QStringLiteral("kcfg_LatexStemtexProfileName"));
     m_stemTeXProfileNameEdit->hide();
@@ -168,11 +154,6 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     connect(m_stemTeXStatusTimer, &QTimer::timeout, this, &DlgAnnotations::refreshStemTeXStatus);
     m_stemTeXStatusTimer->start();
     refreshStemTeXStatus();
-
-    QPlainTextEdit *latexPreamble = new QPlainTextEdit(this);
-    latexPreamble->setObjectName(QStringLiteral("kcfg_LatexPreamble"));
-    latexPreamble->setMinimumHeight(latexPreamble->fontMetrics().lineSpacing() * 7);
-    layout->addRow(i18nc("@label:textbox Config dialog, annotations page", "LaTeX preamble:"), latexPreamble);
 
     // Silly 1Em spacer:
     layout->addRow(new QLabel(this));

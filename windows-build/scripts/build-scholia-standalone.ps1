@@ -9,8 +9,7 @@ param(
     [string] $CMake = "",
     [string] $Ninja = "",
     [string] $VcVars = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
-    [switch] $Clean,
-    [switch] $EnableMicroTeX
+    [switch] $Clean
 )
 
 $ErrorActionPreference = "Stop"
@@ -108,6 +107,24 @@ function Remove-DirectoryInside([string] $Path, [string] $AllowedRoot) {
     }
 }
 
+function Remove-FileInside([string] $Path, [string] $AllowedRoot) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if (!$full.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove file outside $allowed`: $full"
+    }
+    if (Test-Path -LiteralPath $full) {
+        Remove-Item -LiteralPath $full -Force
+    }
+}
+
+function Remove-LegacyLatexRuntimeArtifacts([string] $Prefix) {
+    Write-Host "Removing legacy LaTeX runtime artifacts..." -ForegroundColor Cyan
+    Remove-DirectoryInside (Join-Path $Prefix "bin\data\scholia\microtex") $Prefix
+    Remove-FileInside (Join-Path $Prefix "bin\LaTeX.dll") $Prefix
+    Remove-FileInside (Join-Path $Prefix "lib\LaTeX.lib") $Prefix
+}
+
 function Sync-InstalledRuntimePlugins([string] $Prefix) {
     $pluginsDir = Join-Path $Prefix "plugins"
     if (!(Test-Path -LiteralPath $pluginsDir)) {
@@ -163,7 +180,6 @@ Write-Host "QtPrefix    : $QtPrefix"
 Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "BuildDir    : $buildDir"
 Write-Host "Install     : $InstallPrefix"
-Write-Host "MicroTeX    : $EnableMicroTeX"
 
 $configureArgs = @(
     """$CMake""",
@@ -176,7 +192,6 @@ $configureArgs = @(
     "-DCMAKE_PREFIX_PATH=""$QtPrefix;$SdkPrefix""",
     "-DBUILD_TESTING=OFF",
     "-DOKULAR_PDF_ONLY=ON",
-    "-DOKULAR_ENABLE_MICROTEX=$(if ($EnableMicroTeX) { 'ON' } else { 'OFF' })",
     "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON",
     "-DKDE_INSTALL_PLUGINDIR=plugins",
     "-DFORCE_NOT_REQUIRED_DEPENDENCIES=""$forceNotRequired"""
@@ -186,6 +201,7 @@ Invoke-VsCmd ($configureArgs -join " ")
 $build = """$CMake"" --build ""$buildDir"" --target install --parallel $Jobs"
 Invoke-VsCmd $build
 Sync-InstalledRuntimePlugins $InstallPrefix
+Remove-LegacyLatexRuntimeArtifacts $InstallPrefix
 
 Write-Host ""
 Write-Host "Scholia standalone install complete." -ForegroundColor Green

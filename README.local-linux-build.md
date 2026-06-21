@@ -60,7 +60,6 @@ cmake --install ../linux_build/poppler-local
 PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig" \
 cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
-  -DOKULAR_ENABLE_MICROTEX=ON \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DKDE_INSTALL_LIBDIR=lib \
   -DCMAKE_INSTALL_PREFIX="$PREFIX"
@@ -120,13 +119,12 @@ cmake --install ../linux_build/okular-local-poppler
 ```
 
 Reconfigure from scratch if the Poppler submodule, CMake options, Qt/KF
-packages, MicroTeX source, or install prefix changed.
+packages, or install prefix changed.
 
 ## Layout
 
 - Okular source: this repository
 - Poppler submodule: `external/poppler`
-- MicroTeX submodule: `external/MicroTeX`
 - Poppler build directory: `../linux_build/poppler-local`
 - Okular build directory: `../linux_build/okular-local-poppler`
 - Install prefix: `$HOME/.local/opt/okular`
@@ -142,8 +140,8 @@ git submodule update --init --recursive
 ```
 
 `external/poppler` is used for vector stamp appearances and LaTeX note
-metadata. `external/MicroTeX` is used as the fallback LaTeX renderer when a
-system TeX executable is unavailable.
+metadata. LaTeX note rendering uses StemTeX, which is packaged as a runtime
+dependency rather than as a git submodule here.
 
 ## WSL and openSUSE notes
 
@@ -270,21 +268,12 @@ copy:
 PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:$PREFIX/lib64/pkgconfig" \
 cmake -S . -B ../linux_build/okular-local-poppler \
   -DCMAKE_PREFIX_PATH="$PREFIX" \
-  -DOKULAR_ENABLE_MICROTEX=ON \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DKDE_INSTALL_LIBDIR=lib \
   -DCMAKE_INSTALL_PREFIX="$PREFIX"
 
 cmake --build ../linux_build/okular-local-poppler -j 8
 cmake --install ../linux_build/okular-local-poppler
-```
-
-If `MICROTEX_SRC` is not set, Okular looks for MicroTeX at
-`external/MicroTeX`. To use a different checkout:
-
-```sh
-cmake -S . -B ../linux_build/okular-local-poppler \
-  -DMICROTEX_SRC=/path/to/MicroTeX
 ```
 
 ## Launcher

@@ -20,11 +20,10 @@ research-note workflows. The main differences are:
     width, reflow, warning display, and persistent layout/scale metadata;
   * keeps the intended physical font size, so a 10 pt LaTeX note is stored and
     displayed as a 10 pt PDF annotation rather than being scaled by display DPI.
-* MicroTeX fallback rendering:
-  * adds `OKULAR_ENABLE_MICROTEX` and `MICROTEX_SRC` CMake options;
-  * uses `external/MicroTeX` automatically when present;
-  * falls back to MicroTeX when an external TeX executable is unavailable;
-  * installs the MicroTeX resource tree needed by the runtime package.
+* StemTeX hot XeTeX rendering:
+  * bundles the StemTeX runtime and rendering profiles in the Windows package;
+  * can fall back to StemTeX when an external TeX executable is unavailable;
+  * exposes profile and TeX tree selection in the annotation settings page.
 * Local Poppler integration:
   * pins `external/poppler` to the local Poppler branch used for vector
     annotation appearance support and LaTeX note metadata round-tripping;
@@ -46,7 +45,7 @@ research-note workflows. The main differences are:
     rewrites. Treat those files as malformed/heavy samples when measuring
     normal annotation repaint performance.
 * Local component pinning:
-  * adds submodules for `external/poppler` and `external/MicroTeX`;
+  * adds a submodule for `external/poppler`;
   * see `README.local-components.md` for initialization and local build notes.
 
 ## LaTeX Annotation PDF Structure
@@ -193,20 +192,12 @@ LaTeX notes separate the editable layout width from the visual scale:
 - The layout width controls TeX reflow. Horizontal width-handle changes may
   re-render the note because they change the TeX paragraph width.
 - The visual scale controls display size. Vertical-only resizing is a pure
-  rescale operation and must not call TeX, MicroTeX, or any TeX Live helper.
+  rescale operation and must not call StemTeX.
   If the runtime appearance PDF path is unavailable, the resize path derives
   the unscaled visual size from the current annotation rectangle and
   `/OkularLatexScale` instead of re-rendering.
-- Overflow is a warning state, not a reason to run TeX twice. When system TeX
-  renders source-PDF appearances, Okular runs TeX once on a large page
-  (`article` with `geometry` `paper=a0paper,margin=0pt` and no page numbers)
-  and then runs `pdfcrop --hires --margins "0 0 0 0"` to crop the PDF to the
-  actual drawn ink. The first TeX log is kept for `Overfull \hbox` warning
-  detection. The old second TeX pass for overflow compensation must not be
-  restored.
-- MicroTeX does not use `pdfcrop`. It renders directly into a PDF sized from
-  its measured vector bounds and writes the needed crop box itself. Therefore a
-  MicroTeX-only runtime is expected to work without any system TeX Live tools.
+- StemTeX uses preloaded XeTeX workers and its bundled profile preambles for
+  fast note rendering without depending on an external TeX installation.
 
 When debugging renderer selection, enable `org.jairy.scholia.ui.debug`. Every TeX
 or TeX-like render operation writes a line to
@@ -219,10 +210,7 @@ Windows this is normally:
 
 Expected operations are:
 
-- `system-latex` for a system `xelatex` or `lualatex` compile.
-- `texlive-pdfcrop` for the system-TeX PDF crop post-process.
-- `microtex-render` for MicroTeX rendering or Auto fallback when system TeX is
-  unavailable.
+- `stemtex-render` for StemTeX rendering.
 
 ## Image Note PDF Structure
 
