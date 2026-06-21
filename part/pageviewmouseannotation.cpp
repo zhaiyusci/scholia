@@ -143,10 +143,30 @@ static Okular::NormalizedRect latexCalloutBoxRectangle(const Okular::Annotation 
     return annotation ? annotation->boundingRectangle() : Okular::NormalizedRect();
 }
 
+static QPoint centerForRect(const QRect &rect)
+{
+    return QPoint(rect.left() + rect.width() / 2, rect.top() + rect.height() / 2);
+}
+
+static QRect centeredRect(const QPoint &center, int width, int height)
+{
+    return QRect(center.x() - width / 2, center.y() - height / 2, width, height);
+}
+
+static QPoint latexWidthHandleCenter(const QRect &selectionRect, MouseAnnotation::ResizeHandle handle)
+{
+    const int x = handle == MouseAnnotation::RH_Left ? selectionRect.left() : selectionRect.right();
+    return QPoint(x, selectionRect.top() + selectionRect.height() / 2);
+}
+
+static QRect latexWidthHandleHitRect(const QRect &selectionRect, MouseAnnotation::ResizeHandle handle)
+{
+    return centeredRect(latexWidthHandleCenter(selectionRect, handle), latexWidthHandleHitWidth, latexWidthHandleHitLength);
+}
+
 static QRect latexWidthHandleVisualRect(const QRect &hitRect)
 {
-    const QPoint center = hitRect.center();
-    return QRect(center.x() - latexWidthHandleWidth / 2, center.y() - latexWidthHandleHalf, latexWidthHandleWidth, latexWidthHandleLength);
+    return centeredRect(centerForRect(hitRect), latexWidthHandleWidth, latexWidthHandleLength);
 }
 
 static bool isCalloutHandle(MouseAnnotation::ResizeHandle handle)
@@ -1307,7 +1327,7 @@ void MouseAnnotation::routePaint(QPainter *painter, const QRect paintRect)
         for (const ResizeHandle &handle : std::as_const(m_resizeHandleList)) {
             QRect rect = getHandleRect(handle, m_focusedAnnotation);
             if (isLatexNote && (handle == RH_Left || handle == RH_Right)) {
-                const QPoint center = rect.center();
+                const QPoint center = centerForRect(rect);
                 const QRect widthHandleRect = latexWidthHandleVisualRect(rect);
                 painter->setPen(QPen(QColor(20, 82, 160), 1));
                 painter->setBrush(QColor(37, 99, 235));
@@ -2131,8 +2151,7 @@ QRect MouseAnnotation::getHandleRect(ResizeHandle handle, const AnnotationDescri
 
     const QRect handleRect(left, top, handleSize, handleSize);
     if (LatexNoteUtils::annotationIsLatex(ad.annotation) && (handle == RH_Left || handle == RH_Right)) {
-        const QPoint center = handleRect.center();
-        return QRect(center.x() - latexWidthHandleHitWidth / 2, center.y() - latexWidthHandleHitLength / 2, latexWidthHandleHitWidth, latexWidthHandleHitLength);
+        return latexWidthHandleHitRect(boundingRect, handle);
     }
 
     return handleRect;
