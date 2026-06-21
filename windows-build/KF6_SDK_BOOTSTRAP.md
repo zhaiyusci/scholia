@@ -46,11 +46,14 @@ Install the libintl compatibility shim used by KI18n on Windows:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\install-gettext-native-sdk.ps1
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
   -File .\windows-build\scripts\build-libintl-shim-sdk.ps1
 ```
 
-This shim exports the gettext symbols needed by KI18n and provides minimal
-`msgfmt` and `msgmerge` tools. It is a build-enabling shim, not a full gettext
+The native gettext install provides the real Windows `msgfmt.exe` used to
+compile `.mo` catalogs. The libintl shim exports the gettext symbols needed by
+KI18n and still provides minimal fallback tools, but it is not a full gettext
 replacement.
 
 Install pinned flex and bison wrappers for modules that generate parsers:

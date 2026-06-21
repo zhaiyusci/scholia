@@ -47,9 +47,16 @@ Build required support libraries and tools:
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-zlib-sdk.ps1
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-freetype-sdk.ps1
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\install-gettext-native-sdk.ps1
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-libintl-shim-sdk.ps1
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\install-winflexbison-sdk.ps1
 ```
+
+`install-gettext-native-sdk.ps1` installs the pinned native Windows
+`gettext-iconv-windows` tools under
+`..\windows_build\sdk\tools\gettext-native`. The Scholia build uses that
+`msgfmt.exe` to compile real gettext catalogs; the libintl shim remains the
+small runtime compatibility library needed by KI18n.
 
 Build the required KF6 modules into `..\windows_build\sdk`. Use
 `windows-build\KF6_SDK_BOOTSTRAP.md` for the module list and per-module notes.

@@ -41,6 +41,20 @@ function Resolve-CommandPath([string] $Name, [string[]] $Candidates) {
     throw "Cannot find $Name. Pass an explicit path with the matching parameter."
 }
 
+function Resolve-NativeMsgFmt([string] $SdkPrefix) {
+    $msgfmt = [System.IO.Path]::GetFullPath((Join-Path $SdkPrefix "tools\gettext-native\bin\msgfmt.exe"))
+    if (!(Test-Path -LiteralPath $msgfmt)) {
+        throw "Cannot find native Windows msgfmt at $msgfmt. Run windows-build\scripts\install-gettext-native-sdk.ps1 first."
+    }
+
+    $versionOutput = & $msgfmt --version 2>&1
+    if ($LASTEXITCODE -ne 0 -or (($versionOutput -join "`n") -notmatch "GNU gettext-tools")) {
+        throw "Configured msgfmt is not GNU gettext-tools: $msgfmt"
+    }
+
+    return $msgfmt
+}
+
 function Find-QtPrefix([string] $RequestedPrefix) {
     $candidates = @()
     if ($RequestedPrefix) {
@@ -154,7 +168,7 @@ function Sync-InstalledRuntimePlugins([string] $Prefix) {
 $QtPrefix = Find-QtPrefix $QtPrefix
 $CMake = Resolve-CommandPath "cmake" @($CMake, (Join-Path $QtPrefix "..\..\Tools\CMake_64\bin\cmake.exe"), "C:\Program Files\CMake\bin\cmake.exe")
 $Ninja = Resolve-CommandPath "ninja" @($Ninja, (Join-Path $QtPrefix "..\..\Tools\Ninja\ninja.exe"))
-$MsgFmt = Resolve-CommandPath "msgfmt" @("C:\msys64\usr\bin\msgfmt.exe", "C:\Program Files\Git\usr\bin\msgfmt.exe")
+$MsgFmt = Resolve-NativeMsgFmt $SdkPrefix
 if (!(Test-Path -LiteralPath $VcVars)) {
     throw "Cannot find vcvars64.bat: $VcVars"
 }
