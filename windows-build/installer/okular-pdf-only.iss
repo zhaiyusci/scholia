@@ -62,6 +62,14 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "associatepdf"; Description: "Associate .pdf files with Scholia"; GroupDescription: "File associations:"
 
+[Dirs]
+Name: "{app}\StemTeX\runtime\texmf-var"; Permissions: users-modify
+Name: "{app}\StemTeX\runtime\texmf-var\fonts"; Permissions: users-modify
+Name: "{app}\StemTeX\runtime\texmf-var\fonts\conf"; Permissions: users-modify
+Name: "{app}\StemTeX\runtime\texmf-var\fonts\conf\conf.d"; Permissions: users-modify
+Name: "{app}\StemTeX\runtime\texmf-var\fonts\cache"; Permissions: users-modify
+Name: "{app}\StemTeX\profiles"; Permissions: users-modify
+
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

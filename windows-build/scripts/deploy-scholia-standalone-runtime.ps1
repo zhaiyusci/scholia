@@ -97,6 +97,12 @@ function Remove-LegacyLatexRuntimeArtifacts([string] $Prefix) {
     Remove-FileInside (Join-Path $Prefix "lib\LaTeX.lib") $Prefix
 }
 
+function Remove-ExpandedBreezeIconTheme([string] $Prefix) {
+    Write-Host "Removing expanded Breeze icon theme data..." -ForegroundColor Cyan
+    Remove-DirectoryInside (Join-Path $Prefix "bin\data\icons\breeze") $Prefix
+    Remove-DirectoryInside (Join-Path $Prefix "bin\data\icons\breeze-dark") $Prefix
+}
+
 function Copy-PluginFile([string] $SourceRoot, [string] $RelativePath, [string] $DestinationRoot) {
     $source = Join-Path $SourceRoot $RelativePath
     if (!(Test-Path -LiteralPath $source)) {
@@ -259,6 +265,7 @@ Remove-DirectoryInside $stemTeXDestination $InstallPrefix
 Copy-DirectoryContents $StemTeXRuntimeSource (Join-Path $stemTeXDestination "runtime")
 Copy-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "profiles")
 
+Remove-ExpandedBreezeIconTheme $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "plugins") $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "lib\plugins") $InstallPrefix
 
