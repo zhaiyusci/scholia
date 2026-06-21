@@ -1,4 +1,5 @@
 #define AppName "Scholia"
+#define AppIconFile AddBackslash(SourcePath) + "..\..\icons\scholia.ico"
 #define ScholiaVersionFile AddBackslash(SourcePath) + "..\..\VERSION.txt"
 #define ScholiaVersionHandle FileOpen(ScholiaVersionFile)
 #define ScholiaVersionFromFile Trim(FileRead(ScholiaVersionHandle))
@@ -51,6 +52,7 @@ OutputBaseFilename=Scholia-{#AppVersion}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#AppIconFile}
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 UninstallDisplayIcon={app}\bin\scholia.exe
