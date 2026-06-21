@@ -84,13 +84,24 @@ function Invoke-ChildScript([string] $ScriptPath, [string[]] $Arguments) {
     }
 }
 
-$buildDate = Get-Date -Format "yyyyMMdd"
+function Read-ScholiaVersion([string] $Root) {
+    $versionFile = Join-Path $Root "VERSION"
+    if (!(Test-Path -LiteralPath $versionFile)) {
+        throw "Cannot find Scholia version file: $versionFile"
+    }
+    $value = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+    if ($value -notmatch '^\d+\.\d+\.\d+$') {
+        throw "VERSION must contain MAJOR.MINOR.PATCH, got '$value'"
+    }
+    return $value
+}
+
+$repoVersion = Read-ScholiaVersion $repoRoot
 if (!$Version) {
-    $Version = "26.07.70-patch$buildDate"
+    $Version = $repoVersion
 }
 if (!$FileVersion) {
-    $fileDate = Get-Date -Format "MMdd"
-    $FileVersion = "26.7.70.$([int]$fileDate)"
+    $FileVersion = "$repoVersion.0"
 }
 
 if (!$SkipStage) {

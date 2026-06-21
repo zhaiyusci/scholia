@@ -1,19 +1,21 @@
 #define AppName "Scholia"
-#define BuildDate GetDateTimeString("yyyymmdd", "", "")
-#define BuildFileDate GetDateTimeString("mmdd", "", "")
+#define ScholiaVersionFile AddBackslash(SourcePath) + "..\..\VERSION"
+#define ScholiaVersionHandle FileOpen(ScholiaVersionFile)
+#define ScholiaVersionFromFile Trim(FileRead(ScholiaVersionHandle))
+#expr FileClose(ScholiaVersionHandle)
 #define AppVersion GetEnv("SCHOLIA_VERSION")
 #if AppVersion == ""
 #define AppVersion GetEnv("OKULAR_PDF_VERSION")
 #endif
 #if AppVersion == ""
-#define AppVersion "26.07.70-patch" + BuildDate
+#define AppVersion ScholiaVersionFromFile
 #endif
 #define FileVersion GetEnv("SCHOLIA_FILE_VERSION")
 #if FileVersion == ""
 #define FileVersion GetEnv("OKULAR_PDF_FILE_VERSION")
 #endif
 #if FileVersion == ""
-#define FileVersion "26.7.70." + BuildFileDate
+#define FileVersion ScholiaVersionFromFile + ".0"
 #endif
 #define SourceDir GetEnv("SCHOLIA_STAGE")
 #if SourceDir == ""
