@@ -776,7 +776,7 @@ LatexRenderer::Error LatexRenderer::renderLatexInHtml(QString &html, const QColo
         return NoError;
     }
 
-    latexOutput = i18n("Legacy popup formula rendering has been removed. Use Scholia LaTeX notes backed by StemTeX.");
+    latexOutput = i18n("Legacy popup formula rendering has been removed. Use %1 LaTeX notes backed by StemTeX.", QStringLiteral("Scholia"));
     return LatexFailed;
 }
 
@@ -881,7 +881,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     m_lastBackendName.clear();
     m_lastWarning = {};
     fileName.clear();
-    latexOutput = i18n("Legacy LaTeX image rendering has been removed. Use Scholia LaTeX notes backed by StemTeX.");
+    latexOutput = i18n("Legacy LaTeX image rendering has been removed. Use %1 LaTeX notes backed by StemTeX.", QStringLiteral("Scholia"));
     return LatexFailed;
 }
 

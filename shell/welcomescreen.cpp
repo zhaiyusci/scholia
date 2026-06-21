@@ -9,6 +9,7 @@
 #include <KConfigGroup>
 #include <KIO/OpenFileManagerWindowJob>
 #include <KIconLoader>
+#include <KLocalizedString>
 #include <KSharedConfig>
 
 #include <QAction>
@@ -112,6 +113,7 @@ WelcomeScreen::WelcomeScreen(QWidget *parent)
     Q_ASSERT(parent);
 
     setupUi(this);
+    label->setText(i18n("Welcome to %1", QStringLiteral("Scholia")));
 
     connect(openButton, &QPushButton::clicked, this, &WelcomeScreen::openClicked);
     connect(closeButton, &QPushButton::clicked, this, &WelcomeScreen::closeClicked);

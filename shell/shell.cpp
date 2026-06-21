@@ -205,7 +205,7 @@ Shell::Shell(const QString &serializedOptions)
         // if we couldn't find our Part, we exit since the Shell by
         // itself can't do anything useful
         m_isValid = false;
-        KMessageBox::error(this, i18n("Unable to find the Scholia component: %1", result.errorString));
+        KMessageBox::error(this, i18n("Unable to find the %1 component: %2", QStringLiteral("Scholia"), result.errorString));
         return;
     } else {
         m_partFactory = result.plugin;
@@ -284,7 +284,7 @@ Shell::Shell(const QString &serializedOptions)
         if (m_unique) {
             m_unique = QDBusConnection::sessionBus().registerService(QStringLiteral("org.jairy.scholia"));
             if (!m_unique) {
-                KMessageBox::information(this, i18n("There is already a unique Scholia instance running. This instance won't be the unique one."));
+                KMessageBox::information(this, i18n("There is already a unique %1 instance running. This instance won't be the unique one.", QStringLiteral("Scholia")));
             }
         } else {
             // TODO When porting to KF7 Remove
@@ -313,7 +313,7 @@ Shell::Shell(const QString &serializedOptions)
         showWelcomeScreen();
     } else {
         m_isValid = false;
-        KMessageBox::error(this, i18n("Unable to find the Scholia component."));
+        KMessageBox::error(this, i18n("Unable to find the %1 component.", QStringLiteral("Scholia")));
     }
 
     connect(guiFactory(), &KXMLGUIFactory::shortcutsSaved, this, &Shell::reloadAllXML);
