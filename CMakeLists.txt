@@ -106,6 +106,22 @@ ecm_setup_version(${PROJECT_VERSION}
 
 find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml)
 
+set(SCHOLIA_QSCINTILLA_ROOT "" CACHE PATH "Root of the bundled QScintilla build used by StemTeX")
+if(SCHOLIA_QSCINTILLA_ROOT)
+    set(SCHOLIA_QSCINTILLA_INCLUDE_DIR "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-src/src")
+    set(SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-src/scintilla/include")
+    set(SCHOLIA_QSCINTILLA_LIBRARY "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-build/release/qscintilla2_qt6.lib")
+    set(SCHOLIA_QSCINTILLA_RUNTIME "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-build/release/qscintilla2_qt6.dll")
+    if(EXISTS "${SCHOLIA_QSCINTILLA_INCLUDE_DIR}/Qsci/qsciscintilla.h" AND EXISTS "${SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR}/Scintilla.h" AND EXISTS "${SCHOLIA_QSCINTILLA_LIBRARY}" AND EXISTS "${SCHOLIA_QSCINTILLA_RUNTIME}")
+        set(HAVE_QSCINTILLA 1)
+        message(STATUS "Using QScintilla from ${SCHOLIA_QSCINTILLA_ROOT}")
+    else()
+        message(FATAL_ERROR "SCHOLIA_QSCINTILLA_ROOT is set but QScintilla headers/library/runtime were not found under ${SCHOLIA_QSCINTILLA_ROOT}")
+    endif()
+else()
+    set(HAVE_QSCINTILLA 0)
+endif()
+
 find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
     Archive
     Bookmarks
@@ -602,6 +618,11 @@ target_link_libraries(okularpart okularcore
     KF6::TextWidgets
     KF6::ColorScheme
 )
+if(HAVE_QSCINTILLA)
+    target_compile_definitions(okularpart PRIVATE HAVE_QSCINTILLA=1 QSCINTILLA_DLL)
+    target_include_directories(okularpart PRIVATE "${SCHOLIA_QSCINTILLA_INCLUDE_DIR}" "${SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR}")
+    target_link_libraries(okularpart "${SCHOLIA_QSCINTILLA_LIBRARY}")
+endif()
 if (TARGET Qt6::DBus)
     target_link_libraries(okularpart Qt6::DBus)
 endif()

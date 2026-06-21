@@ -35,6 +35,20 @@
 #include <QTimer>
 #include <QToolButton>
 
+#if HAVE_QSCINTILLA
+#if defined(QT_NO_KEYWORDS)
+#define signals public
+#define slots
+#endif
+#include <Qsci/qscilexertex.h>
+#include <Qsci/qsciscintilla.h>
+#include <Scintilla.h>
+#if defined(QT_NO_KEYWORDS)
+#undef slots
+#undef signals
+#endif
+#endif
+
 // local includes
 #include "core/annotations.h"
 #include "core/document.h"
@@ -54,6 +68,59 @@ bool latexAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationIsLatex(annotation);
 }
+
+#if HAVE_QSCINTILLA
+QsciScintilla *createLatexSourceEditor(QWidget *parent, const QString &contents)
+{
+    auto *editor = new QsciScintilla(parent);
+    editor->setUtf8(true);
+    editor->setText(contents);
+    editor->setWrapMode(QsciScintilla::WrapWord);
+    editor->setMarginLineNumbers(0, true);
+    editor->setMarginWidth(0, QStringLiteral("000"));
+    editor->setBraceMatching(QsciScintilla::SloppyBraceMatch);
+    editor->setCaretLineVisible(true);
+    editor->setCaretLineBackgroundColor(QColor(245, 248, 255));
+    editor->setAutoIndent(true);
+    editor->setIndentationsUseTabs(false);
+    editor->setIndentationWidth(2);
+    editor->setTabWidth(2);
+    editor->setFolding(QsciScintilla::BoxedTreeFoldStyle);
+    editor->setScrollWidthTracking(true);
+
+    const QFont editorFont(QStringLiteral("Consolas"), 11);
+    editor->setFont(editorFont);
+    auto *lexer = new QsciLexerTeX(editor);
+    lexer->setDefaultFont(editorFont);
+    lexer->setColor(QColor(34, 34, 34), QsciLexerTeX::Default);
+    lexer->setColor(QColor(0, 92, 175), QsciLexerTeX::Command);
+    lexer->setColor(QColor(105, 58, 8), QsciLexerTeX::Special);
+    lexer->setColor(QColor(100, 70, 160), QsciLexerTeX::Group);
+    lexer->setColor(QColor(20, 120, 70), QsciLexerTeX::Symbol);
+    lexer->setColor(QColor(34, 34, 34), QsciLexerTeX::Text);
+    editor->setLexer(lexer);
+    editor->SendScintilla(SCI_EMPTYUNDOBUFFER);
+    editor->setModified(false);
+    return editor;
+}
+
+int characterPositionForScintillaBytePosition(const QsciScintilla *editor, int bytePosition)
+{
+    if (!editor || bytePosition <= 0) {
+        return 0;
+    }
+    return QString::fromUtf8(editor->bytes(0, bytePosition)).size();
+}
+
+int scintillaBytePositionForCharacterPosition(const QsciScintilla *editor, int characterPosition)
+{
+    if (!editor || characterPosition <= 0) {
+        return 0;
+    }
+    const QString text = editor->text();
+    return text.left(qBound(0, characterPosition, text.size())).toUtf8().size();
+}
+#endif
 }
 
 class CloseButton : public QPushButton
@@ -330,20 +397,37 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
         }
     }
 
-    textEdit = new KTextEdit(this);
-    textEdit->setAcceptRichText(false);
-    textEdit->setPlainText(m_annot->contents());
+    const bool isLatexSourceEditor = latexAnnotation(m_annot);
+#if HAVE_QSCINTILLA
+    if (isLatexSourceEditor) {
+        m_latexSourceEdit = createLatexSourceEditor(this, m_annot->contents());
+        m_editorWidget = m_latexSourceEdit;
+    }
+#endif
+    if (!m_editorWidget) {
+        textEdit = new KTextEdit(this);
+        textEdit->setAcceptRichText(false);
+        textEdit->setPlainText(m_annot->contents());
+        m_editorWidget = textEdit;
+    }
     m_lastLatexNoteCompileSource = m_annot->contents();
-    textEdit->installEventFilter(this);
+    m_editorWidget->installEventFilter(this);
 
-    m_prevCursorPos = textEdit->textCursor().position();
-    m_prevAnchorPos = textEdit->textCursor().anchor();
+    m_prevCursorPos = editorCursorPosition();
+    m_prevAnchorPos = editorAnchorPosition();
 
-    connect(textEdit, &KTextEdit::textChanged, this, &AnnotWindow::slotWindowTextChanged);
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        connect(m_latexSourceEdit, &QsciScintilla::textChanged, this, &AnnotWindow::slotWindowTextChanged);
+    }
+#endif
+    if (textEdit) {
+        connect(textEdit, &KTextEdit::textChanged, this, &AnnotWindow::slotWindowTextChanged);
+    }
     connect(m_document, &Okular::Document::annotationContentsChangedByUndoRedo, this, &AnnotWindow::slotHandleContentsChangedByUndoRedo);
 
     if (!canEditAnnotation) {
-        textEdit->setReadOnly(true);
+        setEditorReadOnly(true);
     }
 
     QVBoxLayout *mainlay = new QVBoxLayout(this);
@@ -351,7 +435,7 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     mainlay->setSpacing(0);
     m_title = new MovableTitle(this, countNumberPreviousAnnotation);
     mainlay->addWidget(m_title);
-    mainlay->addWidget(textEdit);
+    mainlay->addWidget(m_editorWidget);
     QHBoxLayout *lowerlay = new QHBoxLayout();
     mainlay->addLayout(lowerlay);
     lowerlay->addItem(new QSpacerItem(5, 5, QSizePolicy::Expanding, QSizePolicy::Fixed));
@@ -361,7 +445,7 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
     m_latexRenderer = new GuiUtils::LatexRenderer();
     // The Q_EMIT below is not wrong even if emitting signals from the constructor it's usually wrong
     // in this case the signal it's connected to inside MovableTitle constructor a few lines above
-    Q_EMIT containsLatex(GuiUtils::LatexRenderer::mightContainLatex(m_annot->contents())); // clazy:exclude=incorrect-emit
+    Q_EMIT containsLatex(!latexAnnotation(m_annot) && GuiUtils::LatexRenderer::mightContainLatex(m_annot->contents())); // clazy:exclude=incorrect-emit
 
     m_title->setTitle(m_annot->window().summary());
     m_title->connectOptionButton(this, SLOT(slotOptionBtn()));
@@ -392,7 +476,7 @@ AnnotWindow::AnnotWindow(QWidget *parent, QRect initialViewportBounds, Okular::A
 AnnotWindow::~AnnotWindow()
 {
     delete m_latexRenderer;
-    delete textEdit;
+    delete m_editorWidget;
 }
 
 Okular::Annotation *AnnotWindow::annotation() const
@@ -426,13 +510,13 @@ void AnnotWindow::reloadInfo()
     if (newcolor != m_color) {
         m_color = newcolor;
         setPalette(QPalette(m_color));
-        QPalette pl = textEdit->palette();
+        QPalette pl = editorPalette();
         pl.setColor(QPalette::Base, m_color);
         if (isLatexNote) {
             pl.setColor(QPalette::Text, QColor(32, 28, 20));
             pl.setColor(QPalette::WindowText, QColor(32, 28, 20));
         }
-        textEdit->setPalette(pl);
+        setEditorPalette(pl);
     }
 
     Okular::Annotation *parent = m_annot;
@@ -484,12 +568,156 @@ void AnnotWindow::fixupGeometry()
     setGeometry(QRect(position, size));
 }
 
+QString AnnotWindow::editorPlainText() const
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        return m_latexSourceEdit->text();
+    }
+#endif
+    return textEdit ? textEdit->toPlainText() : QString();
+}
+
+void AnnotWindow::setEditorPlainText(const QString &text)
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        m_latexSourceEdit->setText(text);
+        m_latexSourceEdit->SendScintilla(SCI_EMPTYUNDOBUFFER);
+        m_latexSourceEdit->setModified(false);
+        return;
+    }
+#endif
+    if (textEdit) {
+        textEdit->setPlainText(text);
+    }
+}
+
+int AnnotWindow::editorCursorPosition() const
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        const int bytePosition = static_cast<int>(m_latexSourceEdit->SendScintilla(SCI_GETCURRENTPOS));
+        return characterPositionForScintillaBytePosition(m_latexSourceEdit, bytePosition);
+    }
+#endif
+    return textEdit ? textEdit->textCursor().position() : 0;
+}
+
+int AnnotWindow::editorAnchorPosition() const
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        const int bytePosition = static_cast<int>(m_latexSourceEdit->SendScintilla(SCI_GETANCHOR));
+        return characterPositionForScintillaBytePosition(m_latexSourceEdit, bytePosition);
+    }
+#endif
+    return textEdit ? textEdit->textCursor().anchor() : 0;
+}
+
+void AnnotWindow::setEditorSelection(int anchorPos, int cursorPos)
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        int anchorLine = 0;
+        int anchorIndex = 0;
+        int cursorLine = 0;
+        int cursorIndex = 0;
+        m_latexSourceEdit->lineIndexFromPosition(scintillaBytePositionForCharacterPosition(m_latexSourceEdit, anchorPos), &anchorLine, &anchorIndex);
+        m_latexSourceEdit->lineIndexFromPosition(scintillaBytePositionForCharacterPosition(m_latexSourceEdit, cursorPos), &cursorLine, &cursorIndex);
+        m_latexSourceEdit->setSelection(anchorLine, anchorIndex, cursorLine, cursorIndex);
+        return;
+    }
+#endif
+    if (textEdit) {
+        QTextCursor cursor = textEdit->textCursor();
+        cursor.setPosition(anchorPos);
+        cursor.setPosition(cursorPos, QTextCursor::KeepAnchor);
+        textEdit->setTextCursor(cursor);
+    }
+}
+
+bool AnnotWindow::editorUndoAvailable() const
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        return m_latexSourceEdit->isUndoAvailable();
+    }
+#endif
+    return textEdit && textEdit->document()->isUndoAvailable();
+}
+
+bool AnnotWindow::editorRedoAvailable() const
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        return m_latexSourceEdit->isRedoAvailable();
+    }
+#endif
+    return textEdit && textEdit->document()->isRedoAvailable();
+}
+
+void AnnotWindow::clearEditorUndoRedo()
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        m_latexSourceEdit->SendScintilla(SCI_EMPTYUNDOBUFFER);
+        m_latexSourceEdit->setModified(false);
+        return;
+    }
+#endif
+    if (textEdit) {
+        textEdit->document()->clearUndoRedoStacks();
+    }
+}
+
+void AnnotWindow::setEditorReadOnly(bool readOnly)
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        m_latexSourceEdit->setReadOnly(readOnly);
+        return;
+    }
+#endif
+    if (textEdit) {
+        textEdit->setReadOnly(readOnly);
+    }
+}
+
+void AnnotWindow::setEditorPalette(const QPalette &palette)
+{
+#if HAVE_QSCINTILLA
+    if (m_latexSourceEdit) {
+        m_latexSourceEdit->setPalette(palette);
+        const QColor base = palette.color(QPalette::Base);
+        m_latexSourceEdit->setPaper(base);
+        if (auto *lexer = m_latexSourceEdit->lexer()) {
+            lexer->setPaper(base);
+        }
+        return;
+    }
+#endif
+    if (textEdit) {
+        textEdit->setPalette(palette);
+    }
+}
+
+QPalette AnnotWindow::editorPalette() const
+{
+    if (m_editorWidget) {
+        return m_editorWidget->palette();
+    }
+    return palette();
+}
+
 void AnnotWindow::showEvent(QShowEvent *event)
 {
     QFrame::showEvent(event);
 
     // focus the content area by default
-    textEdit->setFocus();
+    if (m_editorWidget) {
+        m_editorWidget->setFocus();
+    }
 }
 
 void AnnotWindow::moveEvent(QMoveEvent *event)
@@ -513,7 +741,7 @@ void AnnotWindow::closeEvent(QCloseEvent *event)
 
 bool AnnotWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == textEdit) {
+    if (watched == m_editorWidget) {
         if (event->type() == QEvent::ShortcutOverride) {
             QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
             if (keyEvent->key() == Qt::Key_Escape) {
@@ -522,10 +750,10 @@ bool AnnotWindow::eventFilter(QObject *watched, QEvent *event)
             }
         } else if (event->type() == QEvent::KeyPress) {
             QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
-            if (keyEvent == QKeySequence::Undo && !textEdit->document()->isUndoAvailable()) {
+            if (keyEvent == QKeySequence::Undo && !editorUndoAvailable()) {
                 m_document->undo();
                 return true;
-            } else if (keyEvent == QKeySequence::Redo && !textEdit->document()->isRedoAvailable()) {
+            } else if (keyEvent == QKeySequence::Redo && !editorRedoAvailable()) {
                 m_document->redo();
                 return true;
             } else if (keyEvent->key() == Qt::Key_Escape) {
@@ -550,19 +778,19 @@ void AnnotWindow::slotOptionBtn()
 
 void AnnotWindow::commitWindowText()
 {
-    const QString contents = textEdit->toPlainText();
-    const int cursorPos = textEdit->textCursor().position();
+    const QString contents = editorPlainText();
+    const int cursorPos = editorCursorPosition();
     if (contents != m_annot->contents()) {
         m_document->editPageAnnotationContents(m_page, m_annot, contents, cursorPos, m_prevCursorPos, m_prevAnchorPos);
     }
     m_prevCursorPos = cursorPos;
-    m_prevAnchorPos = textEdit->textCursor().anchor();
-    textEdit->document()->clearUndoRedoStacks();
+    m_prevAnchorPos = editorAnchorPosition();
+    clearEditorUndoRedo();
 }
 
 void AnnotWindow::slotWindowTextChanged()
 {
-    Q_EMIT containsLatex(GuiUtils::LatexRenderer::mightContainLatex(textEdit->toPlainText()));
+    Q_EMIT containsLatex(!latexAnnotation(m_annot) && GuiUtils::LatexRenderer::mightContainLatex(editorPlainText()));
 }
 
 void AnnotWindow::updateLatexNoteAppearance()
@@ -622,6 +850,10 @@ void AnnotWindow::updateLatexNoteAppearance()
 
 void AnnotWindow::renderLatex(bool render)
 {
+    if (!textEdit) {
+        return;
+    }
+
     if (render) {
         commitWindowText();
         textEdit->setReadOnly(true);
@@ -656,15 +888,14 @@ void AnnotWindow::slotHandleContentsChangedByUndoRedo(Okular::Annotation *annot,
         return;
     }
 
-    textEdit->setPlainText(contents);
-    QTextCursor c = textEdit->textCursor();
-    c.setPosition(anchorPos);
-    c.setPosition(cursorPos, QTextCursor::KeepAnchor);
+    setEditorPlainText(contents);
+    setEditorSelection(anchorPos, cursorPos);
     m_prevCursorPos = cursorPos;
     m_prevAnchorPos = anchorPos;
-    textEdit->setTextCursor(c);
-    textEdit->setFocus();
-    Q_EMIT containsLatex(GuiUtils::LatexRenderer::mightContainLatex(m_annot->contents()));
+    if (m_editorWidget) {
+        m_editorWidget->setFocus();
+    }
+    Q_EMIT containsLatex(!latexAnnotation(m_annot) && GuiUtils::LatexRenderer::mightContainLatex(m_annot->contents()));
 }
 
 #include "annotwindow.moc"

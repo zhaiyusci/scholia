@@ -13,6 +13,7 @@
 
 #include <QColor>
 #include <QFrame>
+#include <QPalette>
 #include <QString>
 
 namespace Okular
@@ -29,6 +30,11 @@ class LatexRenderer;
 class KTextEdit;
 class MovableTitle;
 class QCloseEvent;
+class QWidget;
+
+#if HAVE_QSCINTILLA
+class QsciScintilla;
+#endif
 
 class AnnotWindow : public QFrame
 {
@@ -52,7 +58,11 @@ private:
 
     QRect m_viewportBounds;
     MovableTitle *m_title;
-    KTextEdit *textEdit;
+    KTextEdit *textEdit = nullptr;
+#if HAVE_QSCINTILLA
+    QsciScintilla *m_latexSourceEdit = nullptr;
+#endif
+    QWidget *m_editorWidget = nullptr;
     QColor m_color;
     GuiUtils::LatexRenderer *m_latexRenderer;
     Okular::Annotation *m_annot;
@@ -64,6 +74,17 @@ private:
 
     void commitWindowText();
     void updateLatexNoteAppearance();
+    QString editorPlainText() const;
+    void setEditorPlainText(const QString &text);
+    int editorCursorPosition() const;
+    int editorAnchorPosition() const;
+    void setEditorSelection(int anchorPos, int cursorPos);
+    bool editorUndoAvailable() const;
+    bool editorRedoAvailable() const;
+    void clearEditorUndoRedo();
+    void setEditorReadOnly(bool readOnly);
+    void setEditorPalette(const QPalette &palette);
+    QPalette editorPalette() const;
 
 public Q_SLOTS:
     void renderLatex(bool render);

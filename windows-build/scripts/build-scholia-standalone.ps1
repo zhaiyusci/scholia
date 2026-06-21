@@ -8,6 +8,7 @@ param(
     [int] $Jobs = 8,
     [string] $CMake = "",
     [string] $Ninja = "",
+    [string] $QScintillaRoot = "",
     [string] $VcVars = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
     [switch] $Clean
 )
@@ -74,6 +75,32 @@ function Find-QtPrefix([string] $RequestedPrefix) {
         }
     }
     throw "Cannot find a Qt MSVC prefix. Pass -QtPrefix, for example C:\Qt\6.11.1\msvc2022_64."
+}
+
+function Find-QScintillaRoot([string] $RequestedRoot) {
+    $candidates = @()
+    if ($RequestedRoot) {
+        $candidates += $RequestedRoot
+    }
+    if ($env:SCHOLIA_QSCINTILLA_ROOT) {
+        $candidates += $env:SCHOLIA_QSCINTILLA_ROOT
+    }
+    if ($env:SCHOLIA_STEMTEX_SOURCE_ROOT) {
+        $candidates += Join-Path $env:SCHOLIA_STEMTEX_SOURCE_ROOT "third_party"
+    }
+    $documentsRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
+    $candidates += Join-Path $documentsRoot "xetex\stemtex\third_party"
+
+    foreach ($candidate in ($candidates | Where-Object { $_ } | Select-Object -Unique)) {
+        $full = [System.IO.Path]::GetFullPath($candidate)
+        if ((Test-Path -LiteralPath (Join-Path $full "qscintilla-src\src\Qsci\qsciscintilla.h")) -and
+            (Test-Path -LiteralPath (Join-Path $full "qscintilla-build\release\qscintilla2_qt6.lib")) -and
+            (Test-Path -LiteralPath (Join-Path $full "qscintilla-build\release\qscintilla2_qt6.dll"))) {
+            return $full
+        }
+    }
+
+    throw "Cannot find the StemTeX QScintilla build. Pass -QScintillaRoot or set SCHOLIA_QSCINTILLA_ROOT."
 }
 
 function Invoke-VsCmd([string] $Command) {
@@ -166,6 +193,7 @@ function Sync-InstalledRuntimePlugins([string] $Prefix) {
 }
 
 $QtPrefix = Find-QtPrefix $QtPrefix
+$QScintillaRoot = Find-QScintillaRoot $QScintillaRoot
 $CMake = Resolve-CommandPath "cmake" @($CMake, (Join-Path $QtPrefix "..\..\Tools\CMake_64\bin\cmake.exe"), "C:\Program Files\CMake\bin\cmake.exe")
 $Ninja = Resolve-CommandPath "ninja" @($Ninja, (Join-Path $QtPrefix "..\..\Tools\Ninja\ninja.exe"))
 $MsgFmt = Resolve-NativeMsgFmt $SdkPrefix
@@ -210,6 +238,7 @@ Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "BuildDir    : $buildDir"
 Write-Host "Install     : $InstallPrefix"
 Write-Host "msgfmt      : $MsgFmt"
+Write-Host "QScintilla  : $QScintillaRoot"
 
 $configureArgs = @(
     """$CMake""",
@@ -221,6 +250,7 @@ $configureArgs = @(
     "-DCMAKE_INSTALL_PREFIX=""$InstallPrefix""",
     "-DCMAKE_PREFIX_PATH=""$QtPrefix;$SdkPrefix""",
     "-DGETTEXT_MSGFMT_EXECUTABLE=""$MsgFmt""",
+    "-DSCHOLIA_QSCINTILLA_ROOT=""$QScintillaRoot""",
     "-DBUILD_TESTING=OFF",
     "-DOKULAR_PDF_ONLY=ON",
     "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON",
@@ -235,6 +265,7 @@ Remove-EmptyGettextCatalogs (Join-Path $InstallPrefix "bin\data\locale")
 $build = """$CMake"" --build ""$buildDir"" --target install --parallel $Jobs"
 Invoke-VsCmd $build
 Sync-InstalledRuntimePlugins $InstallPrefix
+Copy-Item -LiteralPath (Join-Path $QScintillaRoot "qscintilla-build\release\qscintilla2_qt6.dll") -Destination (Join-Path $InstallPrefix "bin") -Force
 Remove-LegacyLatexRuntimeArtifacts $InstallPrefix
 
 Write-Host ""

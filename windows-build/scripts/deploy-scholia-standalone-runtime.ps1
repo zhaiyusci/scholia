@@ -5,6 +5,7 @@ param(
     [string] $WorkspaceRoot = "",
     [string] $InstallPrefix = "",
     [string] $StemTeXRoot = "",
+    [string] $QScintillaRoot = "",
     [string] $WinDeployQt = ""
 )
 
@@ -178,6 +179,29 @@ function Find-StemTeXRoot([string] $RequestedRoot) {
     throw "Cannot find StemTeX source/staging tree. Pass -StemTeXRoot or set SCHOLIA_STEMTEX_SOURCE_ROOT."
 }
 
+function Find-QScintillaRoot([string] $RequestedRoot, [string] $StemTeXRoot) {
+    $candidates = @()
+    if ($RequestedRoot) {
+        $candidates += $RequestedRoot
+    }
+    if ($env:SCHOLIA_QSCINTILLA_ROOT) {
+        $candidates += $env:SCHOLIA_QSCINTILLA_ROOT
+    }
+    if ($StemTeXRoot) {
+        $candidates += Join-Path $StemTeXRoot "third_party"
+    }
+
+    foreach ($candidate in ($candidates | Where-Object { $_ } | Select-Object -Unique)) {
+        $full = [System.IO.Path]::GetFullPath($candidate)
+        if ((Test-Path -LiteralPath (Join-Path $full "qscintilla-src\src\Qsci\qsciscintilla.h")) -and
+            (Test-Path -LiteralPath (Join-Path $full "qscintilla-build\release\qscintilla2_qt6.dll"))) {
+            return $full
+        }
+    }
+
+    throw "Cannot find the StemTeX QScintilla runtime. Pass -QScintillaRoot or set SCHOLIA_QSCINTILLA_ROOT."
+}
+
 function Resolve-StemTeXRuntimeSource([string] $Root) {
     foreach ($candidate in @(
         (Join-Path $Root "staging\runtime"),
@@ -212,6 +236,7 @@ function Resolve-StemTeXProfilesSource([string] $Root) {
 $QtPrefix = Find-QtPrefix $QtPrefix
 $WinDeployQt = Resolve-CommandPath "windeployqt" @($WinDeployQt, (Join-Path $QtPrefix "bin\windeployqt.exe"))
 $StemTeXRoot = Find-StemTeXRoot $StemTeXRoot
+$QScintillaRoot = Find-QScintillaRoot $QScintillaRoot $StemTeXRoot
 $StemTeXRuntimeSource = Resolve-StemTeXRuntimeSource $StemTeXRoot
 $StemTeXProfilesSource = Resolve-StemTeXProfilesSource $StemTeXRoot
 
@@ -226,6 +251,7 @@ Write-Host "QtPrefix  : $QtPrefix"
 Write-Host "SdkPrefix : $SdkPrefix"
 Write-Host "Install   : $InstallPrefix"
 Write-Host "StemTeX   : $StemTeXRoot"
+Write-Host "QScintilla: $QScintillaRoot"
 
 Remove-LegacyLatexRuntimeArtifacts $InstallPrefix
 
@@ -233,6 +259,9 @@ Write-Host ""
 Write-Host "Copying SDK DLLs..."
 Get-ChildItem -LiteralPath (Join-Path $SdkPrefix "bin") -Filter "*.dll" -File |
     Copy-Item -Destination $binDir -Force
+
+Write-Host "Copying QScintilla runtime..."
+Copy-Item -LiteralPath (Join-Path $QScintillaRoot "qscintilla-build\release\qscintilla2_qt6.dll") -Destination $binDir -Force
 
 Write-Host "Copying SDK runtime data..."
 Copy-DirectoryContents (Join-Path $SdkPrefix "bin\data") (Join-Path $binDir "data")
