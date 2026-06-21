@@ -264,7 +264,7 @@ public:
         return runtimeRoot();
     }
 
-    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, int fontSize, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList)
+    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList)
     {
         if (!m_renderer) {
             latexOutput = i18n("StemTeX renderer is not initialized.");
@@ -273,13 +273,10 @@ public:
 
         const int widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? qRound(maxWidth) : 360;
         const QColor effectiveColor = textColor.isValid() ? textColor : QColor(Qt::black);
-        const double baselineSkip = qMax(1, fontSize) * 1.2;
-        const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\\fontsize{%4}{%5}\\selectfont\n%6\n\\par}")
+        const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\n%4\n\\par}")
                                           .arg(effectiveColor.redF(), 0, 'f', 6)
                                           .arg(effectiveColor.greenF(), 0, 'f', 6)
                                           .arg(effectiveColor.blueF(), 0, 'f', 6)
-                                          .arg(qMax(1, fontSize))
-                                          .arg(baselineSkip, 0, 'f', 3)
                                           .arg(latexSource);
         const QByteArray snippet = coloredSource.toUtf8();
 
@@ -885,7 +882,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToImage(const QString &latexFormu
     return LatexFailed;
 }
 
-LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, int fontSize, QString &pdfFileName, QString &latexOutput, double maxWidth)
+LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula, const QColor &textColor, QString &pdfFileName, QString &latexOutput, double maxWidth)
 {
     m_lastBackendName.clear();
     m_lastWarning = {};
@@ -905,8 +902,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
     logTexInvocation("stemtex-render",
                      QStringLiteral("stemtex"),
                      QStringLiteral("configured-stemtex"),
-                     {QStringLiteral("font size: %1").arg(fontSize),
-                      QStringLiteral("max width: %1").arg(maxWidth),
+                     {QStringLiteral("max width: %1").arg(maxWidth),
                       QStringLiteral("source length: %1").arg(formula.size())});
     QString stemtexError;
     const bool waitForStemTeXStartup = QCoreApplication::instance() && QThread::currentThread() != QCoreApplication::instance()->thread();
@@ -917,7 +913,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
         return LatexFailed;
     }
 
-    const Error stemtexErrorCode = session->render(formula, textColor, fontSize, maxWidth, pdfFileName, latexOutput, m_fileList);
+    const Error stemtexErrorCode = session->render(formula, textColor, maxWidth, pdfFileName, latexOutput, m_fileList);
     if (stemtexErrorCode == NoError) {
         m_lastBackendName = QStringLiteral("stemtex");
     }

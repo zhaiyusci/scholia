@@ -972,8 +972,7 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
 
     QPointer<MouseAnnotation> self(this);
     std::thread([self, requestId, update, finishResize]() mutable {
-        const LatexNoteUtils::RenderResult rendered =
-            LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, LatexNoteUtils::latexFontSize(), update.layoutWidthPoints, update.callout);
+        const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(update.contents, update.textColor, update.layoutWidthPoints, update.callout);
         if (!self) {
             return;
         }

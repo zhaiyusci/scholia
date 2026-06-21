@@ -455,7 +455,7 @@ public:
                 sa->style().setWidth(boxedLatexStamp ? 1.0 : 0.0);
                 sa->style().setColor(textColor);
                 if (!sa->contents().trimmed().isEmpty() && sa->latexLayoutWidth() > 0.0) {
-                    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(sa->contents(), textColor, LatexNoteUtils::latexFontSize(), sa->latexLayoutWidth(), latexCallout);
+                    const LatexNoteUtils::RenderResult rendered = LatexNoteUtils::renderAppearancePdf(sa->contents(), textColor, sa->latexLayoutWidth(), latexCallout);
                     if (rendered.ok) {
                         latexAppearancePdfFileName = rendered.pdfFileName;
                         sa->setLatexAppearancePdfFileName(latexAppearancePdfFileName);

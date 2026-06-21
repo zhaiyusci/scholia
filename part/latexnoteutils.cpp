@@ -30,7 +30,6 @@
 #include "gui/debug_ui.h"
 #include "gui/guiutils.h"
 #include "latexrenderer.h"
-#include "settings.h"
 
 namespace
 {
@@ -73,12 +72,12 @@ QString latexErrorMessage(GuiUtils::LatexRenderer::Error errorCode, const QStrin
     return QString();
 }
 
-QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, const QString &backendName)
+QString latexNoteBaseName(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, const QString &backendName)
 {
     const bool fixedWidth = std::isfinite(layoutWidthPoints) && layoutWidthPoints > 0.0;
     const QString widthText = fixedWidth ? QString::number(layoutWidthPoints, 'f', 3) : QStringLiteral("0");
     const QString renderMode = fixedWidth ? QStringLiteral("fixed-width-content-v6") : QStringLiteral("natural-width-content-v6");
-    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4|%5").arg(textColor.name(QColor::HexArgb)).arg(fontSize).arg(widthText, renderMode, backendName);
+    const QString hashText = latexInput + QStringLiteral("|%1|%2|%3|%4").arg(textColor.name(QColor::HexArgb), widthText, renderMode, backendName);
     return QString::fromLatin1(QCryptographicHash::hash(hashText.toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
@@ -201,16 +200,6 @@ QColor colorForLatexAnnotation(const Okular::Annotation *annotation)
         textColor = Qt::black;
     }
     return textColor;
-}
-
-int latexFontSize()
-{
-    return qBound(1, Okular::Settings::latexAnnotationFontSize(), 72);
-}
-
-int convertedTextFontSize()
-{
-    return qBound(1, Okular::Settings::latexTextAnnotationFontSize(), 72);
 }
 
 QString defaultLatexAppearancePdfFileName()
@@ -486,12 +475,12 @@ bool applyRenderedLatexStampAnnotationAppearance(QWidget *parent,
     return true;
 }
 
-RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints)
+RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints)
 {
-    return renderAppearancePdf(latexInput, textColor, fontSize, layoutWidthPoints, false);
+    return renderAppearancePdf(latexInput, textColor, layoutWidthPoints, false);
 }
 
-RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, bool callout)
+RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout)
 {
     Q_UNUSED(callout);
     RenderResult result;
@@ -503,7 +492,7 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
     GuiUtils::LatexRenderer renderer;
     QString latexOutput;
     QString temporaryPdfFile;
-    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, fontSize, temporaryPdfFile, latexOutput, layoutWidthPoints);
+    const GuiUtils::LatexRenderer::Error errorCode = renderer.renderLatexToPdf(latexInput, textColor, temporaryPdfFile, latexOutput, layoutWidthPoints);
     if (errorCode != GuiUtils::LatexRenderer::NoError) {
         qCWarning(OkularUiDebug) << "LaTeX note PDF render failed; backend:" << renderer.lastBackendName() << "layout width:" << layoutWidthPoints << "error:" << errorCode
                                  << "message:" << latexErrorMessage(errorCode, latexOutput);
@@ -529,7 +518,7 @@ RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textCo
         return result;
     }
 
-    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, fontSize, layoutWidthPoints, renderer.lastBackendName());
+    const QString noteBaseName = latexNoteBaseName(latexInput, textColor, layoutWidthPoints, renderer.lastBackendName());
     const QString appearancePdfFileName = dataDir.filePath(QStringLiteral("%1.pdf").arg(noteBaseName));
     if (QFile::exists(appearancePdfFileName)) {
         QFile::remove(appearancePdfFileName);
@@ -582,7 +571,7 @@ bool updateLatexTextAnnotationAppearance(QWidget *parent,
         visualScale = scaleForLatexTextAnnotation(textAnnotation);
     }
 
-    const RenderResult rendered = renderAppearancePdf(textAnnotation->contents(), textColor, latexFontSize(), layoutWidthPoints);
+    const RenderResult rendered = renderAppearancePdf(textAnnotation->contents(), textColor, layoutWidthPoints);
     return applyRenderedLatexTextAnnotationAppearance(parent, document, pageNumber, textAnnotation, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale, rendered, true);
 }
 
@@ -617,7 +606,7 @@ bool updateLatexStampAnnotationAppearance(QWidget *parent,
         visualScale = 1.0;
     }
 
-    const RenderResult rendered = renderAppearancePdf(stampAnnotation->contents(), textColor, latexFontSize(), layoutWidthPoints, stampAnnotation->isLatexCallout());
+    const RenderResult rendered = renderAppearancePdf(stampAnnotation->contents(), textColor, layoutWidthPoints, stampAnnotation->isLatexCallout());
     return applyRenderedLatexStampAnnotationAppearance(parent,
                                                        document,
                                                        pageNumber,
@@ -652,7 +641,7 @@ void updateLatexTextAnnotationAppearanceAsync(QWidget *parent,
     QPointer<QWidget> parentGuard(parent);
     QPointer<Okular::Document> documentGuard(document);
     std::thread([parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale]() mutable {
-        RenderResult rendered = renderAppearancePdf(latexInput, textColor, latexFontSize(), layoutWidthPoints);
+        RenderResult rendered = renderAppearancePdf(latexInput, textColor, layoutWidthPoints);
         if (!documentGuard) {
             return;
         }
@@ -703,7 +692,7 @@ void updateLatexStampAnnotationAppearanceAsync(QWidget *parent,
     QPointer<QWidget> parentGuard(parent);
     QPointer<Okular::Document> documentGuard(document);
     std::thread([parentGuard, documentGuard, pageNumber, annotationUniqueName, latexInput, textColor, fillColor, borderColor, layoutWidthPoints, boxed, visualScale]() mutable {
-        RenderResult rendered = renderAppearancePdf(latexInput, textColor, latexFontSize(), layoutWidthPoints, true);
+        RenderResult rendered = renderAppearancePdf(latexInput, textColor, layoutWidthPoints, true);
         if (!documentGuard) {
             return;
         }

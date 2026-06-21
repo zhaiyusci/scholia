@@ -13,11 +13,8 @@
 #include <KMessageBox>
 #include <QApplication>
 #include <QClipboard>
-#include <QDateTime>
 #include <QDomDocument>
 #include <QFile>
-#include <QFont>
-#include <QFontMetricsF>
 #include <QIcon>
 #include <QInputDialog>
 #include <QMenu>
@@ -34,7 +31,6 @@
 #include "gui/guiutils.h"
 #include "latexnoteutils.h"
 #include "okmenutitle.h"
-#include "settings.h"
 
 #include <KIO/JobUiDelegateFactory>
 #include <KIO/OpenUrlJob>
@@ -106,11 +102,6 @@ Okular::TextAnnotation *latexTextAnnotation(Okular::Annotation *annotation)
 Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationAsLatexStampAnnotation(annotation);
-}
-
-int latexFontSizeForTextAnnotation(const Okular::TextAnnotation *)
-{
-    return LatexNoteUtils::latexFontSize();
 }
 
 QColor latexTextColorForTextAnnotation(const Okular::TextAnnotation *annotation)
@@ -234,31 +225,6 @@ double layoutWidthForLatexTextVisibleWidth(double visibleWidthPoints, double sca
 QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentSizePoints, double layoutWidthPoints)
 {
     return LatexNoteUtils::visualSizeForLatexTextAnnotation(contentSizePoints, layoutWidthPoints);
-}
-
-Okular::NormalizedRect textAnnotationRectForSource(const Okular::Annotation *annotation, const Okular::Page *page, const QFont &font)
-{
-    if (!annotation || !page || page->width() <= 0.0 || page->height() <= 0.0) {
-        return annotation ? annotation->boundingRectangle() : Okular::NormalizedRect();
-    }
-
-    const Okular::NormalizedRect sourceRect = annotation->boundingRectangle();
-    constexpr int padding = 2;
-    const QRectF textArea = Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.right, 1.0).geometryF(page->width(), page->height()).adjusted(padding, padding, -padding, -padding);
-    if (textArea.width() <= 0.0 || textArea.height() <= 0.0) {
-        return sourceRect;
-    }
-
-    const QFontMetricsF metrics(font);
-    const QRectF textRect = metrics.boundingRect(textArea, Qt::AlignTop | Qt::AlignLeft | Qt::TextWordWrap, annotation->contents());
-    double normalizedHeight = (textRect.height() + padding * 2) / page->height();
-    const double minimumHeight = (metrics.height() + padding * 2) / page->height();
-    normalizedHeight = qMax(normalizedHeight, minimumHeight);
-    if (!std::isfinite(normalizedHeight) || normalizedHeight <= 0.0) {
-        return sourceRect;
-    }
-
-    return Okular::NormalizedRect(sourceRect.left, sourceRect.top, sourceRect.right, qMin(1.0, sourceRect.top + normalizedHeight));
 }
 
 QColor fillColorForLatexTextAnnotation(const Okular::TextAnnotation *annotation, bool boxed)
@@ -578,9 +544,6 @@ void AnnotationPopup::addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair)
     action->setEnabled(canModify);
     connect(action, &QAction::triggered, menu, [this, pair] { doResetLatexAnnotationScale(pair); });
 
-    action = menu->addAction(QIcon::fromTheme(QStringLiteral("tool-text")), i18nc("@action:inmenu", "Convert LaTeX Note to Plain Text"));
-    action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && textAnnotation && mDocument->canModifyPageAnnotation(pair.annotation));
-    connect(action, &QAction::triggered, menu, [this, pair] { doConvertLatexAnnotationToText(pair); });
 }
 
 void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
@@ -736,46 +699,6 @@ void AnnotationPopup::doToggleLatexAnnotationFrame(AnnotPagePair pair)
                                         latexTextAnnotationLayoutWidth(textAnnotation, page),
                                         boxed,
                                         latexTextAnnotationScale(textAnnotation));
-}
-
-void AnnotationPopup::doConvertLatexAnnotationToText(AnnotPagePair pair)
-{
-    if (pair.pageNumber == -1 || !mDocument->isAllowed(Okular::AllowNotes)) {
-        return;
-    }
-
-    Okular::TextAnnotation *latexTextAnn = latexTextAnnotation(pair.annotation);
-    if (!latexTextAnn) {
-        return;
-    }
-
-    const Okular::Page *page = mDocument->page(pair.pageNumber);
-    if (!mDocument->canModifyPageAnnotation(latexTextAnn)) {
-        return;
-    }
-
-    QFont font(QStringLiteral("Noto Sans"));
-    font.setPointSize(LatexNoteUtils::convertedTextFontSize());
-
-    mDocument->prepareToModifyAnnotationProperties(latexTextAnn);
-    latexTextAnn->setLatexAppearancePdfFileName(QString());
-    latexTextAnn->setLatexLayoutWidth(0.0);
-    latexTextAnn->setLatexScale(1.0);
-    latexTextAnn->setTextFontName(QStringLiteral("Helvetica"));
-    latexTextAnn->setTextFontPointSize(font.pointSizeF());
-    latexTextAnn->setBoundingRectangle(textAnnotationRectForSource(latexTextAnn, page, font));
-    if (latexTextAnn->inplaceIntent() == Okular::TextAnnotation::TypeWriter) {
-        latexTextAnn->style().setColor(QColor(255, 255, 255, 0));
-        latexTextAnn->style().setWidth(0);
-        latexTextAnn->setInplaceBorderColor(Qt::transparent);
-        latexTextAnn->window().setSummary(i18n("Typewriter"));
-    } else if (latexTextAnn->inplaceIntent() == Okular::TextAnnotation::Callout) {
-        latexTextAnn->window().setSummary(i18n("Callout"));
-    } else {
-        latexTextAnn->window().setSummary(i18n("Inline Note"));
-    }
-    latexTextAnn->setModificationDate(QDateTime::currentDateTime());
-    mDocument->modifyPageAnnotationProperties(pair.pageNumber, latexTextAnn);
 }
 
 void AnnotationPopup::pasteAnnotationToPage(int pageNumber, const Okular::NormalizedPoint *targetPoint)

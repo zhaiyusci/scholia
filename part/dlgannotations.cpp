@@ -22,7 +22,6 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QSpinBox>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -96,18 +95,6 @@ DlgAnnotations::DlgAnnotations(QWidget *parent)
     QLabel *latexLabel = new QLabel(this);
     latexLabel->setText(i18nc("@label Config dialog, annotations page, heading line for LaTeX note settings", "<h3>LaTeX Notes</h3>"));
     layout->addRow(latexLabel);
-
-    QSpinBox *latexAnnotationFontSize = new QSpinBox(this);
-    latexAnnotationFontSize->setObjectName(QStringLiteral("kcfg_LatexAnnotationFontSize"));
-    latexAnnotationFontSize->setRange(1, 72);
-    latexAnnotationFontSize->setSuffix(i18nc("@item:spinbox Config dialog, annotations page, font size unit", " pt"));
-    layout->addRow(i18nc("@label:spinbox Config dialog, annotations page", "LaTeX render font size:"), latexAnnotationFontSize);
-
-    QSpinBox *latexTextAnnotationFontSize = new QSpinBox(this);
-    latexTextAnnotationFontSize->setObjectName(QStringLiteral("kcfg_LatexTextAnnotationFontSize"));
-    latexTextAnnotationFontSize->setRange(1, 72);
-    latexTextAnnotationFontSize->setSuffix(i18nc("@item:spinbox Config dialog, annotations page, font size unit", " pt"));
-    layout->addRow(i18nc("@label:spinbox Config dialog, annotations page", "Converted text font size:"), latexTextAnnotationFontSize);
 
     m_stemTeXProfileNameEdit = new QLineEdit(this);
     m_stemTeXProfileNameEdit->setObjectName(QStringLiteral("kcfg_LatexStemtexProfileName"));

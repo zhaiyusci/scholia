@@ -43,8 +43,6 @@ bool annotationIsLatex(Okular::Annotation *annotation);
 bool annotationIsLatex(const Okular::Annotation *annotation);
 
 QColor colorForLatexAnnotation(const Okular::Annotation *annotation);
-int latexFontSize();
-int convertedTextFontSize();
 QString defaultLatexAppearancePdfFileName();
 
 double pageWidthInPoints(const Okular::Page *page);
@@ -59,8 +57,8 @@ double scaleForLatexTextAnnotation(const Okular::TextAnnotation *annotation);
 QSizeF visualSizeForLatexTextAnnotation(const QSizeF &contentPdfSizePoints, double layoutWidthPoints);
 Okular::NormalizedRect boundingRectForPdf(const Okular::NormalizedRect &sourceRect, const Okular::Page *page, const QSizeF &pdfSizePoints, double scale = 1.0);
 
-RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints);
-RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, int fontSize, double layoutWidthPoints, bool callout);
+RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints);
+RenderResult renderAppearancePdf(const QString &latexInput, const QColor &textColor, double layoutWidthPoints, bool callout);
 bool updateLatexTextAnnotationAppearance(QWidget *parent,
                                          Okular::Document *document,
                                          int pageNumber,
