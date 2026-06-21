@@ -90,6 +90,20 @@ function Remove-FileInside([string] $Path, [string] $AllowedRoot) {
     }
 }
 
+function Remove-EmptyGettextCatalogs([string] $Root) {
+    if (!(Test-Path -LiteralPath $Root)) {
+        return
+    }
+
+    $emptyCatalogs = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter "*.mo" -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -le 28 })
+    if ($emptyCatalogs.Count -eq 0) {
+        return
+    }
+
+    Write-Host "Removing $($emptyCatalogs.Count) empty gettext catalogs under $Root..." -ForegroundColor Cyan
+    $emptyCatalogs | Remove-Item -Force
+}
+
 function Remove-LegacyLatexRuntimeArtifacts([string] $Prefix) {
     Write-Host "Removing legacy LaTeX runtime artifacts..." -ForegroundColor Cyan
     Remove-DirectoryInside (Join-Path $Prefix "bin\data\scholia\microtex") $Prefix
@@ -222,6 +236,7 @@ Get-ChildItem -LiteralPath (Join-Path $SdkPrefix "bin") -Filter "*.dll" -File |
 
 Write-Host "Copying SDK runtime data..."
 Copy-DirectoryContents (Join-Path $SdkPrefix "bin\data") (Join-Path $binDir "data")
+Remove-EmptyGettextCatalogs (Join-Path $binDir "data\locale")
 
 Write-Host "Preparing runtime plugins..."
 $runtimePluginsDir = Join-Path $binDir "plugins"

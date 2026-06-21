@@ -45,6 +45,20 @@ function Resolve-CommandPath([string] $Name, [string[]] $Candidates) {
     throw "Cannot find $Name. Pass an explicit path with the matching parameter."
 }
 
+function Resolve-NativeMsgFmt([string] $SdkPrefix) {
+    $msgfmt = [System.IO.Path]::GetFullPath((Join-Path $SdkPrefix "tools\gettext-native\bin\msgfmt.exe"))
+    if (!(Test-Path -LiteralPath $msgfmt)) {
+        throw "Cannot find native Windows msgfmt at $msgfmt. Run windows-build\scripts\install-gettext-native-sdk.ps1 first."
+    }
+
+    $versionOutput = & $msgfmt --version 2>&1
+    if ($LASTEXITCODE -ne 0 -or (($versionOutput -join "`n") -notmatch "GNU gettext-tools")) {
+        throw "Configured msgfmt is not GNU gettext-tools: $msgfmt"
+    }
+
+    return $msgfmt
+}
+
 function Find-QtPrefix([string] $RequestedPrefix) {
     $candidates = @()
     if ($RequestedPrefix) {
@@ -147,6 +161,7 @@ $Ninja = Resolve-CommandPath "ninja" @(
     $Ninja,
     (Join-Path $QtPrefix "..\..\Tools\Ninja\ninja.exe")
 )
+$MsgFmt = Resolve-NativeMsgFmt $SdkPrefix
 if (!(Test-Path -LiteralPath $VcVars)) {
     throw "Cannot find vcvars64.bat: $VcVars"
 }
@@ -175,6 +190,7 @@ Write-Host "SdkPrefix   : $SdkPrefix"
 Write-Host "Workspace   : $WorkspaceRoot"
 Write-Host "CMake       : $CMake"
 Write-Host "Ninja       : $Ninja"
+Write-Host "msgfmt      : $MsgFmt"
 Write-Host "Build type  : $BuildType"
 Write-Host "Jobs        : $Jobs"
 if ($ExtraCMakeArgs.Count -gt 0) {
@@ -200,6 +216,7 @@ $configure = @(
     "-DCMAKE_BUILD_TYPE=$BuildType",
     "-DCMAKE_INSTALL_PREFIX=""$SdkPrefix""",
     "-DCMAKE_PREFIX_PATH=""$prefixPath""",
+    "-DGETTEXT_MSGFMT_EXECUTABLE=""$MsgFmt""",
     "-DBUILD_TESTING=OFF",
     "-DBUILD_QCH=OFF"
 ) -join " "

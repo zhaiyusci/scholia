@@ -115,8 +115,22 @@ int main(int argc, char **argv)
 
     const QString bundledLocaleDir = QDir(appDir).absoluteFilePath(QStringLiteral("data/locale"));
     if (QDir(bundledLocaleDir).exists()) {
-        KLocalizedString::addDomainLocaleDir(QByteArrayLiteral("okular"), bundledLocaleDir);
-        KLocalizedString::addDomainLocaleDir(QByteArrayLiteral("okular_poppler"), bundledLocaleDir);
+        const QByteArray domains[] = {
+            QByteArrayLiteral("okular"),
+            QByteArrayLiteral("okular_poppler"),
+            QByteArrayLiteral("kcolorscheme6"),
+            QByteArrayLiteral("kconfigwidgets6"),
+            QByteArrayLiteral("ki18n6"),
+            QByteArrayLiteral("kiconthemes6"),
+            QByteArrayLiteral("kio6"),
+            QByteArrayLiteral("kparts6"),
+            QByteArrayLiteral("kservice6"),
+            QByteArrayLiteral("ktextwidgets6"),
+            QByteArrayLiteral("kxmlgui6"),
+        };
+        for (const QByteArray &domain : domains) {
+            KLocalizedString::addDomainLocaleDir(domain, bundledLocaleDir);
+        }
     }
 
     /**
