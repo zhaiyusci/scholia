@@ -865,6 +865,7 @@ static bool applyLatexResizeUpdate(Okular::Document *document, const LatexResize
         }
         pdfFileName = rendered->pdfFileName;
         pdfSize = rendered->pdfSizePoints;
+        renderWarning = rendered->warning;
         qCDebug(OkularUiDebug) << "LaTeX note resize render produced PDF; path:" << pdfFileName << "size:" << pdfSize;
     }
     if (!pdfSize.isValid() || pdfSize.isEmpty() || pdfFileName.isEmpty()) {
@@ -975,7 +976,11 @@ bool MouseAnnotation::updateLatexNoteAfterResizeAsync(const AnnotationDescriptio
             }
 
             updateViewport(m_focusedAnnotation);
-            clearLatexRenderWarning();
+            if (warning.isValid()) {
+                setLatexRenderWarning(m_focusedAnnotation, warning);
+            } else {
+                clearLatexRenderWarning();
+            }
             updateViewport(m_focusedAnnotation);
         }
         return ok;

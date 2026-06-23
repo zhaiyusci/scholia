@@ -60,6 +60,20 @@ function Copy-DirectoryContents([string] $Source, [string] $Destination) {
     }
 }
 
+function Assert-StemTeXBundleLayout([string] $Root) {
+    $requiredPaths = @(
+        "runtime\bin\sdk\stemtex-renderer.dll",
+        "runtime\bin\windows\xetexdaemon.exe",
+        "gui\profiles"
+    )
+    foreach ($relativePath in $requiredPaths) {
+        $path = Join-Path $Root $relativePath
+        if (!(Test-Path -LiteralPath $path)) {
+            throw "StemTeX bundle has an unsupported layout. Missing $relativePath under $Root. Run deploy-scholia-standalone-runtime.ps1 first."
+        }
+    }
+}
+
 function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
     $sourceBin = Join-Path $SourcePrefix "bin"
     if (!(Test-Path -LiteralPath (Join-Path $sourceBin "scholia.exe"))) {
@@ -71,6 +85,7 @@ function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
 
     $sourceStemTeX = Join-Path $SourcePrefix "StemTeX"
     if (Test-Path -LiteralPath $sourceStemTeX) {
+        Assert-StemTeXBundleLayout $sourceStemTeX
         Copy-DirectoryContents $sourceStemTeX (Join-Path $DestinationRoot "StemTeX")
     } else {
         Write-Warning "StemTeX runtime was not found under $sourceStemTeX. LaTeX StemTeX backend will be unavailable in the installer stage."

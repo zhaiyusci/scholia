@@ -70,7 +70,7 @@ Name: "{app}\StemTeX\runtime\texmf-var\fonts"; Permissions: users-modify
 Name: "{app}\StemTeX\runtime\texmf-var\fonts\conf"; Permissions: users-modify
 Name: "{app}\StemTeX\runtime\texmf-var\fonts\conf\conf.d"; Permissions: users-modify
 Name: "{app}\StemTeX\runtime\texmf-var\fonts\cache"; Permissions: users-modify
-Name: "{app}\StemTeX\profiles"; Permissions: users-modify
+Name: "{app}\StemTeX\gui\profiles"; Permissions: users-modify
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

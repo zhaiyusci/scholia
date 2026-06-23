@@ -209,8 +209,7 @@ function Resolve-StemTeXRuntimeSource([string] $Root) {
         (Join-Path $Root "dist\stemtex-texlive-daemon-static")
     )) {
         if ((Test-Path -LiteralPath (Join-Path $candidate "bin\sdk\stemtex-renderer.dll")) -and
-            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\xetexdaemon.exe")) -and
-            (Test-Path -LiteralPath (Join-Path $candidate "worker-template.tex"))) {
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\xetexdaemon.exe"))) {
             return [System.IO.Path]::GetFullPath($candidate)
         }
     }
@@ -339,7 +338,7 @@ Write-Host "Copying bundled StemTeX runtime..."
 $stemTeXDestination = Join-Path $InstallPrefix "StemTeX"
 Remove-DirectoryInside $stemTeXDestination $InstallPrefix
 Copy-DirectoryContents $StemTeXRuntimeSource (Join-Path $stemTeXDestination "runtime")
-Copy-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "profiles")
+Copy-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "gui\profiles")
 
 Remove-ExpandedBreezeIconTheme $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "plugins") $InstallPrefix

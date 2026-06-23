@@ -31,6 +31,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QList>
 #include <QLibrary>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -104,7 +105,12 @@ struct StemTeXRenderResult {
     char *request_id_utf8;
     char *pdf_path_utf8;
     char *summary_json_utf8;
+    int outcome_code;
+    int issue_flags;
+    char *outcome_message_utf8;
 };
+
+static constexpr int StemTeXRenderOutcomeOk = 0;
 
 struct StemTeXEngineSnapshot {
     int status;
@@ -118,6 +124,11 @@ struct StemTeXEngineSnapshot {
     uint64_t running_job_id;
     uint64_t pending_job_id;
     int last_error;
+};
+
+struct StemTeXProfileInfo {
+    QString name;
+    QString path;
 };
 
 struct StemtexApi {
@@ -242,20 +253,13 @@ public:
             return {};
         }
 
-        const QString root = profilesRoot();
-        QDir profilesDir(root);
-        if (!profilesDir.exists()) {
-            return {};
-        }
-
         QStringList names;
         QString lastError;
-        const QFileInfoList candidates = profilesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-        for (const QFileInfo &candidate : candidates) {
-            if (profileIsValid(api, candidate.absoluteFilePath(), &lastError)) {
-                names << candidate.fileName();
-            }
+        const QList<StemTeXProfileInfo> profiles = availableProfiles(api, &lastError);
+        for (const StemTeXProfileInfo &profile : profiles) {
+            names << profile.name;
         }
+        names.removeDuplicates();
         return names;
     }
 
@@ -264,7 +268,13 @@ public:
         return runtimeRoot();
     }
 
-    LatexRenderer::Error render(const QString &latexSource, const QColor &textColor, double maxWidth, QString &pdfFileName, QString &latexOutput, QStringList &fileList)
+    LatexRenderer::Error render(const QString &latexSource,
+                                const QColor &textColor,
+                                double maxWidth,
+                                QString &pdfFileName,
+                                QString &latexOutput,
+                                QStringList &fileList,
+                                LatexRenderWarning *warning)
     {
         if (!m_renderer) {
             latexOutput = i18n("StemTeX renderer is not initialized.");
@@ -291,6 +301,8 @@ public:
             QString errorText;
             QString sourcePdfFile;
             QString summary;
+            int outcomeCode = StemTeXRenderOutcomeOk;
+            QString outcomeMessage;
         };
         auto state = std::make_shared<RenderState>();
 
@@ -303,6 +315,8 @@ public:
             state->errorText = error ? QString::fromUtf8(error) : QString();
             state->sourcePdfFile = result && result->pdf_path_utf8 ? QString::fromUtf8(result->pdf_path_utf8) : QString();
             state->summary = result && result->summary_json_utf8 ? QString::fromUtf8(result->summary_json_utf8) : QString();
+            state->outcomeCode = result ? result->outcome_code : errorCode;
+            state->outcomeMessage = result && result->outcome_message_utf8 ? QString::fromUtf8(result->outcome_message_utf8) : QString();
             state->done = true;
             state->condition.notify_all();
         };
@@ -340,6 +354,8 @@ public:
         QString errorText;
         QString sourcePdfFile;
         QString summary;
+        int outcomeCode = StemTeXRenderOutcomeOk;
+        QString outcomeMessage;
         {
             std::lock_guard<std::mutex> guard(state->mutex);
             ok = state->ok;
@@ -348,6 +364,8 @@ public:
             errorText = state->errorText;
             sourcePdfFile = state->sourcePdfFile;
             summary = state->summary;
+            outcomeCode = state->outcomeCode;
+            outcomeMessage = state->outcomeMessage;
         }
 
         if (callbackJobId != jobId) {
@@ -362,7 +380,15 @@ public:
         latexOutput = summary;
         pdfFileName = sourcePdfFile;
         fileList << sourcePdfFile;
-        qCDebug(OkularUiDebug) << "StemTeX render finished; PDF:" << pdfFileName << "summary:" << summary;
+        if (warning && outcomeCode != StemTeXRenderOutcomeOk) {
+            warning->type = LatexRenderWarningType::CompileError;
+            warning->message = outcomeMessage.trimmed();
+            if (warning->message.isEmpty()) {
+                warning->message = i18n("StemTeX returned code %1. The rendered PDF is still shown.", outcomeCode);
+            }
+            warning->severity = 1.0;
+        }
+        qCDebug(OkularUiDebug) << "StemTeX render finished; PDF:" << pdfFileName << "outcome:" << outcomeCode << "message:" << outcomeMessage << "summary:" << summary;
         return LatexRenderer::NoError;
     }
 
@@ -508,14 +534,14 @@ private:
         if (!envProfiles.isEmpty()) {
             return envProfiles;
         }
-        return QDir::cleanPath(QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../StemTeX/profiles")));
+        return QDir::cleanPath(QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../StemTeX/gui/profiles")));
     }
 
-    static bool profileIsValid(const StemtexApi &api, const QString &profileRoot, QString *error)
+    static bool readProfileInfo(const StemtexApi &api, const QString &profileRoot, StemTeXProfileInfo *profileInfo, QString *error)
     {
-        if (profileRoot.isEmpty() || !QFileInfo::exists(QDir(profileRoot).filePath(QStringLiteral("preamble.tex"))) || !QFileInfo::exists(QDir(profileRoot).filePath(QStringLiteral("warmup.tex")))) {
+        if (profileRoot.isEmpty()) {
             if (error) {
-                *error = i18n("StemTeX profile is missing preamble.tex or warmup.tex: %1", QDir::toNativeSeparators(profileRoot));
+                *error = i18n("StemTeX profile path is empty.");
             }
             return false;
         }
@@ -554,23 +580,50 @@ private:
             }
             return false;
         }
+        const QJsonObject object = document.object();
+        QString path = object.value(QLatin1String("path")).toString();
+        if (path.isEmpty()) {
+            path = QDir::cleanPath(profileRoot);
+        }
+        QString name = object.value(QLatin1String("name")).toString();
+        if (name.isEmpty()) {
+            name = QFileInfo(path).fileName();
+        }
+        if (profileInfo) {
+            profileInfo->name = name;
+            profileInfo->path = QDir::cleanPath(path);
+        }
         return true;
+    }
+
+    static QList<StemTeXProfileInfo> availableProfiles(const StemtexApi &api, QString *lastError)
+    {
+        QList<StemTeXProfileInfo> profiles;
+        const QString root = profilesRoot();
+        const QDir profilesDir(root);
+        if (!profilesDir.exists()) {
+            if (lastError) {
+                *lastError = i18n("StemTeX profiles directory was not found: %1", QDir::toNativeSeparators(root));
+            }
+            return profiles;
+        }
+
+        const QFileInfoList candidates = profilesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QFileInfo &candidate : candidates) {
+            StemTeXProfileInfo profile;
+            if (readProfileInfo(api, candidate.absoluteFilePath(), &profile, lastError)) {
+                profiles << profile;
+            }
+        }
+        return profiles;
     }
 
     static QString selectProfileRoot(const StemtexApi &api, QString *error)
     {
         const QString explicitProfileRoot = environmentPath("SCHOLIA_STEMTEX_PROFILE_ROOT");
         if (!explicitProfileRoot.isEmpty()) {
-            return profileIsValid(api, explicitProfileRoot, error) ? explicitProfileRoot : QString();
-        }
-
-        const QString root = profilesRoot();
-        QDir profilesDir(root);
-        if (!profilesDir.exists()) {
-            if (error) {
-                *error = i18n("StemTeX profiles directory was not found: %1", QDir::toNativeSeparators(root));
-            }
-            return {};
+            StemTeXProfileInfo explicitProfile;
+            return readProfileInfo(api, explicitProfileRoot, &explicitProfile, error) ? explicitProfile.path : QString();
         }
 
         QStringList preferredNames;
@@ -586,24 +639,20 @@ private:
         preferredNames.removeDuplicates();
 
         QString lastError;
+        const QList<StemTeXProfileInfo> profiles = availableProfiles(api, &lastError);
         for (const QString &name : preferredNames) {
-            const QString candidate = profilesDir.filePath(name);
-            if (!QFileInfo::exists(candidate)) {
-                continue;
-            }
-            if (profileIsValid(api, candidate, &lastError)) {
-                return QDir::cleanPath(candidate);
+            for (const StemTeXProfileInfo &profile : profiles) {
+                if (profile.name.compare(name, Qt::CaseInsensitive) == 0 || QFileInfo(profile.path).fileName().compare(name, Qt::CaseInsensitive) == 0) {
+                    return profile.path;
+                }
             }
         }
-
-        const QFileInfoList candidates = profilesDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-        for (const QFileInfo &candidate : candidates) {
-            if (profileIsValid(api, candidate.absoluteFilePath(), &lastError)) {
-                return QDir::cleanPath(candidate.absoluteFilePath());
-            }
+        if (!profiles.isEmpty()) {
+            return profiles.first().path;
         }
 
         if (error) {
+            const QString root = profilesRoot();
             *error = lastError.isEmpty() ? i18n("No valid StemTeX profile was found in %1", QDir::toNativeSeparators(root)) : lastError;
         }
         return {};
@@ -637,7 +686,7 @@ private:
             }
             return false;
         }
-        if (!QFileInfo::exists(QDir(m_runtimeRoot).filePath(QStringLiteral("bin/windows/xetexdaemon.exe"))) || !QFileInfo::exists(QDir(m_runtimeRoot).filePath(QStringLiteral("worker-template.tex")))) {
+        if (!QFileInfo::exists(QDir(m_runtimeRoot).filePath(QStringLiteral("bin/windows/xetexdaemon.exe")))) {
             if (error) {
                 *error = i18n("StemTeX runtime was not found: %1", QDir::toNativeSeparators(m_runtimeRoot));
             }
@@ -913,7 +962,7 @@ LatexRenderer::Error LatexRenderer::renderLatexToPdf(const QString &latexFormula
         return LatexFailed;
     }
 
-    const Error stemtexErrorCode = session->render(formula, textColor, maxWidth, pdfFileName, latexOutput, m_fileList);
+    const Error stemtexErrorCode = session->render(formula, textColor, maxWidth, pdfFileName, latexOutput, m_fileList, &m_lastWarning);
     if (stemtexErrorCode == NoError) {
         m_lastBackendName = QStringLiteral("stemtex");
     }
