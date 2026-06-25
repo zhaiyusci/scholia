@@ -5097,6 +5097,25 @@ bool Document::swapBackingFileArchive(const QString &newFileName, const QUrl &ur
     return success;
 }
 
+bool Document::canInsertBlankPage() const
+{
+    const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    return pageInsertion && pageInsertion->canInsertBlankPage();
+}
+
+bool Document::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            *errorText = QString();
+        }
+        return false;
+    }
+
+    return pageInsertion->saveWithBlankPageInsertedAfter(sourceFileName, outputFileName, pageNumber, errorText);
+}
+
 void Document::setHistoryClean(bool clean)
 {
     if (clean) {

@@ -330,6 +330,7 @@ private:
 
     void setFileToWatch(const QString &filePath);
     void unsetFileToWatch();
+    void slotInsertBlankPageAfterCurrentPage();
 
 #if HAVE_PURPOSE
     void slotShareActionFinished(const QJsonObject &output, int error, const QString &message);
@@ -444,6 +445,7 @@ private:
     QAction *m_aboutBackend;
     QAction *m_reload;
     QAction *m_addCurrentPageToContents = nullptr;
+    QAction *m_insertBlankPageAfterCurrentPage = nullptr;
     QMenu *m_exportAsMenu;
 #if HAVE_PURPOSE
     Purpose::Menu *m_shareMenu;

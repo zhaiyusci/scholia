@@ -15,6 +15,8 @@
 
 #include "generator_pdf.h"
 
+#include "ScholiaPdfPages.h"
+
 // qt/kde includes
 #include <QCheckBox>
 #include <QColor>
@@ -2268,6 +2270,32 @@ bool PDFGenerator::save(const QString &fileName, SaveOptions options, QString *e
         }
     }
     return success;
+}
+
+bool PDFGenerator::canInsertBlankPage() const
+{
+    return true;
+}
+
+static std::string pdfPagesFileName(const QString &fileName)
+{
+    return QFile::encodeName(QDir::toNativeSeparators(fileName)).toStdString();
+}
+
+bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+{
+    const ScholiaPdfPages::Result result = ScholiaPdfPages::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber);
+    if (result.ok()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    if (errorText) {
+        *errorText = QString::fromStdString(result.message);
+    }
+    return false;
 }
 
 Okular::AnnotationProxy *PDFGenerator::annotationProxy() const

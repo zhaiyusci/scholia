@@ -943,6 +943,19 @@ public:
     bool swapBackingFileArchive(const QString &newFileName, const QUrl &url);
 
     /**
+     * Returns whether the current document backend can write a copy with an
+     * inserted blank page.
+     */
+    bool canInsertBlankPage() const;
+
+    /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with one blank
+     * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
+     * insert before the first page.
+     */
+    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText);
+
+    /**
      * Sets the history to be clean
      *
      * @since 1.3

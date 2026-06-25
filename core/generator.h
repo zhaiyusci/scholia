@@ -165,6 +165,29 @@ private:
 };
 
 /**
+ * Optional interface implemented by generators that can write a copy of the
+ * document with page-sequence edits.
+ */
+class OKULARCORE_EXPORT PageInsertionInterface
+{
+public:
+    virtual ~PageInsertionInterface() = default;
+
+    /**
+     * Returns whether this generator can write a copy of the document with an
+     * added blank page.
+     */
+    virtual bool canInsertBlankPage() const = 0;
+
+    /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with one blank
+     * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
+     * insert before the first page.
+     */
+    virtual bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) = 0;
+};
+
+/**
  * @short [Abstract Class] The information generator.
  *
  * Most of class members are virtuals and some of them pure virtual. The pure

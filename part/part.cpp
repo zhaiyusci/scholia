@@ -31,6 +31,7 @@
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QDomDocument>
+#include <QDir>
 #if HAVE_DBUS
 #include <QDBusConnection>
 #endif // HAVE_DBUS
@@ -38,6 +39,7 @@
 #include <QDialogButtonBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QLabel>
@@ -820,6 +822,12 @@ void Part::setupViewerActions()
     m_addCurrentPageToContents->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
     m_addCurrentPageToContents->setEnabled(false);
     connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
+
+    m_insertBlankPageAfterCurrentPage = ac->addAction(QStringLiteral("tools_insert_blank_page_after_current"));
+    m_insertBlankPageAfterCurrentPage->setText(i18n("Insert Blank Page After Current Page"));
+    m_insertBlankPageAfterCurrentPage->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
+    m_insertBlankPageAfterCurrentPage->setEnabled(false);
+    connect(m_insertBlankPageAfterCurrentPage, &QAction::triggered, this, &Part::slotInsertBlankPageAfterCurrentPage);
 
     m_closeFindBar = ac->addAction(QStringLiteral("close_find_bar"), this, SLOT(slotHideFindBar()));
     m_closeFindBar->setText(i18n("Close &Find Bar"));
@@ -1643,6 +1651,9 @@ bool Part::openFile()
     if (m_addCurrentPageToContents) {
         m_addCurrentPageToContents->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && m_document->currentDocument().isLocalFile());
     }
+    if (m_insertBlankPageAfterCurrentPage) {
+        m_insertBlankPageAfterCurrentPage->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && !isDocumentArchive && m_document->currentDocument().isLocalFile() && m_document->canInsertBlankPage());
+    }
     Q_EMIT enablePrintAction(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_printPreview->setEnabled(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_showProperties->setEnabled(ok);
@@ -1964,6 +1975,9 @@ bool Part::closeUrl(bool promptToSave)
     }
     if (m_addCurrentPageToContents) {
         m_addCurrentPageToContents->setEnabled(false);
+    }
+    if (m_insertBlankPageAfterCurrentPage) {
+        m_insertBlankPageAfterCurrentPage->setEnabled(false);
     }
     m_printPreview->setEnabled(false);
     m_showProperties->setEnabled(false);
@@ -2696,6 +2710,29 @@ static QUrl resolveSymlinksIfFileExists(const QUrl &saveUrl)
     }
 }
 
+static QString createClosedTemporaryPdf(const QString &prefix)
+{
+    QTemporaryFile temporaryFile(QDir::tempPath() + QLatin1Char('/') + prefix + QLatin1String("-XXXXXX.pdf"));
+    temporaryFile.setAutoRemove(false);
+    if (!temporaryFile.open()) {
+        return QString();
+    }
+
+    const QString fileName = temporaryFile.fileName();
+    temporaryFile.close();
+    return fileName;
+}
+
+static QString unusedSiblingFileName(const QString &baseFileName, const QString &suffix)
+{
+    QString fileName = baseFileName + suffix;
+    int index = 1;
+    while (QFile::exists(fileName)) {
+        fileName = baseFileName + suffix + QLatin1Char('.') + QString::number(index++);
+    }
+    return fileName;
+}
+
 bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
 {
     // TODO When we get different saving backends we need to query the backend
@@ -3018,6 +3055,101 @@ bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
     }
 
     return true;
+}
+
+void Part::slotInsertBlankPageAfterCurrentPage()
+{
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertBlankPage()) {
+        KMessageBox::information(widget(), i18n("Blank pages can only be inserted into local PDF files."));
+        return;
+    }
+
+    if (isModified() && !saveFile()) {
+        return;
+    }
+
+    const QUrl documentUrl = url();
+    const QString targetFileName = localFilePath();
+    const QFileInfo targetInfo(targetFileName);
+    if (targetFileName.isEmpty() || !targetInfo.exists()) {
+        KMessageBox::information(widget(), i18n("The current PDF file could not be found on disk."));
+        return;
+    }
+    if (!targetInfo.isWritable()) {
+        KMessageBox::information(widget(), xi18nc("@info", "Could not insert a blank page into <filename>%1</filename> because that file is read-only.", targetFileName));
+        return;
+    }
+
+    QString sourceFileName = targetFileName;
+    QString temporaryOutputFileName;
+
+    const auto cleanupTemporaryFiles = [&temporaryOutputFileName] {
+        if (!temporaryOutputFileName.isEmpty()) {
+            QFile::remove(temporaryOutputFileName);
+        }
+    };
+
+    temporaryOutputFileName = createClosedTemporaryPdf(QStringLiteral("scholia-page-insert-output"));
+    if (temporaryOutputFileName.isEmpty()) {
+        cleanupTemporaryFiles();
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
+        return;
+    }
+
+    const int currentPage = static_cast<int>(m_document->currentPage()) + 1;
+    QString errorText;
+    if (!m_document->saveWithBlankPageInsertedAfter(sourceFileName, temporaryOutputFileName, currentPage, &errorText)) {
+        cleanupTemporaryFiles();
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not insert a blank page."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not insert a blank page. %1", errorText));
+        }
+        return;
+    }
+
+    QUrl reopenUrl = documentUrl;
+    reopenUrl.setFragment(QStringLiteral("page=%1").arg(currentPage + 1));
+
+    const QFile::Permissions originalPermissions = QFile::permissions(targetFileName);
+    const QString backupFileName = unusedSiblingFileName(targetFileName, QStringLiteral(".scholia-page-insert-backup"));
+
+    if (!closeUrl(false)) {
+        cleanupTemporaryFiles();
+        KMessageBox::information(widget(), i18n("Could not close the current document before replacing it."));
+        return;
+    }
+
+    QString replaceError;
+    bool replacedFile = false;
+    if (!QFile::rename(targetFileName, backupFileName)) {
+        replaceError = i18n("Could not move the original PDF aside.");
+    } else if (!QFile::copy(temporaryOutputFileName, targetFileName)) {
+        replaceError = i18n("Could not copy the edited PDF over the original file.");
+        QFile::remove(targetFileName);
+        QFile::rename(backupFileName, targetFileName);
+    } else {
+        QFile::setPermissions(targetFileName, originalPermissions);
+        QFile::remove(backupFileName);
+        replacedFile = true;
+    }
+
+    cleanupTemporaryFiles();
+
+    if (!replacedFile) {
+        openUrl(documentUrl);
+        KMessageBox::information(widget(), replaceError);
+        return;
+    }
+
+    if (!openUrl(reopenUrl)) {
+        KMessageBox::information(widget(), i18n("The blank page was inserted, but the document could not be reopened."));
+        return;
+    }
+
+    if (m_pageView) {
+        m_pageView->displayMessage(i18n("Inserted a blank page after page %1.", currentPage));
+    }
 }
 
 // If the user wants to save in the original file's format, some features might

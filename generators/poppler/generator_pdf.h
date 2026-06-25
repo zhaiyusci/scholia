@@ -44,7 +44,7 @@ class PopplerAnnotationProxy;
  * contents from out OutputDevs when rendering finishes.
  *
  */
-class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface
+class PDFGenerator : public Okular::Generator, public Okular::ConfigInterface, public Okular::PrintInterface, public Okular::SaveInterface, public Okular::PageInsertionInterface
 {
     Q_OBJECT
     Q_INTERFACES(Okular::Generator)
@@ -102,6 +102,8 @@ public:
     bool supportsOption(SaveOption) const override;
     bool save(const QString &fileName, SaveOptions options, QString *errorText) override;
     Okular::AnnotationProxy *annotationProxy() const override;
+    bool canInsertBlankPage() const override;
+    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
 
     bool canSign() const override;
     std::pair<Okular::SigningResult, QString> sign(const Okular::NewSignatureData &oData, const QString &rFilename) override;
