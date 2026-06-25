@@ -1089,13 +1089,10 @@ void Shell::insertBlankPageAfterCurrentPage()
     }
 
     KParts::ReadWritePart *const part = m_tabs[m_tabWidget->currentIndex()].part;
-    QAction *const action = part ? part->actionCollection()->action(QStringLiteral("tools_insert_blank_page_after_current")) : nullptr;
-    if (!action || !action->isEnabled()) {
-        KMessageBox::information(this, i18n("Blank page insertion is available only for local PDF files."));
+    if (!part || !QMetaObject::invokeMethod(part, "slotInsertBlankPageAfterCurrentPage", Qt::DirectConnection)) {
+        KMessageBox::information(this, i18n("Blank page insertion is not available in the current viewer."));
         return;
     }
-
-    action->trigger();
 }
 
 void Shell::setPrintEnabled(bool enabled)
