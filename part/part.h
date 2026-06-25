@@ -110,12 +110,13 @@ enum EmbedMode {
  * @author Wilco Greven <greven@kde.org>
  * @version 0.2
  */
-class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::DocumentObserver, public KDocumentViewer, public Okular::ViewerInterface
+class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::DocumentObserver, public KDocumentViewer, public Okular::ViewerInterface, public Okular::PageEditingInterface
 {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.kde.okular")
     Q_INTERFACES(KDocumentViewer)
     Q_INTERFACES(Okular::ViewerInterface)
+    Q_INTERFACES(Okular::PageEditingInterface)
 
     friend class PartTest;
 
@@ -151,6 +152,7 @@ public:
     void setShowSourceLocationsGraphically(bool show) override;
     bool openNewFilesInTabs() const override;
     QWidget *getSideContainer() const override;
+    void insertBlankPageAfterCurrentPage() override;
     Q_INVOKABLE bool activateTabIfAlreadyOpenFile() const;
 
     void setModified(bool modified) override;

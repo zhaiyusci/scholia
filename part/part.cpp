@@ -1147,6 +1147,11 @@ QWidget *Part::getSideContainer() const
     return m_sidebar->getSideContainer();
 }
 
+void Part::insertBlankPageAfterCurrentPage()
+{
+    slotInsertBlankPageAfterCurrentPage();
+}
+
 bool Part::activateTabIfAlreadyOpenFile() const
 {
     return Okular::Settings::self()->switchToTabIfOpen();

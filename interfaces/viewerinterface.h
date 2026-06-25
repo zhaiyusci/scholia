@@ -104,8 +104,25 @@ public:
     void viewerMenuStateChange(bool enabled);
 };
 
+class VIEWERINTERFACE_EXPORT PageEditingInterface
+{
+public:
+    PageEditingInterface()
+    {
+    }
+    virtual ~PageEditingInterface()
+    {
+    }
+
+    PageEditingInterface(const PageEditingInterface &) = delete;
+    PageEditingInterface &operator=(const PageEditingInterface &) = delete;
+
+    virtual void insertBlankPageAfterCurrentPage() = 0;
+};
+
 }
 
 Q_DECLARE_INTERFACE(Okular::ViewerInterface, "org.kde.okular.ViewerInterface/0.1")
+Q_DECLARE_INTERFACE(Okular::PageEditingInterface, "org.jairy.scholia.PageEditingInterface/1.0")
 
 #endif
