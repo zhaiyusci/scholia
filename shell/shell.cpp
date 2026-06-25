@@ -895,6 +895,7 @@ void Shell::setActiveTab(int tab)
     const bool isSidebarVisible = m_sidebar->isVisible();
     createGUI(m_tabs[tab].part);
     ensurePartSettingsActions(m_tabs[tab].part);
+    ensurePartToolsActions(m_tabs[tab].part);
     m_sidebar->setVisible(isSidebarVisible);
 
     // dock KPart's sidebar if new and make it current
@@ -950,6 +951,64 @@ void Shell::ensurePartSettingsActions(KParts::ReadWritePart *part)
     QAction *mainConfig = part->actionCollection()->action(QStringLiteral("options_configure"));
     QAction *before = settingsMenu->actions().contains(mainConfig) ? mainConfig : nullptr;
     settingsMenu->insertAction(before, annotationConfig);
+}
+
+void Shell::ensurePartToolsActions(KParts::ReadWritePart *part)
+{
+    if (!part) {
+        return;
+    }
+
+    QAction *insertBlankPage = part->actionCollection()->action(QStringLiteral("tools_insert_blank_page_after_current"));
+    if (!insertBlankPage) {
+        return;
+    }
+
+    const auto findVisibleToolsMenu = [this]() -> QMenu * {
+        for (QAction *action : menuBar()->actions()) {
+            QMenu *menu = action ? action->menu() : nullptr;
+            if (menu && menu->objectName() == QLatin1String("tools")) {
+                return menu;
+            }
+        }
+        return nullptr;
+    };
+    const auto findMenuInsertionPoint = [this]() -> QAction * {
+        for (QAction *action : menuBar()->actions()) {
+            QMenu *menu = action ? action->menu() : nullptr;
+            if (menu && (menu->objectName() == QLatin1String("settings") || menu->objectName() == QLatin1String("help"))) {
+                return action;
+            }
+        }
+        return nullptr;
+    };
+
+    QMenu *toolsMenu = findVisibleToolsMenu();
+    if (!toolsMenu) {
+        toolsMenu = qobject_cast<QMenu *>(guiFactory()->container(QStringLiteral("tools"), part));
+    }
+    if (!toolsMenu) {
+        toolsMenu = qobject_cast<QMenu *>(guiFactory()->container(QStringLiteral("tools"), this));
+    }
+    if (!toolsMenu) {
+        toolsMenu = new QMenu(i18n("&Tools"), menuBar());
+        toolsMenu->setObjectName(QStringLiteral("tools"));
+    }
+    if (!menuBar()->actions().contains(toolsMenu->menuAction())) {
+        menuBar()->insertMenu(findMenuInsertionPoint(), toolsMenu);
+    }
+    if (toolsMenu->actions().contains(insertBlankPage)) {
+        return;
+    }
+
+    QAction *addToContents = part->actionCollection()->action(QStringLiteral("tools_add_current_page_to_contents"));
+    const QList<QAction *> actions = toolsMenu->actions();
+    const int addToContentsIndex = actions.indexOf(addToContents);
+    QAction *before = nullptr;
+    if (addToContentsIndex >= 0 && addToContentsIndex + 1 < actions.size()) {
+        before = actions.at(addToContentsIndex + 1);
+    }
+    toolsMenu->insertAction(before, insertBlankPage);
 }
 
 void Shell::closeTab(int tab)

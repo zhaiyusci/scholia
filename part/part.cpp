@@ -3559,6 +3559,7 @@ void Part::slotUpdateHamburgerMenu()
     menu->addAction(m_printPreview);
     menu->addSeparator();
     menu->addAction(ac->action(QStringLiteral("add_digital_signature")));
+    menu->addAction(ac->action(QStringLiteral("tools_insert_blank_page_after_current")));
     menu->addAction(m_showProperties);
     menu->addAction(m_openContainingFolder);
 #if HAVE_PURPOSE

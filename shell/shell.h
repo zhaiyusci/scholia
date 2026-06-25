@@ -158,6 +158,7 @@ private:
     void applyOptionsToPart(QObject *part, const QString &serializedOptions);
     void connectPart(const KParts::ReadWritePart *part);
     void ensurePartSettingsActions(KParts::ReadWritePart *part);
+    void ensurePartToolsActions(KParts::ReadWritePart *part);
     int findTabIndex(QObject *sender) const;
     int findTabIndex(const QUrl &url) const;
     void readRecentFilesSettings();
