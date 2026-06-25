@@ -330,7 +330,6 @@ private:
 
     void setFileToWatch(const QString &filePath);
     void unsetFileToWatch();
-    void slotInsertBlankPageAfterCurrentPage();
 
 #if HAVE_PURPOSE
     void slotShareActionFinished(const QJsonObject &output, int error, const QString &message);
@@ -488,6 +487,7 @@ private:
     QString m_latexStemtexTexmfRoot;
 
 private Q_SLOTS:
+    void slotInsertBlankPageAfterCurrentPage();
     void slotAccessibilityPreferences();
     void slotAnnotationPreferences();
     void slotHandleActivatedSourceReference(const QString &absFileName, int line, int col, bool *handled);
