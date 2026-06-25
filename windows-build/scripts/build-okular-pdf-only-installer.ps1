@@ -12,7 +12,9 @@ param(
     [string] $ISCC = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
     [switch] $SkipBuild,
     [switch] $SkipDeploy,
-    [switch] $SkipStage
+    [switch] $SkipStage,
+    [switch] $CleanStage,
+    [switch] $SkipInstaller
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,6 +62,39 @@ function Copy-DirectoryContents([string] $Source, [string] $Destination) {
     }
 }
 
+function Sync-DirectoryContents([string] $Source, [string] $Destination, [string] $AllowedRoot) {
+    if (!(Test-Path -LiteralPath $Source)) {
+        throw "Cannot find source directory: $Source"
+    }
+
+    $destinationFull = [System.IO.Path]::GetFullPath($Destination)
+    $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if (!$destinationFull.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to sync directory outside $allowed`: $destinationFull"
+    }
+
+    New-Item -ItemType Directory -Force -Path $destinationFull | Out-Null
+    $robocopyArgs = @(
+        [System.IO.Path]::GetFullPath($Source),
+        $destinationFull,
+        "/MIR",
+        "/R:1",
+        "/W:1",
+        "/COPY:DAT",
+        "/DCOPY:DAT",
+        "/NFL",
+        "/NDL",
+        "/NJH",
+        "/NJS",
+        "/NP"
+    )
+    & robocopy @robocopyArgs | Out-Null
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ge 8) {
+        throw "robocopy failed with exit code $exitCode while syncing $Source to $Destination"
+    }
+}
+
 function Assert-StemTeXBundleLayout([string] $Root) {
     $requiredPaths = @(
         "runtime\bin\sdk\stemtex-renderer.dll",
@@ -81,13 +116,15 @@ function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
     }
 
     New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
-    Copy-DirectoryContents $sourceBin (Join-Path $DestinationRoot "bin")
+    Sync-DirectoryContents $sourceBin (Join-Path $DestinationRoot "bin") $DestinationRoot
 
     $sourceStemTeX = Join-Path $SourcePrefix "StemTeX"
+    $destinationStemTeX = Join-Path $DestinationRoot "StemTeX"
     if (Test-Path -LiteralPath $sourceStemTeX) {
         Assert-StemTeXBundleLayout $sourceStemTeX
-        Copy-DirectoryContents $sourceStemTeX (Join-Path $DestinationRoot "StemTeX")
+        Sync-DirectoryContents $sourceStemTeX $destinationStemTeX $DestinationRoot
     } else {
+        Remove-DirectoryInside $destinationStemTeX $DestinationRoot
         Write-Warning "StemTeX runtime was not found under $sourceStemTeX. LaTeX StemTeX backend will be unavailable in the installer stage."
     }
 }
@@ -152,8 +189,16 @@ if (!$SkipStage) {
         Invoke-ChildScript (Join-Path $PSScriptRoot "deploy-scholia-standalone-runtime.ps1") $deployArgs
     }
 
-    Remove-DirectoryInside $StageRoot $WorkspaceRoot
+    if ($CleanStage) {
+        Remove-DirectoryInside $StageRoot $WorkspaceRoot
+    }
     Copy-RuntimeStage $InstallPrefix $StageRoot
+}
+
+if ($SkipInstaller) {
+    Write-Host "Skipping installer build." -ForegroundColor Green
+    Write-Host "  Stage: $StageRoot"
+    exit 0
 }
 
 if (!(Test-Path -LiteralPath $ISCC)) {

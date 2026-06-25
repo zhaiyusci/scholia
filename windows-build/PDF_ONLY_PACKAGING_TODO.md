@@ -37,6 +37,17 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
   -SkipDeploy
 ```
 
+For a fast stage-only refresh while testing, skip the installer compression:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-okular-pdf-only-installer.ps1 `
+  -QtPrefix C:\Qt\6.11.1\msvc2022_64 `
+  -SkipBuild `
+  -SkipDeploy `
+  -SkipInstaller
+```
+
 The stage must include the PDF runtime:
 
 - `bin\scholia.exe`

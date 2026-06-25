@@ -69,6 +69,39 @@ function Copy-DirectoryContents([string] $Source, [string] $Destination) {
     }
 }
 
+function Sync-DirectoryContents([string] $Source, [string] $Destination, [string] $AllowedRoot) {
+    if (!(Test-Path -LiteralPath $Source)) {
+        return
+    }
+
+    $destinationFull = [System.IO.Path]::GetFullPath($Destination)
+    $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
+    if (!$destinationFull.StartsWith($allowed, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to sync directory outside $allowed`: $destinationFull"
+    }
+
+    New-Item -ItemType Directory -Force -Path $destinationFull | Out-Null
+    $robocopyArgs = @(
+        [System.IO.Path]::GetFullPath($Source),
+        $destinationFull,
+        "/MIR",
+        "/R:1",
+        "/W:1",
+        "/COPY:DAT",
+        "/DCOPY:DAT",
+        "/NFL",
+        "/NDL",
+        "/NJH",
+        "/NJS",
+        "/NP"
+    )
+    & robocopy @robocopyArgs | Out-Null
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ge 8) {
+        throw "robocopy failed with exit code $exitCode while syncing $Source to $Destination"
+    }
+}
+
 function Remove-DirectoryInside([string] $Path, [string] $AllowedRoot) {
     $full = [System.IO.Path]::GetFullPath($Path)
     $allowed = [System.IO.Path]::GetFullPath($AllowedRoot)
@@ -263,7 +296,7 @@ Write-Host "Copying QScintilla runtime..."
 Copy-Item -LiteralPath (Join-Path $QScintillaRoot "qscintilla-build\release\qscintilla2_qt6.dll") -Destination $binDir -Force
 
 Write-Host "Copying SDK runtime data..."
-Copy-DirectoryContents (Join-Path $SdkPrefix "bin\data") (Join-Path $binDir "data")
+Sync-DirectoryContents (Join-Path $SdkPrefix "bin\data") (Join-Path $binDir "data") $InstallPrefix
 Remove-EmptyGettextCatalogs (Join-Path $binDir "data\locale")
 
 Write-Host "Preparing runtime plugins..."
@@ -336,9 +369,8 @@ Write-QtRuntimeConfig $binDir
 
 Write-Host "Copying bundled StemTeX runtime..."
 $stemTeXDestination = Join-Path $InstallPrefix "StemTeX"
-Remove-DirectoryInside $stemTeXDestination $InstallPrefix
-Copy-DirectoryContents $StemTeXRuntimeSource (Join-Path $stemTeXDestination "runtime")
-Copy-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "gui\profiles")
+Sync-DirectoryContents $StemTeXRuntimeSource (Join-Path $stemTeXDestination "runtime") $InstallPrefix
+Sync-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "gui\profiles") $InstallPrefix
 
 Remove-ExpandedBreezeIconTheme $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "plugins") $InstallPrefix

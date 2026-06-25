@@ -149,6 +149,27 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile `
   -SkipDeploy
 ```
 
+The stage is incremental by default: unchanged runtime files are not copied
+again. To force a full stage rebuild:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-okular-pdf-only-installer.ps1 `
+  -SkipBuild `
+  -SkipDeploy `
+  -CleanStage
+```
+
+To refresh the stage for testing without rebuilding the installer:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -NoProfile `
+  -File .\windows-build\scripts\build-okular-pdf-only-installer.ps1 `
+  -SkipBuild `
+  -SkipDeploy `
+  -SkipInstaller
+```
+
 If the stage already passed the smoke test:
 
 ```powershell
@@ -167,7 +188,7 @@ Expected installer output:
 
 Scholia supports the StemTeX renderer for LaTeX notes. The standalone Windows
 runtime bundles StemTeX under `StemTeX\runtime` with profiles under
-`StemTeX\profiles`; Scholia starts that bundled renderer during application
+`StemTeX\gui\profiles`; Scholia starts that bundled renderer during application
 startup.
 
 The StemTeX profile and TeXLive package/font tree can be selected from
