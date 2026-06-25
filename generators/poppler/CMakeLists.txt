@@ -46,6 +46,22 @@ if(NOT EXISTS "${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/config.h")
     set(SCHOLIA_POPPLER_PRIVATE_BUILD_DIR "${CMAKE_BINARY_DIR}/../poppler-local")
 endif()
 
+add_library(scholia_pdfpages STATIC
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/ScholiaPdfPages.cc
+    ${CMAKE_SOURCE_DIR}/external/poppler/utils/ScholiaPdfPages.h
+)
+set_target_properties(scholia_pdfpages PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(scholia_pdfpages
+    PUBLIC
+        ${CMAKE_SOURCE_DIR}/external/poppler/utils
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/external/poppler
+        ${CMAKE_SOURCE_DIR}/external/poppler/poppler
+        ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}
+        ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/poppler
+)
+target_link_libraries(scholia_pdfpages Poppler::Core)
+
 target_include_directories(okularGenerator_poppler PRIVATE
     ${CMAKE_SOURCE_DIR}/external/poppler
     ${CMAKE_SOURCE_DIR}/external/poppler/poppler
@@ -53,7 +69,7 @@ target_include_directories(okularGenerator_poppler PRIVATE
     ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}
     ${SCHOLIA_POPPLER_PRIVATE_BUILD_DIR}/poppler
 )
-target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Core Poppler::Qt6 Qt6::Xml)
+target_link_libraries(okularGenerator_poppler okularcore KF6::I18n KF6::Completion KF6::KIOWidgets Poppler::Core Poppler::Qt6 Qt6::Xml scholia_pdfpages)
 if(POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
     target_compile_definitions(okularGenerator_poppler PRIVATE POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES)
 endif()
