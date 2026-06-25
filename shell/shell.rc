@@ -11,6 +11,9 @@
   <!--Menu name="view" >
    <Action name="fullscreen" />
   </Menu-->
+  <Menu name="tools" >
+   <Action name="shell_insert_blank_page_after_current" />
+  </Menu>
   <Menu name="settings" >
    <DefineGroup append="show_merge" name="show_merge" />
    <DefineGroup append="configure_merge" name="configure_merge" />

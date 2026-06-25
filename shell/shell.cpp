@@ -574,6 +574,10 @@ void Shell::setupActions()
     m_printAction->setEnabled(false);
     m_closeAction = KStandardAction::close(this, SLOT(closeUrl()), actionCollection());
     m_closeAction->setEnabled(false);
+    m_insertBlankPageAfterCurrentPageAction = actionCollection()->addAction(QStringLiteral("shell_insert_blank_page_after_current"));
+    m_insertBlankPageAfterCurrentPageAction->setText(i18n("Insert Blank Page After Current Page"));
+    m_insertBlankPageAfterCurrentPageAction->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
+    connect(m_insertBlankPageAfterCurrentPageAction, &QAction::triggered, this, &Shell::insertBlankPageAfterCurrentPage);
     KStandardAction::quit(this, SLOT(close()), actionCollection());
 
     setStandardToolBarMenuEnabled(true);
@@ -895,7 +899,6 @@ void Shell::setActiveTab(int tab)
     const bool isSidebarVisible = m_sidebar->isVisible();
     createGUI(m_tabs[tab].part);
     ensurePartSettingsActions(m_tabs[tab].part);
-    ensurePartToolsActions(m_tabs[tab].part);
     m_sidebar->setVisible(isSidebarVisible);
 
     // dock KPart's sidebar if new and make it current
@@ -951,64 +954,6 @@ void Shell::ensurePartSettingsActions(KParts::ReadWritePart *part)
     QAction *mainConfig = part->actionCollection()->action(QStringLiteral("options_configure"));
     QAction *before = settingsMenu->actions().contains(mainConfig) ? mainConfig : nullptr;
     settingsMenu->insertAction(before, annotationConfig);
-}
-
-void Shell::ensurePartToolsActions(KParts::ReadWritePart *part)
-{
-    if (!part) {
-        return;
-    }
-
-    QAction *insertBlankPage = part->actionCollection()->action(QStringLiteral("tools_insert_blank_page_after_current"));
-    if (!insertBlankPage) {
-        return;
-    }
-
-    const auto findVisibleToolsMenu = [this]() -> QMenu * {
-        for (QAction *action : menuBar()->actions()) {
-            QMenu *menu = action ? action->menu() : nullptr;
-            if (menu && menu->objectName() == QLatin1String("tools")) {
-                return menu;
-            }
-        }
-        return nullptr;
-    };
-    const auto findMenuInsertionPoint = [this]() -> QAction * {
-        for (QAction *action : menuBar()->actions()) {
-            QMenu *menu = action ? action->menu() : nullptr;
-            if (menu && (menu->objectName() == QLatin1String("settings") || menu->objectName() == QLatin1String("help"))) {
-                return action;
-            }
-        }
-        return nullptr;
-    };
-
-    QMenu *toolsMenu = findVisibleToolsMenu();
-    if (!toolsMenu) {
-        toolsMenu = qobject_cast<QMenu *>(guiFactory()->container(QStringLiteral("tools"), part));
-    }
-    if (!toolsMenu) {
-        toolsMenu = qobject_cast<QMenu *>(guiFactory()->container(QStringLiteral("tools"), this));
-    }
-    if (!toolsMenu) {
-        toolsMenu = new QMenu(i18n("&Tools"), menuBar());
-        toolsMenu->setObjectName(QStringLiteral("tools"));
-    }
-    if (!menuBar()->actions().contains(toolsMenu->menuAction())) {
-        menuBar()->insertMenu(findMenuInsertionPoint(), toolsMenu);
-    }
-    if (toolsMenu->actions().contains(insertBlankPage)) {
-        return;
-    }
-
-    QAction *addToContents = part->actionCollection()->action(QStringLiteral("tools_add_current_page_to_contents"));
-    const QList<QAction *> actions = toolsMenu->actions();
-    const int addToContentsIndex = actions.indexOf(addToContents);
-    QAction *before = nullptr;
-    if (addToContentsIndex >= 0 && addToContentsIndex + 1 < actions.size()) {
-        before = actions.at(addToContentsIndex + 1);
-    }
-    toolsMenu->insertAction(before, insertBlankPage);
 }
 
 void Shell::closeTab(int tab)
@@ -1135,6 +1080,22 @@ void Shell::connectPart(const KParts::ReadWritePart *part)
 void Shell::print()
 {
     QMetaObject::invokeMethod(m_tabs[m_tabWidget->currentIndex()].part, "slotPrint");
+}
+
+void Shell::insertBlankPageAfterCurrentPage()
+{
+    if (m_tabs.isEmpty()) {
+        return;
+    }
+
+    KParts::ReadWritePart *const part = m_tabs[m_tabWidget->currentIndex()].part;
+    QAction *const action = part ? part->actionCollection()->action(QStringLiteral("tools_insert_blank_page_after_current")) : nullptr;
+    if (!action || !action->isEnabled()) {
+        KMessageBox::information(this, i18n("Blank page insertion is available only for local PDF files."));
+        return;
+    }
+
+    action->trigger();
 }
 
 void Shell::setPrintEnabled(bool enabled)
