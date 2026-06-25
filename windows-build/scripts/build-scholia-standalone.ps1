@@ -254,7 +254,7 @@ $configureArgs = @(
     "-DBUILD_TESTING=OFF",
     "-DOKULAR_PDF_ONLY=ON",
     "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=ON",
-    "-DKDE_INSTALL_PLUGINDIR=plugins",
+    "-DKDE_INSTALL_PLUGINDIR=bin/plugins",
     "-DFORCE_NOT_REQUIRED_DEPENDENCIES=""$forceNotRequired"""
 )
 Invoke-VsCmd ($configureArgs -join " ")
