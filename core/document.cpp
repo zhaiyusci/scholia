@@ -5157,6 +5157,25 @@ bool Document::saveWithPageDeleted(const QString &sourceFileName, const QString 
     return pageInsertion->saveWithPageDeleted(sourceFileName, outputFileName, pageNumber, errorText);
 }
 
+bool Document::canMovePage() const
+{
+    const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    return pageInsertion && pageInsertion->canMovePage();
+}
+
+bool Document::saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            *errorText = QString();
+        }
+        return false;
+    }
+
+    return pageInsertion->saveWithPageMoved(sourceFileName, outputFileName, sourcePageNumber, destinationPageNumber, errorText);
+}
+
 void Document::setHistoryClean(bool clean)
 {
     if (clean) {

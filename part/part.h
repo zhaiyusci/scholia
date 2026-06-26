@@ -329,6 +329,8 @@ private:
     void updatePageEditActions();
     void insertBlankPageAfterPage(int pageNumber);
     void deletePage(int pageNumber);
+    void movePageTo(int sourcePage, int destinationPage);
+    void movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget);
 
     enum SaveAsFlag {
         NoSaveAsFlags = 0,      ///< No options

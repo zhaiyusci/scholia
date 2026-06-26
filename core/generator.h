@@ -197,6 +197,19 @@ public:
      * @p pageNumber removed. @p pageNumber is 1-based.
      */
     virtual bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) = 0;
+
+    /**
+     * Returns whether this generator can write a copy of the document with a
+     * page moved to a new position.
+     */
+    virtual bool canMovePage() const = 0;
+
+    /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with page
+     * @p sourcePageNumber moved to final position @p destinationPageNumber.
+     * Both page numbers are 1-based.
+     */
+    virtual bool saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText) = 0;
 };
 
 /**

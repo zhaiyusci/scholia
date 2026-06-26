@@ -490,6 +490,9 @@ Part::Part(QObject *parent, const QVariantList &args)
     thumbsBox->layout()->addWidget(m_thumbnailList);
     //	ThumbnailController * m_tc = new ThumbnailController( thumbsBox, m_thumbnailList );
     connect(m_thumbnailList.data(), &ThumbnailList::rightClick, this, &Part::slotShowMenu);
+    connect(m_thumbnailList.data(), &ThumbnailList::pageMoveRequested, this, &Part::movePageFromThumbnail);
+    connect(m_pageLevelEditingToggle, &QAction::toggled, m_thumbnailList.data(), &ThumbnailList::setPageLevelEditingEnabled);
+    m_thumbnailList->setPageLevelEditingEnabled(pageLevelEditingEnabled());
     m_sidebar->addItem(thumbsBox, QIcon::fromTheme(QStringLiteral("view-preview")), i18n("Thumbnails"));
 
     m_sidebar->setCurrentItem(thumbsBox);
@@ -3417,6 +3420,101 @@ void Part::deletePage(int pageNumber)
 
     if (m_pageView) {
         m_pageView->displayMessage(i18n("Deleted page %1. Save the document to keep this change.", pageNumberOneBased));
+    }
+}
+
+void Part::movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget)
+{
+    int destinationPage = targetPage + (insertAfterTarget ? 1 : 0);
+    if (destinationPage > sourcePage) {
+        --destinationPage;
+    }
+
+    movePageTo(sourcePage, destinationPage);
+}
+
+void Part::movePageTo(int sourcePage, int destinationPage)
+{
+    if (!pageLevelEditingEnabled()) {
+        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
+        return;
+    }
+
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canMovePage()) {
+        KMessageBox::information(widget(), i18n("Pages can only be reordered in local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageCount <= 1) {
+        return;
+    }
+    if (sourcePage < 0 || sourcePage >= pageCount || destinationPage < 0 || destinationPage >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+    if (sourcePage == destinationPage) {
+        return;
+    }
+
+    const QUrl documentUrl = url();
+    const QString backingFileName = localFilePath();
+    const QFileInfo backingInfo(backingFileName);
+    if (backingFileName.isEmpty() || !backingInfo.exists()) {
+        KMessageBox::information(widget(), i18n("The current PDF file could not be found on disk."));
+        return;
+    }
+
+    const bool wasModified = isModified();
+    std::unique_ptr<QTemporaryFile> savedSourceFile;
+    QString sourceFileName = backingFileName;
+    if (wasModified) {
+        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-move-source")));
+        if (!savedSourceFile) {
+            KMessageBox::information(widget(), i18n("Could not create a temporary file for page reordering."));
+            return;
+        }
+
+        QString errorText;
+        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
+            if (errorText.isEmpty()) {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page reordering."));
+            } else {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page reordering. %1", errorText));
+            }
+            return;
+        }
+
+        sourceFileName = savedSourceFile->fileName();
+    }
+
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-move-output")));
+    if (!editedFile) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page reordering."));
+        return;
+    }
+
+    QString errorText;
+    if (!m_document->saveWithPageMoved(sourceFileName, editedFile->fileName(), sourcePage + 1, destinationPage + 1, &errorText)) {
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not reorder pages."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not reorder pages. %1", errorText));
+        }
+        return;
+    }
+
+    setUrl(documentUrl);
+    KParts::OpenUrlArguments args = arguments();
+    args.setMimeType(QStringLiteral("application/pdf"));
+    setArguments(args);
+
+    const QString editedFileName = editedFile->fileName();
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Move Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, sourcePage, destinationPage);
+    m_document->pushUndoCommand(command.release());
+
+    if (m_pageView) {
+        m_pageView->displayMessage(i18n("Moved page %1 to position %2. Save the document to keep this change.", sourcePage + 1, destinationPage + 1));
     }
 }
 

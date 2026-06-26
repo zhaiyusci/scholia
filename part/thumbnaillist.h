@@ -53,6 +53,7 @@ public:
 public Q_SLOTS:
     // these are connected to ThumbnailController buttons
     void slotFilterBookmarks(bool filterOn);
+    void setPageLevelEditingEnabled(bool enabled);
 
 protected:
     // scroll up/down the view
@@ -63,6 +64,7 @@ protected:
 
 Q_SIGNALS:
     void rightClick(const Okular::Page *, const QPoint);
+    void pageMoveRequested(int sourcePage, int targetPage, bool insertAfterTarget);
 
 private:
     friend class ThumbnailListPrivate;

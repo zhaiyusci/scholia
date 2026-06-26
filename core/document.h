@@ -969,6 +969,19 @@ public:
     bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText);
 
     /**
+     * Returns whether the current document backend can write a copy with a page
+     * moved to a new position.
+     */
+    bool canMovePage() const;
+
+    /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with page
+     * @p sourcePageNumber moved to final position @p destinationPageNumber.
+     * Both page numbers are 1-based.
+     */
+    bool saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText);
+
+    /**
      * Sets the history to be clean
      *
      * @since 1.3

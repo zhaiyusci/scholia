@@ -2319,6 +2319,27 @@ bool PDFGenerator::saveWithPageDeleted(const QString &sourceFileName, const QStr
     return false;
 }
 
+bool PDFGenerator::canMovePage() const
+{
+    return true;
+}
+
+bool PDFGenerator::saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText)
+{
+    const ScholiaPdfPages::Result result = ScholiaPdfPages::movePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, destinationPageNumber);
+    if (result.ok()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    if (errorText) {
+        *errorText = QString::fromStdString(result.message);
+    }
+    return false;
+}
+
 Okular::AnnotationProxy *PDFGenerator::annotationProxy() const
 {
     return annotProxy;

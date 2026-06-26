@@ -76,6 +76,12 @@ public:
     QPoint m_mouseGrabPos;
     ThumbnailWidget *m_mouseGrabItem;
     int m_pageCurrentlyGrabbed;
+    bool m_pageEditingEnabled = false;
+    QPoint m_pageMovePressPos;
+    int m_pageMoveSource = -1;
+    int m_pageMoveTarget = -1;
+    bool m_pageMoveAfter = false;
+    bool m_pageMoveDragging = false;
 
     // resize thumbnails to fit the width
     void viewportResizeEvent(QResizeEvent *);
@@ -84,6 +90,7 @@ public:
 
     ThumbnailWidget *itemFor(const QPoint p) const;
     void delayedRequestVisiblePixmaps(int delayMs = 0);
+    void resetPageMove();
 
     // SLOTS:
     // make requests for generating pixmaps for visible thumbnails
@@ -231,6 +238,15 @@ ThumbnailWidget *ThumbnailListPrivate::itemFor(const QPoint p) const
     return nullptr;
 }
 
+void ThumbnailListPrivate::resetPageMove()
+{
+    m_pageMovePressPos = QPoint();
+    m_pageMoveSource = -1;
+    m_pageMoveTarget = -1;
+    m_pageMoveAfter = false;
+    m_pageMoveDragging = false;
+}
+
 void ThumbnailListPrivate::paintEvent(QPaintEvent *e)
 {
     QPainter painter(this);
@@ -243,6 +259,20 @@ void ThumbnailListPrivate::paintEvent(QPaintEvent *e)
             painter.translate((*tIt)->pos());
             (*tIt)->paint(painter, rect);
             painter.restore();
+        }
+    }
+
+    if (m_pageEditingEnabled && m_pageMoveDragging && m_pageMoveTarget >= 0) {
+        const ThumbnailWidget *target = getPageByNumber(m_pageMoveTarget);
+        if (target) {
+            const int y = m_pageMoveAfter ? target->rect().bottom() + 1 : target->rect().top();
+            QRect markerRect(0, y - 5, width(), 10);
+            if (e->rect().intersects(markerRect)) {
+                QPen pen(palette().color(QPalette::Highlight), 3, Qt::SolidLine, Qt::RoundCap);
+                painter.setPen(pen);
+                const int margin = ThumbnailWidget::margin() / 2;
+                painter.drawLine(margin, y, width() - margin, y);
+            }
         }
     }
 }
@@ -459,6 +489,18 @@ void ThumbnailList::updateWidgets()
         ThumbnailWidget *t = *vIt;
         t->update();
     }
+}
+
+void ThumbnailList::setPageLevelEditingEnabled(bool enabled)
+{
+    if (d->m_pageEditingEnabled == enabled) {
+        return;
+    }
+
+    d->m_pageEditingEnabled = enabled;
+    d->resetPageMove();
+    d->unsetCursor();
+    d->update();
 }
 
 int ThumbnailListPrivate::getNewPageOffset(int n, ThumbnailListPrivate::ChangePageDirection dir) const
@@ -759,6 +801,18 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
     const int margin = ThumbnailWidget::margin();
     const QPoint p = e->pos() - item->pos();
 
+    if (m_pageEditingEnabled && e->button() == Qt::LeftButton && r.contains(p - QPoint(margin / 2, margin / 2))) {
+        m_pageMovePressPos = e->pos();
+        m_pageMoveSource = item->pageNumber();
+        m_pageMoveTarget = -1;
+        m_pageMoveAfter = false;
+        m_pageMoveDragging = false;
+        m_mouseGrabPos = QPoint();
+        m_mouseGrabItem = nullptr;
+        setCursor(Qt::ClosedHandCursor);
+        return;
+    }
+
     if (e->button() != Qt::RightButton && r.contains(p - QPoint(margin / 2, margin / 2))) {
         m_mouseGrabPos.setX(0);
         m_mouseGrabPos.setY(0);
@@ -776,6 +830,36 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
 
 void ThumbnailListPrivate::mouseReleaseEvent(QMouseEvent *e)
 {
+    if (m_pageEditingEnabled && m_pageMoveSource >= 0) {
+        const bool didDrag = m_pageMoveDragging;
+        const int sourcePage = m_pageMoveSource;
+        const int targetPage = m_pageMoveTarget;
+        const bool insertAfterTarget = m_pageMoveAfter;
+
+        resetPageMove();
+        unsetCursor();
+        update();
+
+        if (didDrag && targetPage >= 0 && targetPage != sourcePage) {
+            Q_EMIT q->pageMoveRequested(sourcePage, targetPage, insertAfterTarget);
+            return;
+        }
+
+        ThumbnailWidget *item = itemFor(e->pos());
+        if (item) {
+            const QPoint p = e->pos() - item->pos();
+            Okular::DocumentViewport vp = Okular::DocumentViewport(item->pageNumber());
+            vp.rePos.normalizedX = double(p.x()) / double(item->rect().width());
+            vp.rePos.normalizedY = double(p.y()) / double(item->rect().height());
+            vp.rePos.pos = Okular::DocumentViewport::Center;
+            vp.rePos.enabled = true;
+            m_document->setViewport(vp, nullptr, true);
+        } else {
+            e->ignore();
+        }
+        return;
+    }
+
     ThumbnailWidget *item = itemFor(e->pos());
     m_mouseGrabItem = item;
     if (!item) { // mouse on the spacing between items
@@ -801,6 +885,39 @@ void ThumbnailListPrivate::mouseReleaseEvent(QMouseEvent *e)
 
 void ThumbnailListPrivate::mouseMoveEvent(QMouseEvent *e)
 {
+    if (m_pageEditingEnabled && m_pageMoveSource >= 0) {
+        if (!(e->buttons() & Qt::LeftButton)) {
+            resetPageMove();
+            unsetCursor();
+            update();
+            e->ignore();
+            return;
+        }
+
+        if (!m_pageMoveDragging && (e->pos() - m_pageMovePressPos).manhattanLength() >= QApplication::startDragDistance()) {
+            m_pageMoveDragging = true;
+        }
+
+        if (m_pageMoveDragging) {
+            ThumbnailWidget *target = itemFor(e->pos());
+            const int previousTarget = m_pageMoveTarget;
+            const bool previousAfter = m_pageMoveAfter;
+            if (target && target->pageNumber() != m_pageMoveSource) {
+                m_pageMoveTarget = target->pageNumber();
+                m_pageMoveAfter = e->pos().y() > target->rect().center().y();
+            } else {
+                m_pageMoveTarget = -1;
+                m_pageMoveAfter = false;
+            }
+            if (previousTarget != m_pageMoveTarget || previousAfter != m_pageMoveAfter) {
+                update();
+            }
+        }
+
+        setCursor(Qt::ClosedHandCursor);
+        return;
+    }
+
     if (e->buttons() == Qt::NoButton) {
         const ThumbnailWidget *item = itemFor(e->pos());
         if (!item) { // mouse on the spacing between items
