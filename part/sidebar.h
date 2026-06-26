@@ -24,6 +24,7 @@ public:
 
     void setMainWidget(QWidget *widget);
     void setBottomWidget(QWidget *widget);
+    void setCornerWidget(QWidget *widget);
 
     void setCurrentItem(QWidget *widget);
     QWidget *currentItem() const;

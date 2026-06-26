@@ -324,6 +324,9 @@ private:
     void resetStartArguments();
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber);
+    bool pageLevelEditingEnabled() const;
+    bool canUsePageLevelEditing() const;
+    void updatePageEditActions();
     void insertBlankPageAfterPage(int pageNumber);
     void deletePage(int pageNumber);
 
@@ -451,6 +454,7 @@ private:
     QAction *m_aboutBackend;
     QAction *m_reload;
     QAction *m_addCurrentPageToContents = nullptr;
+    QAction *m_pageLevelEditingToggle = nullptr;
     QAction *m_insertBlankPageAfterCurrentPage = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
     QMenu *m_exportAsMenu;

@@ -58,6 +58,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTimer>
+#include <QToolButton>
 #include <QUndoCommand>
 #include <QWidgetAction>
 
@@ -315,6 +316,7 @@ namespace Okular
 Part::Part(QObject *parent, const QVariantList &args)
     : KParts::ReadWritePart(parent)
     , m_tempfile(nullptr)
+    , isDocumentArchive(false)
     , m_documentOpenWithPassword(false)
     , m_swapInsteadOfOpening(false)
     , m_tocEnabled(false)
@@ -365,6 +367,19 @@ Part::Part(QObject *parent, const QVariantList &args)
     m_sidebar = new Sidebar(widget());
     setWidget(m_sidebar);
     connect(m_sidebar, &Sidebar::urlsDropped, this, &Part::handleDroppedUrls);
+
+    m_pageLevelEditingToggle = new QAction(QIcon::fromTheme(QStringLiteral("document-edit"), QIcon::fromTheme(QStringLiteral("edit-rename"))), i18n("Enable Page Editing"), this);
+    m_pageLevelEditingToggle->setCheckable(true);
+    m_pageLevelEditingToggle->setToolTip(i18n("Enable page-level editing from the page preview"));
+    m_pageLevelEditingToggle->setWhatsThis(i18n("Enable page-level editing commands such as inserting, deleting, and reordering pages from the page preview."));
+    connect(m_pageLevelEditingToggle, &QAction::toggled, this, &Part::updatePageEditActions);
+
+    auto *pageLevelEditingButton = new QToolButton(m_sidebar);
+    pageLevelEditingButton->setAutoRaise(true);
+    pageLevelEditingButton->setDefaultAction(m_pageLevelEditingToggle);
+    pageLevelEditingButton->setIconSize(QSize(22, 22));
+    pageLevelEditingButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_sidebar->setCornerWidget(pageLevelEditingButton);
 
     // build the document
     m_document = new Okular::Document(widget());
@@ -1670,12 +1685,7 @@ bool Part::openFile()
     if (m_addCurrentPageToContents) {
         m_addCurrentPageToContents->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && m_document->currentDocument().isLocalFile());
     }
-    if (m_insertBlankPageAfterCurrentPage) {
-        m_insertBlankPageAfterCurrentPage->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && !isDocumentArchive && m_document->currentDocument().isLocalFile() && m_document->canInsertBlankPage());
-    }
-    if (m_deleteCurrentPage) {
-        m_deleteCurrentPage->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && !isDocumentArchive && m_document->currentDocument().isLocalFile() && m_document->canDeletePage() && m_document->pages() > 1);
-    }
+    updatePageEditActions();
     Q_EMIT enablePrintAction(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_printPreview->setEnabled(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_showProperties->setEnabled(ok);
@@ -3145,8 +3155,30 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber)
     }
 
     updateViewActions();
+    updatePageEditActions();
     setWindowTitleFromDocument();
     return true;
+}
+
+bool Part::pageLevelEditingEnabled() const
+{
+    return m_pageLevelEditingToggle && m_pageLevelEditingToggle->isChecked();
+}
+
+bool Part::canUsePageLevelEditing() const
+{
+    return pageLevelEditingEnabled() && m_document->isOpened() && url().isLocalFile() && !isDocumentArchive && m_document->currentDocument().isLocalFile();
+}
+
+void Part::updatePageEditActions()
+{
+    const bool canEditPages = canUsePageLevelEditing();
+    if (m_insertBlankPageAfterCurrentPage) {
+        m_insertBlankPageAfterCurrentPage->setEnabled(canEditPages && m_document->canInsertBlankPage());
+    }
+    if (m_deleteCurrentPage) {
+        m_deleteCurrentPage->setEnabled(canEditPages && m_document->canDeletePage() && m_document->pages() > 1);
+    }
 }
 
 void Part::slotInsertBlankPageAfterCurrentPage()
@@ -3156,6 +3188,11 @@ void Part::slotInsertBlankPageAfterCurrentPage()
 
 void Part::insertBlankPageAfterPage(int pageNumber)
 {
+    if (!pageLevelEditingEnabled()) {
+        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
+        return;
+    }
+
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertBlankPage()) {
         KMessageBox::information(widget(), i18n("Blank pages can only be inserted into local PDF files."));
         return;
@@ -3236,6 +3273,11 @@ void Part::slotDeleteCurrentPage()
 
 void Part::deletePage(int pageNumber)
 {
+    if (!pageLevelEditingEnabled()) {
+        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
+        return;
+    }
+
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canDeletePage()) {
         KMessageBox::information(widget(), i18n("Pages can only be deleted from local PDF files."));
         return;
@@ -3548,7 +3590,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         if (m_pageView->canFitPageWidth()) {
             fitPageWidth = popup.addAction(QIcon::fromTheme(QStringLiteral("zoom-fit-best")), i18n("Fit Width"));
         }
-        const bool canEditPages = m_document->isOpened() && url().isLocalFile() && !isDocumentArchive && m_document->currentDocument().isLocalFile();
+        const bool canEditPages = canUsePageLevelEditing();
         bool addedPageEditAction = false;
         if (canEditPages && m_document->canInsertBlankPage()) {
             insertBlankPageAfterPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Blank Page After This Page"));

@@ -130,6 +130,11 @@ void Sidebar::setBottomWidget(QWidget *widget)
     }
 }
 
+void Sidebar::setCornerWidget(QWidget *widget)
+{
+    d->viewChooserTabs->setCornerWidget(widget, Qt::TopRightCorner);
+}
+
 void Sidebar::setCurrentItem(QWidget *widget)
 {
     d->viewChooserTabs->setCurrentWidget(widget);
