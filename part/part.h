@@ -324,6 +324,8 @@ private:
     void resetStartArguments();
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber);
+    void insertBlankPageAfterPage(int pageNumber);
+    void deletePage(int pageNumber);
 
     enum SaveAsFlag {
         NoSaveAsFlags = 0,      ///< No options

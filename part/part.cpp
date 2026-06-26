@@ -3151,8 +3151,19 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber)
 
 void Part::slotInsertBlankPageAfterCurrentPage()
 {
+    insertBlankPageAfterPage(static_cast<int>(m_document->currentPage()));
+}
+
+void Part::insertBlankPageAfterPage(int pageNumber)
+{
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertBlankPage()) {
         KMessageBox::information(widget(), i18n("Blank pages can only be inserted into local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageNumber < 0 || pageNumber >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
         return;
     }
 
@@ -3193,9 +3204,9 @@ void Part::slotInsertBlankPageAfterCurrentPage()
         return;
     }
 
-    const int currentPage = static_cast<int>(m_document->currentPage()) + 1;
+    const int pageNumberOneBased = pageNumber + 1;
     QString errorText;
-    if (!m_document->saveWithBlankPageInsertedAfter(sourceFileName, editedFile->fileName(), currentPage, &errorText)) {
+    if (!m_document->saveWithBlankPageInsertedAfter(sourceFileName, editedFile->fileName(), pageNumberOneBased, &errorText)) {
         if (errorText.isEmpty()) {
             KMessageBox::information(widget(), i18n("Could not insert a blank page."));
         } else {
@@ -3210,15 +3221,20 @@ void Part::slotInsertBlankPageAfterCurrentPage()
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, currentPage - 1, currentPage);
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, pageNumber, pageNumber + 1);
     m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Inserted a blank page after page %1. Save the document to keep this change.", currentPage));
+        m_pageView->displayMessage(i18n("Inserted a blank page after page %1. Save the document to keep this change.", pageNumberOneBased));
     }
 }
 
 void Part::slotDeleteCurrentPage()
+{
+    deletePage(static_cast<int>(m_document->currentPage()));
+}
+
+void Part::deletePage(int pageNumber)
 {
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canDeletePage()) {
         KMessageBox::information(widget(), i18n("Pages can only be deleted from local PDF files."));
@@ -3227,6 +3243,12 @@ void Part::slotDeleteCurrentPage()
 
     if (m_document->pages() <= 1) {
         KMessageBox::information(widget(), i18n("The only page in the document cannot be deleted."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageNumber < 0 || pageNumber >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
         return;
     }
 
@@ -3267,9 +3289,9 @@ void Part::slotDeleteCurrentPage()
         return;
     }
 
-    const int currentPage = static_cast<int>(m_document->currentPage()) + 1;
+    const int pageNumberOneBased = pageNumber + 1;
     QString errorText;
-    if (!m_document->saveWithPageDeleted(sourceFileName, editedFile->fileName(), currentPage, &errorText)) {
+    if (!m_document->saveWithPageDeleted(sourceFileName, editedFile->fileName(), pageNumberOneBased, &errorText)) {
         if (errorText.isEmpty()) {
             KMessageBox::information(widget(), i18n("Could not delete the current page."));
         } else {
@@ -3284,13 +3306,13 @@ void Part::slotDeleteCurrentPage()
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    const int deletedPageIndex = currentPage - 1;
+    const int deletedPageIndex = pageNumber;
     const int pageAfterDeletion = qMin(deletedPageIndex, static_cast<int>(m_document->pages()) - 2);
     auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Delete Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, deletedPageIndex, pageAfterDeletion);
     m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Deleted page %1. Save the document to keep this change.", currentPage));
+        m_pageView->displayMessage(i18n("Deleted page %1. Save the document to keep this change.", pageNumberOneBased));
     }
 }
 
@@ -3505,10 +3527,14 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     const QAction *addBookmark = nullptr;
     const QAction *removeBookmark = nullptr;
     const QAction *fitPageWidth = nullptr;
+    const QAction *insertBlankPageAfterPageAction = nullptr;
+    const QAction *deletePageAction = nullptr;
     const QAction *pasteAnnotation = nullptr;
+    int pageEditTargetPage = -1;
     bool hasPastePoint = false;
     Okular::NormalizedPoint pastePoint;
     if (page) {
+        pageEditTargetPage = page->number();
         popup.addAction(new OKMenuTitle(&popup, i18n("Page %1", page->number() + 1)));
         if (m_thumbnailList->isVisible() && !Okular::Settings::syncThumbnailsViewport()) {
             const QIcon &syncIcon = QIcon::fromTheme(QStringLiteral("emblem-synchronizing"), QIcon::fromTheme(QStringLiteral("view-refresh")));
@@ -3521,6 +3547,19 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         }
         if (m_pageView->canFitPageWidth()) {
             fitPageWidth = popup.addAction(QIcon::fromTheme(QStringLiteral("zoom-fit-best")), i18n("Fit Width"));
+        }
+        const bool canEditPages = m_document->isOpened() && url().isLocalFile() && !isDocumentArchive && m_document->currentDocument().isLocalFile();
+        bool addedPageEditAction = false;
+        if (canEditPages && m_document->canInsertBlankPage()) {
+            insertBlankPageAfterPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Blank Page After This Page"));
+            addedPageEditAction = true;
+        }
+        if (canEditPages && m_document->canDeletePage() && m_document->pages() > 1) {
+            deletePageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("edit-delete")), i18n("Delete This Page"));
+            addedPageEditAction = true;
+        }
+        if (addedPageEditAction) {
+            popup.addSeparator();
         }
         if (m_document->isAllowed(Okular::AllowNotes) && AnnotationPopup::clipboardHasAnnotations()) {
             int targetPageNumber = -1;
@@ -3567,6 +3606,10 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
                 }
             } else if (res == fitPageWidth) {
                 m_pageView->fitPageWidth(page->number());
+            } else if (res == insertBlankPageAfterPageAction) {
+                insertBlankPageAfterPage(pageEditTargetPage);
+            } else if (res == deletePageAction) {
+                deletePage(pageEditTargetPage);
             } else if (res == pasteAnnotation) {
                 AnnotationPopup annotPopup(m_document, AnnotationPopup::SingleAnnotationMode, widget());
                 annotPopup.pasteAnnotationToPage(page->number(), hasPastePoint ? &pastePoint : nullptr);
