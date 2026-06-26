@@ -5011,20 +5011,23 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url)
             // had created with what the new one has without making it look like
             // we have actually closed and opened the file again
 
-            if (newPagesVector.count() == d->m_pagesVector.count()) {
-                // Update the undo stack contents
-                for (int i = 0; i < d->m_undoStack->count(); ++i) {
-                    // Trust me on the const_cast ^_^
-                    QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
-                    if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
-                        const bool success = ouc->refreshInternalPageReferences(newPagesVector);
-                        if (!success) {
-                            qWarning() << "Document::swapBackingFile: refreshInternalPageReferences failed" << ouc;
-                            return false;
-                        }
+            // Update undo commands while both old and new page objects are still alive.
+            // Page-sequence edits may temporarily remove a page that an older command
+            // refers to; those commands keep stable object identifiers and will bind
+            // back when the page-edit command is undone.
+            for (int i = 0; i < d->m_undoStack->count(); ++i) {
+                // Trust me on the const_cast ^_^
+                QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
+                if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
+                    const bool success = ouc->refreshInternalPageReferences(newPagesVector);
+                    if (!success) {
+                        qWarning() << "Document::swapBackingFile: refreshInternalPageReferences failed" << ouc;
+                        return false;
                     }
                 }
+            }
 
+            if (newPagesVector.count() == d->m_pagesVector.count()) {
                 for (int i = 0; i < d->m_pagesVector.count(); ++i) {
                     // switch the PagePrivate* from newPage to oldPage
                     // this way everyone still holding Page* doesn't get

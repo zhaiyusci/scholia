@@ -47,6 +47,7 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     Okular::Annotation *m_annotation;
+    QString m_annotationUniqueName;
     int m_pageNumber;
     bool m_done;
 };
@@ -64,6 +65,7 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     Okular::Annotation *m_annotation;
+    QString m_annotationUniqueName;
     int m_pageNumber;
     bool m_done;
 };
@@ -81,6 +83,7 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     Okular::Annotation *m_annotation;
+    QString m_annotationUniqueName;
     int m_pageNumber;
     QDomNode m_prevProperties;
     QDomNode m_newProperties;
@@ -102,6 +105,7 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     Okular::Annotation *m_annotation;
+    QString m_annotationUniqueName;
     int m_pageNumber;
     Okular::NormalizedPoint m_delta;
     bool m_completeDrag;
@@ -122,6 +126,7 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     Okular::Annotation *m_annotation;
+    QString m_annotationUniqueName;
     int m_pageNumber;
     Okular::NormalizedPoint m_delta1;
     Okular::NormalizedPoint m_delta2;
@@ -175,6 +180,7 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     Okular::Annotation *m_annotation;
+    QString m_annotationUniqueName;
     int m_pageNumber;
 };
 
@@ -192,6 +198,11 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     Okular::FormFieldText *m_form;
+    int m_formType;
+    int m_formId;
+    QString m_formName;
+    QString m_formFullyQualifiedName;
+    Okular::NormalizedRect m_formRect;
     int m_pageNumber;
 };
 
@@ -208,6 +219,11 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     FormFieldChoice *m_form;
+    int m_formType;
+    int m_formId;
+    QString m_formName;
+    QString m_formFullyQualifiedName;
+    Okular::NormalizedRect m_formRect;
     int m_pageNumber;
     QList<int> m_newChoices;
     QList<int> m_prevChoices;
@@ -228,6 +244,11 @@ public:
 private:
     Okular::DocumentPrivate *m_docPriv;
     FormFieldChoice *m_form;
+    int m_formType;
+    int m_formId;
+    QString m_formName;
+    QString m_formFullyQualifiedName;
+    Okular::NormalizedRect m_formRect;
     int m_pageNumber;
     int m_newIndex;
     int m_prevIndex;
@@ -250,6 +271,11 @@ private:
     Okular::DocumentPrivate *m_docPriv;
     int m_pageNumber;
     QList<FormFieldButton *> m_formButtons;
+    QList<int> m_formTypes;
+    QList<int> m_formIds;
+    QList<QString> m_formNames;
+    QList<QString> m_formFullyQualifiedNames;
+    QList<Okular::NormalizedRect> m_formRects;
     QList<int> m_pageNumbers;
     QList<bool> m_newButtonStates;
     QList<bool> m_prevButtonStates;

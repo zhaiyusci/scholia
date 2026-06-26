@@ -53,9 +53,74 @@ Okular::NormalizedRect buildBoundingRectangleForButtons(const QList<Okular::Form
     return boundingRect;
 }
 
+Annotation *findAnnotationByUniqueName(const QList<Page *> &pages, const QString &uniqueName, int *pageNumber)
+{
+    if (uniqueName.isEmpty()) {
+        return nullptr;
+    }
+
+    for (int i = 0; i < pages.size(); ++i) {
+        if (Annotation *annotation = pages[i]->annotation(uniqueName)) {
+            if (pageNumber) {
+                *pageNumber = i;
+            }
+            return annotation;
+        }
+    }
+
+    return nullptr;
+}
+
+FormField *findFormByIdentity(const QList<Page *> &pages, int type, int id, const QString &name, const QString &fullyQualifiedName, const NormalizedRect &rect, int *pageNumber)
+{
+    FormField *typeRectFallback = nullptr;
+    int typeRectFallbackPage = -1;
+
+    for (int i = 0; i < pages.size(); ++i) {
+        const QList<FormField *> forms = pages[i]->formFields();
+        for (FormField *form : forms) {
+            if (static_cast<int>(form->type()) != type) {
+                continue;
+            }
+
+            if (!fullyQualifiedName.isEmpty() && form->fullyQualifiedName() == fullyQualifiedName) {
+                if (pageNumber) {
+                    *pageNumber = i;
+                }
+                return form;
+            }
+
+            if (!name.isEmpty() && form->name() == name && form->id() == id) {
+                if (pageNumber) {
+                    *pageNumber = i;
+                }
+                return form;
+            }
+
+            if (form->id() == id && form->rect() == rect) {
+                if (pageNumber) {
+                    *pageNumber = i;
+                }
+                return form;
+            }
+
+            if (!typeRectFallback && form->rect() == rect) {
+                typeRectFallback = form;
+                typeRectFallbackPage = i;
+            }
+        }
+    }
+
+    if (typeRectFallback && pageNumber) {
+        *pageNumber = typeRectFallbackPage;
+    }
+    return typeRectFallback;
+}
+
 AddAnnotationCommand::AddAnnotationCommand(Okular::DocumentPrivate *docPriv, Okular::Annotation *annotation, int pageNumber)
     : m_docPriv(docPriv)
     , m_annotation(annotation)
+    , m_annotationUniqueName(annotation ? annotation->uniqueName() : QString())
     , m_pageNumber(pageNumber)
     , m_done(false)
 {
@@ -86,11 +151,7 @@ void AddAnnotationCommand::redo()
 bool AddAnnotationCommand::refreshInternalPageReferences(const QList<Okular::Page *> &newPagesVector)
 {
     if (m_done) {
-        // We don't always update m_annotation because even if the annotation has been added to the document
-        // it can have been removed later so the annotation pointer is stored inside a following RemoveAnnotationCommand
-        // and thus doesn't need updating because it didn't change
-        // because of the document reload
-        auto a = newPagesVector[m_pageNumber]->annotation(m_annotation->uniqueName());
+        Annotation *a = findAnnotationByUniqueName(newPagesVector, m_annotationUniqueName, &m_pageNumber);
         if (a) {
             m_annotation = a;
         }
@@ -102,6 +163,7 @@ bool AddAnnotationCommand::refreshInternalPageReferences(const QList<Okular::Pag
 RemoveAnnotationCommand::RemoveAnnotationCommand(Okular::DocumentPrivate *doc, Okular::Annotation *annotation, int pageNumber)
     : m_docPriv(doc)
     , m_annotation(annotation)
+    , m_annotationUniqueName(annotation ? annotation->uniqueName() : QString())
     , m_pageNumber(pageNumber)
     , m_done(false)
 {
@@ -132,11 +194,7 @@ void RemoveAnnotationCommand::redo()
 bool RemoveAnnotationCommand::refreshInternalPageReferences(const QList<Okular::Page *> &newPagesVector)
 {
     if (!m_done) {
-        // We don't always update m_annotation because it can happen that the annotation remove has been undo
-        // and that annotation addition has also been undone so the annotation pointer is stored inside
-        // a previous AddAnnotationCommand and thus doesn't need updating because it didn't change
-        // because of the document reload
-        auto a = newPagesVector[m_pageNumber]->annotation(m_annotation->uniqueName());
+        Annotation *a = findAnnotationByUniqueName(newPagesVector, m_annotationUniqueName, &m_pageNumber);
         if (a) {
             m_annotation = a;
         }
@@ -148,6 +206,7 @@ bool RemoveAnnotationCommand::refreshInternalPageReferences(const QList<Okular::
 ModifyAnnotationPropertiesCommand::ModifyAnnotationPropertiesCommand(DocumentPrivate *docPriv, Annotation *annotation, int pageNumber, const QDomNode &oldProperties, const QDomNode &newProperties)
     : m_docPriv(docPriv)
     , m_annotation(annotation)
+    , m_annotationUniqueName(annotation ? annotation->uniqueName() : QString())
     , m_pageNumber(pageNumber)
     , m_prevProperties(oldProperties)
     , m_newProperties(newProperties)
@@ -171,8 +230,7 @@ void ModifyAnnotationPropertiesCommand::redo()
 
 bool ModifyAnnotationPropertiesCommand::refreshInternalPageReferences(const QList<Okular::Page *> &newPagesVector)
 {
-    // Same reason for not unconditionally updating m_annotation, the annotation pointer can be stored in an add/Remove command
-    auto a = newPagesVector[m_pageNumber]->annotation(m_annotation->uniqueName());
+    Annotation *a = findAnnotationByUniqueName(newPagesVector, m_annotationUniqueName, &m_pageNumber);
     if (a) {
         m_annotation = a;
     }
@@ -183,6 +241,7 @@ bool ModifyAnnotationPropertiesCommand::refreshInternalPageReferences(const QLis
 TranslateAnnotationCommand::TranslateAnnotationCommand(DocumentPrivate *docPriv, Annotation *annotation, int pageNumber, const Okular::NormalizedPoint &delta, bool completeDrag)
     : m_docPriv(docPriv)
     , m_annotation(annotation)
+    , m_annotationUniqueName(annotation ? annotation->uniqueName() : QString())
     , m_pageNumber(pageNumber)
     , m_delta(delta)
     , m_completeDrag(completeDrag)
@@ -243,8 +302,7 @@ Okular::NormalizedRect TranslateAnnotationCommand::translateBoundingRectangle(co
 
 bool TranslateAnnotationCommand::refreshInternalPageReferences(const QList<Page *> &newPagesVector)
 {
-    // Same reason for not unconditionally updating m_annotation, the annotation pointer can be stored in an add/Remove command
-    auto a = newPagesVector[m_pageNumber]->annotation(m_annotation->uniqueName());
+    Annotation *a = findAnnotationByUniqueName(newPagesVector, m_annotationUniqueName, &m_pageNumber);
     if (a) {
         m_annotation = a;
     }
@@ -255,6 +313,7 @@ bool TranslateAnnotationCommand::refreshInternalPageReferences(const QList<Page 
 AdjustAnnotationCommand::AdjustAnnotationCommand(Okular::DocumentPrivate *docPriv, Okular::Annotation *annotation, int pageNumber, const Okular::NormalizedPoint &delta1, const Okular::NormalizedPoint &delta2, bool completeDrag)
     : m_docPriv(docPriv)
     , m_annotation(annotation)
+    , m_annotationUniqueName(annotation ? annotation->uniqueName() : QString())
     , m_pageNumber(pageNumber)
     , m_delta1(delta1)
     , m_delta2(delta2)
@@ -314,8 +373,7 @@ Okular::NormalizedRect AdjustAnnotationCommand::adjustBoundingRectangle(const Ok
 
 bool AdjustAnnotationCommand::refreshInternalPageReferences(const QList<Page *> &newPagesVector)
 {
-    // Same reason for not unconditionally updating m_annotation, the annotation pointer can be stored in an add/Remove command
-    auto a = newPagesVector[m_pageNumber]->annotation(m_annotation->uniqueName());
+    Annotation *a = findAnnotationByUniqueName(newPagesVector, m_annotationUniqueName, &m_pageNumber);
     if (a) {
         m_annotation = a;
     }
@@ -393,6 +451,7 @@ EditAnnotationContentsCommand::EditAnnotationContentsCommand(DocumentPrivate *do
     : EditTextCommand(newContents, newCursorPos, prevContents, prevCursorPos, prevAnchorPos)
     , m_docPriv(docPriv)
     , m_annotation(annotation)
+    , m_annotationUniqueName(annotation ? annotation->uniqueName() : QString())
     , m_pageNumber(pageNumber)
 {
     setText(i18nc("Edit an annotation's text contents", "edit annotation contents"));
@@ -430,7 +489,7 @@ bool EditAnnotationContentsCommand::mergeWith(const QUndoCommand *uc)
 
 bool EditAnnotationContentsCommand::refreshInternalPageReferences(const QList<Page *> &newPagesVector)
 {
-    auto a = newPagesVector[m_pageNumber]->annotation(m_annotation->uniqueName());
+    Annotation *a = findAnnotationByUniqueName(newPagesVector, m_annotationUniqueName, &m_pageNumber);
     if (a) {
         m_annotation = a;
     }
@@ -442,6 +501,11 @@ EditFormTextCommand::EditFormTextCommand(Okular::DocumentPrivate *docPriv, Okula
     : EditTextCommand(newContents, newCursorPos, prevContents, prevCursorPos, prevAnchorPos)
     , m_docPriv(docPriv)
     , m_form(form)
+    , m_formType(form ? static_cast<int>(form->type()) : -1)
+    , m_formId(form ? form->id() : -1)
+    , m_formName(form ? form->name() : QString())
+    , m_formFullyQualifiedName(form ? form->fullyQualifiedName() : QString())
+    , m_formRect(form ? form->rect() : NormalizedRect())
     , m_pageNumber(pageNumber)
 {
     setText(i18nc("Edit an form's text contents", "edit form contents"));
@@ -479,14 +543,22 @@ bool EditFormTextCommand::mergeWith(const QUndoCommand *uc)
 
 bool EditFormTextCommand::refreshInternalPageReferences(const QList<Page *> &newPagesVector)
 {
-    m_form = dynamic_cast<FormFieldText *>(Okular::PagePrivate::findEquivalentForm(newPagesVector[m_pageNumber], m_form));
+    FormField *form = findFormByIdentity(newPagesVector, m_formType, m_formId, m_formName, m_formFullyQualifiedName, m_formRect, &m_pageNumber);
+    if (form) {
+        m_form = dynamic_cast<FormFieldText *>(form);
+    }
 
-    return m_form;
+    return true;
 }
 
 EditFormListCommand::EditFormListCommand(Okular::DocumentPrivate *docPriv, FormFieldChoice *form, int pageNumber, const QList<int> &newChoices, const QList<int> &prevChoices)
     : m_docPriv(docPriv)
     , m_form(form)
+    , m_formType(form ? static_cast<int>(form->type()) : -1)
+    , m_formId(form ? form->id() : -1)
+    , m_formName(form ? form->name() : QString())
+    , m_formFullyQualifiedName(form ? form->fullyQualifiedName() : QString())
+    , m_formRect(form ? form->rect() : NormalizedRect())
     , m_pageNumber(pageNumber)
     , m_newChoices(newChoices)
     , m_prevChoices(prevChoices)
@@ -512,15 +584,23 @@ void EditFormListCommand::redo()
 
 bool EditFormListCommand::refreshInternalPageReferences(const QList<Page *> &newPagesVector)
 {
-    m_form = dynamic_cast<FormFieldChoice *>(Okular::PagePrivate::findEquivalentForm(newPagesVector[m_pageNumber], m_form));
+    FormField *form = findFormByIdentity(newPagesVector, m_formType, m_formId, m_formName, m_formFullyQualifiedName, m_formRect, &m_pageNumber);
+    if (form) {
+        m_form = dynamic_cast<FormFieldChoice *>(form);
+    }
 
-    return m_form;
+    return true;
 }
 
 EditFormComboCommand::EditFormComboCommand(Okular::DocumentPrivate *docPriv, FormFieldChoice *form, int pageNumber, const QString &newContents, int newCursorPos, const QString &prevContents, int prevCursorPos, int prevAnchorPos)
     : EditTextCommand(newContents, newCursorPos, prevContents, prevCursorPos, prevAnchorPos)
     , m_docPriv(docPriv)
     , m_form(form)
+    , m_formType(form ? static_cast<int>(form->type()) : -1)
+    , m_formId(form ? form->id() : -1)
+    , m_formName(form ? form->name() : QString())
+    , m_formFullyQualifiedName(form ? form->fullyQualifiedName() : QString())
+    , m_formRect(form ? form->rect() : NormalizedRect())
     , m_pageNumber(pageNumber)
     , m_newIndex(-1)
     , m_prevIndex(-1)
@@ -583,9 +663,12 @@ bool EditFormComboCommand::mergeWith(const QUndoCommand *uc)
 
 bool EditFormComboCommand::refreshInternalPageReferences(const QList<Page *> &newPagesVector)
 {
-    m_form = dynamic_cast<FormFieldChoice *>(Okular::PagePrivate::findEquivalentForm(newPagesVector[m_pageNumber], m_form));
+    FormField *form = findFormByIdentity(newPagesVector, m_formType, m_formId, m_formName, m_formFullyQualifiedName, m_formRect, &m_pageNumber);
+    if (form) {
+        m_form = dynamic_cast<FormFieldChoice *>(form);
+    }
 
-    return m_form;
+    return true;
 }
 
 EditFormButtonsCommand::EditFormButtonsCommand(Okular::DocumentPrivate *docPriv, int pageNumber, const QList<FormFieldButton *> &formButtons, const QList<bool> &newButtonStates)
@@ -597,6 +680,11 @@ EditFormButtonsCommand::EditFormButtonsCommand(Okular::DocumentPrivate *docPriv,
 {
     setText(i18nc("Edit the state of a group of form buttons", "edit form button states"));
     for (const FormFieldButton *formButton : std::as_const(m_formButtons)) {
+        m_formTypes.append(static_cast<int>(formButton->type()));
+        m_formIds.append(formButton->id());
+        m_formNames.append(formButton->name());
+        m_formFullyQualifiedNames.append(formButton->fullyQualifiedName());
+        m_formRects.append(formButton->rect());
         m_prevButtonStates.append(formButton->state());
         m_pageNumbers.append(formButton->page()->number());
     }
@@ -650,14 +738,15 @@ void EditFormButtonsCommand::redo()
 
 bool EditFormButtonsCommand::refreshInternalPageReferences(const QList<Okular::Page *> &newPagesVector)
 {
-    const QList<FormFieldButton *> oldFormButtons = m_formButtons;
     m_formButtons.clear();
-    for (int i = 0; i < oldFormButtons.size(); i++) {
-        FormFieldButton *button = dynamic_cast<FormFieldButton *>(Okular::PagePrivate::findEquivalentForm(newPagesVector[m_pageNumbers[i]], oldFormButtons[i]));
-        if (!button) {
-            return false;
+    for (int i = 0; i < m_formIds.size(); i++) {
+        int pageNumber = m_pageNumbers.value(i, -1);
+        FormField *form = findFormByIdentity(newPagesVector, m_formTypes.at(i), m_formIds.at(i), m_formNames.at(i), m_formFullyQualifiedNames.at(i), m_formRects.at(i), &pageNumber);
+        FormFieldButton *button = dynamic_cast<FormFieldButton *>(form);
+        if (button) {
+            m_formButtons << button;
+            m_pageNumbers[i] = pageNumber;
         }
-        m_formButtons << button;
     }
 
     return true;

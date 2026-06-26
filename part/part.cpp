@@ -3211,10 +3211,6 @@ void Part::slotInsertBlankPageAfterCurrentPage()
 
     const QString editedFileName = editedFile->fileName();
     auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, currentPage - 1, currentPage);
-    m_document->clearHistory();
-    if (wasModified) {
-        m_document->setHistoryClean(false);
-    }
     m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
@@ -3291,10 +3287,6 @@ void Part::slotDeleteCurrentPage()
     const int deletedPageIndex = currentPage - 1;
     const int pageAfterDeletion = qMin(deletedPageIndex, static_cast<int>(m_document->pages()) - 2);
     auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Delete Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, deletedPageIndex, pageAfterDeletion);
-    m_document->clearHistory();
-    if (wasModified) {
-        m_document->setHistoryClean(false);
-    }
     m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
