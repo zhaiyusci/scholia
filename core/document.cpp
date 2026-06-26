@@ -5135,6 +5135,25 @@ bool Document::saveWithBlankPageInsertedAfter(const QString &sourceFileName, con
     return pageInsertion->saveWithBlankPageInsertedAfter(sourceFileName, outputFileName, pageNumber, errorText);
 }
 
+bool Document::canDeletePage() const
+{
+    const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    return pageInsertion && pageInsertion->canDeletePage();
+}
+
+bool Document::saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            *errorText = QString();
+        }
+        return false;
+    }
+
+    return pageInsertion->saveWithPageDeleted(sourceFileName, outputFileName, pageNumber, errorText);
+}
+
 void Document::setHistoryClean(bool clean)
 {
     if (clean) {

@@ -13,6 +13,7 @@
   </Menu-->
   <Menu name="tools" >
    <Action name="shell_insert_blank_page_after_current" />
+   <Action name="shell_delete_current_page" />
   </Menu>
   <Menu name="settings" >
    <DefineGroup append="show_merge" name="show_merge" />

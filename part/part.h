@@ -154,6 +154,7 @@ public:
     bool openNewFilesInTabs() const override;
     QWidget *getSideContainer() const override;
     void insertBlankPageAfterCurrentPage() override;
+    void deleteCurrentPage() override;
     Q_INVOKABLE bool activateTabIfAlreadyOpenFile() const;
 
     void setModified(bool modified) override;
@@ -449,6 +450,7 @@ private:
     QAction *m_reload;
     QAction *m_addCurrentPageToContents = nullptr;
     QAction *m_insertBlankPageAfterCurrentPage = nullptr;
+    QAction *m_deleteCurrentPage = nullptr;
     QMenu *m_exportAsMenu;
 #if HAVE_PURPOSE
     Purpose::Menu *m_shareMenu;
@@ -492,6 +494,7 @@ private:
 
 private Q_SLOTS:
     void slotInsertBlankPageAfterCurrentPage();
+    void slotDeleteCurrentPage();
     void slotAccessibilityPreferences();
     void slotAnnotationPreferences();
     void slotHandleActivatedSourceReference(const QString &absFileName, int line, int col, bool *handled);

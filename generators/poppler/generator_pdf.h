@@ -104,6 +104,8 @@ public:
     Okular::AnnotationProxy *annotationProxy() const override;
     bool canInsertBlankPage() const override;
     bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
+    bool canDeletePage() const override;
+    bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
 
     bool canSign() const override;
     std::pair<Okular::SigningResult, QString> sign(const Okular::NewSignatureData &oData, const QString &rFilename) override;

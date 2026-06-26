@@ -118,6 +118,7 @@ public:
     PageEditingInterface &operator=(const PageEditingInterface &) = delete;
 
     virtual void insertBlankPageAfterCurrentPage() = 0;
+    virtual void deleteCurrentPage() = 0;
 };
 
 }

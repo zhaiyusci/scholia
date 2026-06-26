@@ -2298,6 +2298,27 @@ bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName,
     return false;
 }
 
+bool PDFGenerator::canDeletePage() const
+{
+    return true;
+}
+
+bool PDFGenerator::saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText)
+{
+    const ScholiaPdfPages::Result result = ScholiaPdfPages::deletePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber);
+    if (result.ok()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    if (errorText) {
+        *errorText = QString::fromStdString(result.message);
+    }
+    return false;
+}
+
 Okular::AnnotationProxy *PDFGenerator::annotationProxy() const
 {
     return annotProxy;

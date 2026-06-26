@@ -957,6 +957,18 @@ public:
     bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText);
 
     /**
+     * Returns whether the current document backend can write a copy with a page
+     * removed.
+     */
+    bool canDeletePage() const;
+
+    /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with page
+     * @p pageNumber removed. @p pageNumber is 1-based.
+     */
+    bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText);
+
+    /**
      * Sets the history to be clean
      *
      * @since 1.3

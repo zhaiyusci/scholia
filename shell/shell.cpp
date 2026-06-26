@@ -578,6 +578,10 @@ void Shell::setupActions()
     m_insertBlankPageAfterCurrentPageAction->setText(i18n("Insert Blank Page After Current Page"));
     m_insertBlankPageAfterCurrentPageAction->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
     connect(m_insertBlankPageAfterCurrentPageAction, &QAction::triggered, this, &Shell::insertBlankPageAfterCurrentPage);
+    m_deleteCurrentPageAction = actionCollection()->addAction(QStringLiteral("shell_delete_current_page"));
+    m_deleteCurrentPageAction->setText(i18n("Delete Current Page"));
+    m_deleteCurrentPageAction->setIcon(QIcon::fromTheme(QStringLiteral("edit-delete")));
+    connect(m_deleteCurrentPageAction, &QAction::triggered, this, &Shell::deleteCurrentPage);
     KStandardAction::quit(this, SLOT(close()), actionCollection());
 
     setStandardToolBarMenuEnabled(true);
@@ -1092,6 +1096,20 @@ void Shell::insertBlankPageAfterCurrentPage()
     const bool invoked = part && QMetaObject::invokeMethod(part, "slotInsertBlankPageAfterCurrentPage", Qt::DirectConnection);
     if (!invoked) {
         KMessageBox::information(this, i18n("Blank page insertion is not available in the current viewer."));
+        return;
+    }
+}
+
+void Shell::deleteCurrentPage()
+{
+    if (m_tabs.isEmpty()) {
+        return;
+    }
+
+    KParts::ReadWritePart *const part = m_tabs[m_tabWidget->currentIndex()].part;
+    const bool invoked = part && QMetaObject::invokeMethod(part, "slotDeleteCurrentPage", Qt::DirectConnection);
+    if (!invoked) {
+        KMessageBox::information(this, i18n("Page deletion is not available in the current viewer."));
         return;
     }
 }

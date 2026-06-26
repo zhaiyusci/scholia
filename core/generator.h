@@ -185,6 +185,18 @@ public:
      * insert before the first page.
      */
     virtual bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) = 0;
+
+    /**
+     * Returns whether this generator can write a copy of the document with a
+     * page removed.
+     */
+    virtual bool canDeletePage() const = 0;
+
+    /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with page
+     * @p pageNumber removed. @p pageNumber is 1-based.
+     */
+    virtual bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) = 0;
 };
 
 /**

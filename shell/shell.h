@@ -113,6 +113,7 @@ private Q_SLOTS:
     void closeUrl();
     void print();
     void insertBlankPageAfterCurrentPage();
+    void deleteCurrentPage();
     void setPrintEnabled(bool enabled);
     void setCloseEnabled(bool enabled);
     void setTabIcon(const QMimeType &mimeType);
@@ -174,6 +175,7 @@ private:
     QAction *m_printAction;
     QAction *m_closeAction;
     QAction *m_insertBlankPageAfterCurrentPageAction = nullptr;
+    QAction *m_deleteCurrentPageAction = nullptr;
     KToggleAction *m_fullScreenAction;
     KToggleAction *m_showMenuBarAction;
     bool m_menuBarWasShown, m_toolBarWasShown;

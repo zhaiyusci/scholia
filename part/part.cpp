@@ -832,6 +832,12 @@ void Part::setupViewerActions()
     m_insertBlankPageAfterCurrentPage->setEnabled(false);
     connect(m_insertBlankPageAfterCurrentPage, &QAction::triggered, this, &Part::slotInsertBlankPageAfterCurrentPage);
 
+    m_deleteCurrentPage = ac->addAction(QStringLiteral("tools_delete_current_page"));
+    m_deleteCurrentPage->setText(i18n("Delete Current Page"));
+    m_deleteCurrentPage->setIcon(QIcon::fromTheme(QStringLiteral("edit-delete")));
+    m_deleteCurrentPage->setEnabled(false);
+    connect(m_deleteCurrentPage, &QAction::triggered, this, &Part::slotDeleteCurrentPage);
+
     m_closeFindBar = ac->addAction(QStringLiteral("close_find_bar"), this, SLOT(slotHideFindBar()));
     m_closeFindBar->setText(i18n("Close &Find Bar"));
     ac->setDefaultShortcut(m_closeFindBar, QKeySequence(Qt::Key_Escape));
@@ -1153,6 +1159,11 @@ QWidget *Part::getSideContainer() const
 void Part::insertBlankPageAfterCurrentPage()
 {
     slotInsertBlankPageAfterCurrentPage();
+}
+
+void Part::deleteCurrentPage()
+{
+    slotDeleteCurrentPage();
 }
 
 bool Part::activateTabIfAlreadyOpenFile() const
@@ -1662,6 +1673,9 @@ bool Part::openFile()
     if (m_insertBlankPageAfterCurrentPage) {
         m_insertBlankPageAfterCurrentPage->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && !isDocumentArchive && m_document->currentDocument().isLocalFile() && m_document->canInsertBlankPage());
     }
+    if (m_deleteCurrentPage) {
+        m_deleteCurrentPage->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && !isDocumentArchive && m_document->currentDocument().isLocalFile() && m_document->canDeletePage() && m_document->pages() > 1);
+    }
     Q_EMIT enablePrintAction(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_printPreview->setEnabled(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_showProperties->setEnabled(ok);
@@ -1986,6 +2000,9 @@ bool Part::closeUrl(bool promptToSave)
     }
     if (m_insertBlankPageAfterCurrentPage) {
         m_insertBlankPageAfterCurrentPage->setEnabled(false);
+    }
+    if (m_deleteCurrentPage) {
+        m_deleteCurrentPage->setEnabled(false);
     }
     m_printPreview->setEnabled(false);
     m_showProperties->setEnabled(false);
@@ -2734,13 +2751,14 @@ class PageBackingFileCommand : public QUndoCommand
 {
 public:
     PageBackingFileCommand(Part *part,
+                           const QString &text,
                            std::unique_ptr<QTemporaryFile> beforeTempFile,
                            const QString &beforeFileName,
                            std::unique_ptr<QTemporaryFile> afterTempFile,
                            const QString &afterFileName,
                            int beforePage,
                            int afterPage)
-        : QUndoCommand(i18nc("Undo action", "Insert Blank Page"))
+        : QUndoCommand(text)
         , m_part(part)
         , m_beforeTempFile(std::move(beforeTempFile))
         , m_afterTempFile(std::move(afterTempFile))
@@ -3192,7 +3210,7 @@ void Part::slotInsertBlankPageAfterCurrentPage()
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this, std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, currentPage - 1, currentPage);
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, currentPage - 1, currentPage);
     m_document->clearHistory();
     if (wasModified) {
         m_document->setHistoryClean(false);
@@ -3201,6 +3219,86 @@ void Part::slotInsertBlankPageAfterCurrentPage()
 
     if (m_pageView) {
         m_pageView->displayMessage(i18n("Inserted a blank page after page %1. Save the document to keep this change.", currentPage));
+    }
+}
+
+void Part::slotDeleteCurrentPage()
+{
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canDeletePage()) {
+        KMessageBox::information(widget(), i18n("Pages can only be deleted from local PDF files."));
+        return;
+    }
+
+    if (m_document->pages() <= 1) {
+        KMessageBox::information(widget(), i18n("The only page in the document cannot be deleted."));
+        return;
+    }
+
+    const QUrl documentUrl = url();
+    const QString backingFileName = localFilePath();
+    const QFileInfo backingInfo(backingFileName);
+    if (backingFileName.isEmpty() || !backingInfo.exists()) {
+        KMessageBox::information(widget(), i18n("The current PDF file could not be found on disk."));
+        return;
+    }
+
+    const bool wasModified = isModified();
+    std::unique_ptr<QTemporaryFile> savedSourceFile;
+    QString sourceFileName = backingFileName;
+    if (wasModified) {
+        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-delete-source")));
+        if (!savedSourceFile) {
+            KMessageBox::information(widget(), i18n("Could not create a temporary file for page deletion."));
+            return;
+        }
+
+        QString errorText;
+        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
+            if (errorText.isEmpty()) {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page deletion."));
+            } else {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page deletion. %1", errorText));
+            }
+            return;
+        }
+
+        sourceFileName = savedSourceFile->fileName();
+    }
+
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-delete-output")));
+    if (!editedFile) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page deletion."));
+        return;
+    }
+
+    const int currentPage = static_cast<int>(m_document->currentPage()) + 1;
+    QString errorText;
+    if (!m_document->saveWithPageDeleted(sourceFileName, editedFile->fileName(), currentPage, &errorText)) {
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not delete the current page."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not delete the current page. %1", errorText));
+        }
+        return;
+    }
+
+    setUrl(documentUrl);
+    KParts::OpenUrlArguments args = arguments();
+    args.setMimeType(QStringLiteral("application/pdf"));
+    setArguments(args);
+
+    const QString editedFileName = editedFile->fileName();
+    const int deletedPageIndex = currentPage - 1;
+    const int pageAfterDeletion = qMin(deletedPageIndex, static_cast<int>(m_document->pages()) - 2);
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Delete Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, deletedPageIndex, pageAfterDeletion);
+    m_document->clearHistory();
+    if (wasModified) {
+        m_document->setHistoryClean(false);
+    }
+    m_document->pushUndoCommand(command.release());
+
+    if (m_pageView) {
+        m_pageView->displayMessage(i18n("Deleted page %1. Save the document to keep this change.", currentPage));
     }
 }
 
@@ -3612,6 +3710,7 @@ void Part::slotUpdateHamburgerMenu()
     menu->addSeparator();
     menu->addAction(ac->action(QStringLiteral("add_digital_signature")));
     menu->addAction(ac->action(QStringLiteral("tools_insert_blank_page_after_current")));
+    menu->addAction(ac->action(QStringLiteral("tools_delete_current_page")));
     menu->addAction(m_showProperties);
     menu->addAction(m_openContainingFolder);
 #if HAVE_PURPOSE
