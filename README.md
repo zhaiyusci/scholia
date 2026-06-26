@@ -48,6 +48,9 @@ research-note workflows. The main differences are:
   * adds a submodule for `external/poppler`;
   * see `README.local-components.md` for initialization and local build notes.
 
+See `docs/latex-native-slides-vision.md` for the longer-term direction of
+Scholia as a PDF-centered, LaTeX-native slide editor.
+
 ## LaTeX Annotation PDF Structure
 
 This fork treats LaTeX as a rendering/editing property on top of standard PDF
