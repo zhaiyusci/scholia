@@ -928,7 +928,7 @@ public:
      *
      * @since 1.3
      */
-    bool swapBackingFile(const QString &newFileName, const QUrl &url);
+    bool swapBackingFile(const QString &newFileName, const QUrl &url, bool forcePageTopologyChanged = false);
 
     /**
      * Same as swapBackingFile, but newFileName must be a .okular file.

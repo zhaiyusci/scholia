@@ -323,7 +323,7 @@ private:
     void slotRemoveBookmark(const DocumentViewport &viewport);
     void resetStartArguments();
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
-    bool applyPageEditBackingFile(const QString &fileName, int pageNumber);
+    bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false);
     bool pageLevelEditingEnabled() const;
     bool canUsePageLevelEditing() const;
     void updatePageEditActions();

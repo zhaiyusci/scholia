@@ -4982,7 +4982,7 @@ bool Document::canSwapBackingFile() const
     return d->m_generator->hasFeature(Generator::SwapBackingFile);
 }
 
-bool Document::swapBackingFile(const QString &newFileName, const QUrl &url)
+bool Document::swapBackingFile(const QString &newFileName, const QUrl &url, bool forcePageTopologyChanged)
 {
     if (!d->m_generator) {
         return false;
@@ -5004,7 +5004,7 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url)
         QList<ObjectRect *> rectsToDelete;
         QList<Annotation *> annotationsToDelete;
         QSet<PagePrivate *> pagePrivatesToDelete;
-        bool pageTopologyChanged = false;
+        bool pageTopologyChanged = forcePageTopologyChanged;
 
         if (result == Generator::SwapBackingFileReloadInternalData) {
             // Here we need to replace everything that the old generator
@@ -5027,7 +5027,7 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url)
                 }
             }
 
-            if (newPagesVector.count() == d->m_pagesVector.count()) {
+            if (newPagesVector.count() == d->m_pagesVector.count() && !pageTopologyChanged) {
                 for (int i = 0; i < d->m_pagesVector.count(); ++i) {
                     // switch the PagePrivate* from newPage to oldPage
                     // this way everyone still holding Page* doesn't get

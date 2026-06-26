@@ -2832,7 +2832,8 @@ public:
                            std::unique_ptr<QTemporaryFile> afterTempFile,
                            const QString &afterFileName,
                            int beforePage,
-                           int afterPage)
+                           int afterPage,
+                           bool forcePageTopologyChanged = false)
         : QUndoCommand(text)
         , m_part(part)
         , m_beforeTempFile(std::move(beforeTempFile))
@@ -2841,20 +2842,21 @@ public:
         , m_afterFileName(afterFileName)
         , m_beforePage(beforePage)
         , m_afterPage(afterPage)
+        , m_forcePageTopologyChanged(forcePageTopologyChanged)
     {
     }
 
     void undo() override
     {
         if (m_part) {
-            m_part->applyPageEditBackingFile(m_beforeFileName, m_beforePage);
+            m_part->applyPageEditBackingFile(m_beforeFileName, m_beforePage, m_forcePageTopologyChanged);
         }
     }
 
     void redo() override
     {
         if (m_part) {
-            m_part->applyPageEditBackingFile(m_afterFileName, m_afterPage);
+            m_part->applyPageEditBackingFile(m_afterFileName, m_afterPage, m_forcePageTopologyChanged);
         }
     }
 
@@ -2866,6 +2868,7 @@ private:
     QString m_afterFileName;
     int m_beforePage = 0;
     int m_afterPage = 0;
+    bool m_forcePageTopologyChanged = false;
 };
 
 bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
@@ -3192,7 +3195,7 @@ bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
     return true;
 }
 
-bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber)
+bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged)
 {
     if (fileName.isEmpty() || !QFileInfo::exists(fileName)) {
         return false;
@@ -3200,7 +3203,7 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber)
 
     const QString previousLocalFilePath = localFilePath();
     setLocalFilePath(fileName);
-    if (!m_document->swapBackingFile(fileName, url())) {
+    if (!m_document->swapBackingFile(fileName, url(), forcePageTopologyChanged)) {
         setLocalFilePath(previousLocalFilePath);
         return false;
     }
@@ -3510,7 +3513,7 @@ void Part::movePageTo(int sourcePage, int destinationPage)
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Move Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, sourcePage, destinationPage);
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Move Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, sourcePage, destinationPage, true);
     m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
