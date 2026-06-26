@@ -60,6 +60,8 @@
 #include <QTimer>
 #include <QWidgetAction>
 
+#include <memory>
+
 #include <KAboutPluginDialog>
 #include <KActionCollection>
 #include <KActionMenu>
@@ -2715,27 +2717,16 @@ static QUrl resolveSymlinksIfFileExists(const QUrl &saveUrl)
     }
 }
 
-static QString createClosedTemporaryPdf(const QString &prefix)
+static QTemporaryFile *createClosedTemporaryPdfFile(const QString &prefix, bool autoRemove = true)
 {
-    QTemporaryFile temporaryFile(QDir::tempPath() + QLatin1Char('/') + prefix + QLatin1String("-XXXXXX.pdf"));
-    temporaryFile.setAutoRemove(false);
-    if (!temporaryFile.open()) {
-        return QString();
+    auto temporaryFile = std::make_unique<QTemporaryFile>(QDir::tempPath() + QLatin1Char('/') + prefix + QLatin1String("-XXXXXX.pdf"));
+    temporaryFile->setAutoRemove(autoRemove);
+    if (!temporaryFile->open()) {
+        return nullptr;
     }
 
-    const QString fileName = temporaryFile.fileName();
-    temporaryFile.close();
-    return fileName;
-}
-
-static QString unusedSiblingFileName(const QString &baseFileName, const QString &suffix)
-{
-    QString fileName = baseFileName + suffix;
-    int index = 1;
-    while (QFile::exists(fileName)) {
-        fileName = baseFileName + suffix + QLatin1Char('.') + QString::number(index++);
-    }
-    return fileName;
+    temporaryFile->close();
+    return temporaryFile.release();
 }
 
 bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
@@ -3069,42 +3060,45 @@ void Part::slotInsertBlankPageAfterCurrentPage()
         return;
     }
 
-    if (isModified() && !saveFile()) {
-        return;
-    }
-
     const QUrl documentUrl = url();
-    const QString targetFileName = localFilePath();
-    const QFileInfo targetInfo(targetFileName);
-    if (targetFileName.isEmpty() || !targetInfo.exists()) {
+    const QString backingFileName = localFilePath();
+    const QFileInfo backingInfo(backingFileName);
+    if (backingFileName.isEmpty() || !backingInfo.exists()) {
         KMessageBox::information(widget(), i18n("The current PDF file could not be found on disk."));
         return;
     }
-    if (!targetInfo.isWritable()) {
-        KMessageBox::information(widget(), xi18nc("@info", "Could not insert a blank page into <filename>%1</filename> because that file is read-only.", targetFileName));
-        return;
+
+    std::unique_ptr<QTemporaryFile> savedSourceFile;
+    QString sourceFileName = backingFileName;
+    if (isModified()) {
+        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-source")));
+        if (!savedSourceFile) {
+            KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
+            return;
+        }
+
+        QString errorText;
+        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
+            if (errorText.isEmpty()) {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion."));
+            } else {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion. %1", errorText));
+            }
+            return;
+        }
+
+        sourceFileName = savedSourceFile->fileName();
     }
 
-    QString sourceFileName = targetFileName;
-    QString temporaryOutputFileName;
-
-    const auto cleanupTemporaryFiles = [&temporaryOutputFileName] {
-        if (!temporaryOutputFileName.isEmpty()) {
-            QFile::remove(temporaryOutputFileName);
-        }
-    };
-
-    temporaryOutputFileName = createClosedTemporaryPdf(QStringLiteral("scholia-page-insert-output"));
-    if (temporaryOutputFileName.isEmpty()) {
-        cleanupTemporaryFiles();
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-output")));
+    if (!editedFile) {
         KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
         return;
     }
 
     const int currentPage = static_cast<int>(m_document->currentPage()) + 1;
     QString errorText;
-    if (!m_document->saveWithBlankPageInsertedAfter(sourceFileName, temporaryOutputFileName, currentPage, &errorText)) {
-        cleanupTemporaryFiles();
+    if (!m_document->saveWithBlankPageInsertedAfter(sourceFileName, editedFile->fileName(), currentPage, &errorText)) {
         if (errorText.isEmpty()) {
             KMessageBox::information(widget(), i18n("Could not insert a blank page."));
         } else {
@@ -3113,47 +3107,38 @@ void Part::slotInsertBlankPageAfterCurrentPage()
         return;
     }
 
-    QUrl reopenUrl = documentUrl;
-    reopenUrl.setFragment(QStringLiteral("page=%1").arg(currentPage + 1));
-
-    const QFile::Permissions originalPermissions = QFile::permissions(targetFileName);
-    const QString backupFileName = unusedSiblingFileName(targetFileName, QStringLiteral(".scholia-page-insert-backup"));
-
     if (!closeUrl(false)) {
-        cleanupTemporaryFiles();
-        KMessageBox::information(widget(), i18n("Could not close the current document before replacing it."));
+        KMessageBox::information(widget(), i18n("Could not close the current document before applying page insertion."));
         return;
     }
 
-    QString replaceError;
-    bool replacedFile = false;
-    if (!QFile::rename(targetFileName, backupFileName)) {
-        replaceError = i18n("Could not move the original PDF aside.");
-    } else if (!QFile::copy(temporaryOutputFileName, targetFileName)) {
-        replaceError = i18n("Could not copy the edited PDF over the original file.");
-        QFile::remove(targetFileName);
-        QFile::rename(backupFileName, targetFileName);
-    } else {
-        QFile::setPermissions(targetFileName, originalPermissions);
-        QFile::remove(backupFileName);
-        replacedFile = true;
-    }
+    setUrl(documentUrl);
+    setLocalFilePath(editedFile->fileName());
+    KParts::OpenUrlArguments args = arguments();
+    args.setMimeType(QStringLiteral("application/pdf"));
+    setArguments(args);
+    Okular::DocumentViewport insertedPageViewport(currentPage);
+    insertedPageViewport.rePos.enabled = true;
+    insertedPageViewport.rePos.normalizedX = 0;
+    insertedPageViewport.rePos.normalizedY = 0;
+    insertedPageViewport.rePos.pos = Okular::DocumentViewport::TopLeft;
+    m_document->setNextDocumentViewport(insertedPageViewport);
 
-    cleanupTemporaryFiles();
-
-    if (!replacedFile) {
-        openUrl(documentUrl);
-        KMessageBox::information(widget(), replaceError);
+    if (!openFile()) {
+        setUrl(QUrl());
+        setLocalFilePath(QString());
+        KMessageBox::information(widget(), i18n("The blank page was inserted into a temporary document, but the document could not be reopened."));
         return;
     }
 
-    if (!openUrl(reopenUrl)) {
-        KMessageBox::information(widget(), i18n("The blank page was inserted, but the document could not be reopened."));
-        return;
-    }
+    delete m_tempfile;
+    m_tempfile = editedFile.release();
+    m_document->setHistoryClean(false);
+    setModified(true);
+    setWindowTitleFromDocument();
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Inserted a blank page after page %1.", currentPage));
+        m_pageView->displayMessage(i18n("Inserted a blank page after page %1. Save the document to keep this change.", currentPage));
     }
 }
 
