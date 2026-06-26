@@ -797,11 +797,7 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
         return;
     }
 
-    const QRect r = item->visibleRect();
-    const int margin = ThumbnailWidget::margin();
-    const QPoint p = e->pos() - item->pos();
-
-    if (m_pageEditingEnabled && e->button() == Qt::LeftButton && r.contains(p - QPoint(margin / 2, margin / 2))) {
+    if (m_pageEditingEnabled && e->button() == Qt::LeftButton) {
         m_pageMovePressPos = e->pos();
         m_pageMoveSource = item->pageNumber();
         m_pageMoveTarget = -1;
@@ -812,6 +808,10 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
         setCursor(Qt::ClosedHandCursor);
         return;
     }
+
+    const QRect r = item->visibleRect();
+    const int margin = ThumbnailWidget::margin();
+    const QPoint p = e->pos() - item->pos();
 
     if (e->button() != Qt::RightButton && r.contains(p - QPoint(margin / 2, margin / 2))) {
         m_mouseGrabPos.setX(0);
