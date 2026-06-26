@@ -3962,6 +3962,11 @@ void Document::redo()
     d->m_undoStack->redo();
 }
 
+void Document::pushUndoCommand(QUndoCommand *command)
+{
+    d->m_undoStack->push(command);
+}
+
 void Document::editFormText(int pageNumber, Okular::FormFieldText *form, const QString &newContents, int newCursorPos, int prevCursorPos, int prevAnchorPos)
 {
     QUndoCommand *uc = new EditFormTextCommand(this->d, form, pageNumber, newContents, newCursorPos, form->text(), prevCursorPos, prevAnchorPos);
@@ -4999,54 +5004,67 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url)
         QList<ObjectRect *> rectsToDelete;
         QList<Annotation *> annotationsToDelete;
         QSet<PagePrivate *> pagePrivatesToDelete;
+        bool pageTopologyChanged = false;
 
         if (result == Generator::SwapBackingFileReloadInternalData) {
             // Here we need to replace everything that the old generator
             // had created with what the new one has without making it look like
             // we have actually closed and opened the file again
 
-            // Simple sanity check
-            if (newPagesVector.count() != d->m_pagesVector.count()) {
-                return false;
-            }
-
-            // Update the undo stack contents
-            for (int i = 0; i < d->m_undoStack->count(); ++i) {
-                // Trust me on the const_cast ^_^
-                QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
-                if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
-                    const bool success = ouc->refreshInternalPageReferences(newPagesVector);
-                    if (!success) {
-                        qWarning() << "Document::swapBackingFile: refreshInternalPageReferences failed" << ouc;
-                        return false;
+            if (newPagesVector.count() == d->m_pagesVector.count()) {
+                // Update the undo stack contents
+                for (int i = 0; i < d->m_undoStack->count(); ++i) {
+                    // Trust me on the const_cast ^_^
+                    QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
+                    if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
+                        const bool success = ouc->refreshInternalPageReferences(newPagesVector);
+                        if (!success) {
+                            qWarning() << "Document::swapBackingFile: refreshInternalPageReferences failed" << ouc;
+                            return false;
+                        }
                     }
-                } else {
-                    qWarning() << "Document::swapBackingFile: Unhandled undo command" << uc;
-                    return false;
+                }
+
+                for (int i = 0; i < d->m_pagesVector.count(); ++i) {
+                    // switch the PagePrivate* from newPage to oldPage
+                    // this way everyone still holding Page* doesn't get
+                    // disturbed by it
+                    Page *oldPage = d->m_pagesVector[i];
+                    Page *newPage = newPagesVector[i];
+                    newPage->d->adoptGeneratedContents(oldPage->d);
+
+                    pagePrivatesToDelete << oldPage->d;
+                    oldPage->d = newPage->d;
+                    oldPage->d->m_page = oldPage;
+                    oldPage->d->m_doc = d;
+                    newPage->d = nullptr;
+
+                    annotationsToDelete << oldPage->m_annotations;
+                    rectsToDelete << oldPage->m_rects;
+                    oldPage->m_annotations = newPage->m_annotations;
+                    oldPage->m_rects = newPage->m_rects;
+                }
+                qDeleteAll(newPagesVector);
+                newPagesVector.clear();
+            } else {
+                pageTopologyChanged = true;
+                foreachObserver(notifySetup({}, DocumentObserver::DocumentChanged));
+
+                qDeleteAll(d->m_allocatedPixmaps);
+                d->m_allocatedPixmaps.clear();
+                d->m_allocatedPixmapsTotalMemory = 0;
+                d->m_allocatedTextPagesFifo.clear();
+                qDeleteAll(d->m_searches);
+                d->m_searches.clear();
+
+                qDeleteAll(d->m_pagesVector);
+                d->m_pagesVector = newPagesVector;
+                newPagesVector.clear();
+
+                for (Page *page : std::as_const(d->m_pagesVector)) {
+                    page->d->m_doc = d;
                 }
             }
-
-            for (int i = 0; i < d->m_pagesVector.count(); ++i) {
-                // switch the PagePrivate* from newPage to oldPage
-                // this way everyone still holding Page* doesn't get
-                // disturbed by it
-                Page *oldPage = d->m_pagesVector[i];
-                Page *newPage = newPagesVector[i];
-                newPage->d->adoptGeneratedContents(oldPage->d);
-
-                pagePrivatesToDelete << oldPage->d;
-                oldPage->d = newPage->d;
-                oldPage->d->m_page = oldPage;
-                oldPage->d->m_doc = d;
-                newPage->d = nullptr;
-
-                annotationsToDelete << oldPage->m_annotations;
-                rectsToDelete << oldPage->m_rects;
-                oldPage->m_annotations = newPage->m_annotations;
-                oldPage->m_rects = newPage->m_rects;
-            }
-            qDeleteAll(newPagesVector);
-            newPagesVector.clear();
         }
 
         d->m_url = url;
@@ -5064,7 +5082,8 @@ bool Document::swapBackingFile(const QString &newFileName, const QUrl &url)
             }
         }
 
-        foreachObserver(notifySetup(d->m_pagesVector, DocumentObserver::UrlChanged));
+        const int setupFlags = DocumentObserver::UrlChanged | (pageTopologyChanged ? DocumentObserver::DocumentChanged : 0);
+        foreachObserver(notifySetup(d->m_pagesVector, setupFlags));
 
         qDeleteAll(annotationsToDelete);
         qDeleteAll(rectsToDelete);

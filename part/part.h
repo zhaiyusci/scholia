@@ -119,6 +119,7 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
     Q_INTERFACES(Okular::PageEditingInterface)
 
     friend class PartTest;
+    friend class PageBackingFileCommand;
 
 public:
     // Default constructor
@@ -321,6 +322,7 @@ private:
     void slotRemoveBookmark(const DocumentViewport &viewport);
     void resetStartArguments();
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
+    bool applyPageEditBackingFile(const QString &fileName, int pageNumber);
 
     enum SaveAsFlag {
         NoSaveAsFlags = 0,      ///< No options

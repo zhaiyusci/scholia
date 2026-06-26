@@ -32,6 +32,7 @@ class KPluginMetaData;
 class KXMLGUIClient;
 class DocumentItem;
 class QAbstractItemModel;
+class QUndoCommand;
 
 namespace Okular
 {
@@ -968,6 +969,13 @@ public:
      * \since 24.12
      */
     void clearHistory();
+
+    /**
+     * Adds an undoable document command.
+     *
+     * Ownership of @p command is transferred to the document undo stack.
+     */
+    void pushUndoCommand(QUndoCommand *command);
 
     /**
      * Saving capabilities. Their availability varies according to the

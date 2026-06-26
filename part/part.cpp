@@ -58,6 +58,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTimer>
+#include <QUndoCommand>
 #include <QWidgetAction>
 
 #include <memory>
@@ -2729,6 +2730,51 @@ static QTemporaryFile *createClosedTemporaryPdfFile(const QString &prefix, bool 
     return temporaryFile.release();
 }
 
+class PageBackingFileCommand : public QUndoCommand
+{
+public:
+    PageBackingFileCommand(Part *part,
+                           std::unique_ptr<QTemporaryFile> beforeTempFile,
+                           const QString &beforeFileName,
+                           std::unique_ptr<QTemporaryFile> afterTempFile,
+                           const QString &afterFileName,
+                           int beforePage,
+                           int afterPage)
+        : QUndoCommand(i18nc("Undo action", "Insert Blank Page"))
+        , m_part(part)
+        , m_beforeTempFile(std::move(beforeTempFile))
+        , m_afterTempFile(std::move(afterTempFile))
+        , m_beforeFileName(beforeFileName)
+        , m_afterFileName(afterFileName)
+        , m_beforePage(beforePage)
+        , m_afterPage(afterPage)
+    {
+    }
+
+    void undo() override
+    {
+        if (m_part) {
+            m_part->applyPageEditBackingFile(m_beforeFileName, m_beforePage);
+        }
+    }
+
+    void redo() override
+    {
+        if (m_part) {
+            m_part->applyPageEditBackingFile(m_afterFileName, m_afterPage);
+        }
+    }
+
+private:
+    QPointer<Part> m_part;
+    std::unique_ptr<QTemporaryFile> m_beforeTempFile;
+    std::unique_ptr<QTemporaryFile> m_afterTempFile;
+    QString m_beforeFileName;
+    QString m_afterFileName;
+    int m_beforePage = 0;
+    int m_afterPage = 0;
+};
+
 bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
 {
     // TODO When we get different saving backends we need to query the backend
@@ -3053,6 +3099,38 @@ bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
     return true;
 }
 
+bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber)
+{
+    if (fileName.isEmpty() || !QFileInfo::exists(fileName)) {
+        return false;
+    }
+
+    const QString previousLocalFilePath = localFilePath();
+    setLocalFilePath(fileName);
+    if (!m_document->swapBackingFile(fileName, url())) {
+        setLocalFilePath(previousLocalFilePath);
+        return false;
+    }
+
+    if (url().isLocalFile()) {
+        m_fileLastModified = QFileInfo(fileName).lastModified();
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageCount > 0) {
+        Okular::DocumentViewport targetViewport(qBound(0, pageNumber, pageCount - 1));
+        targetViewport.rePos.enabled = true;
+        targetViewport.rePos.normalizedX = 0;
+        targetViewport.rePos.normalizedY = 0;
+        targetViewport.rePos.pos = Okular::DocumentViewport::TopLeft;
+        m_document->setViewport(targetViewport, nullptr, true);
+    }
+
+    updateViewActions();
+    setWindowTitleFromDocument();
+    return true;
+}
+
 void Part::slotInsertBlankPageAfterCurrentPage()
 {
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertBlankPage()) {
@@ -3068,9 +3146,10 @@ void Part::slotInsertBlankPageAfterCurrentPage()
         return;
     }
 
+    const bool wasModified = isModified();
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName = backingFileName;
-    if (isModified()) {
+    if (wasModified) {
         savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-source")));
         if (!savedSourceFile) {
             KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
@@ -3107,35 +3186,18 @@ void Part::slotInsertBlankPageAfterCurrentPage()
         return;
     }
 
-    if (!closeUrl(false)) {
-        KMessageBox::information(widget(), i18n("Could not close the current document before applying page insertion."));
-        return;
-    }
-
     setUrl(documentUrl);
-    setLocalFilePath(editedFile->fileName());
     KParts::OpenUrlArguments args = arguments();
     args.setMimeType(QStringLiteral("application/pdf"));
     setArguments(args);
-    Okular::DocumentViewport insertedPageViewport(currentPage);
-    insertedPageViewport.rePos.enabled = true;
-    insertedPageViewport.rePos.normalizedX = 0;
-    insertedPageViewport.rePos.normalizedY = 0;
-    insertedPageViewport.rePos.pos = Okular::DocumentViewport::TopLeft;
-    m_document->setNextDocumentViewport(insertedPageViewport);
 
-    if (!openFile()) {
-        setUrl(QUrl());
-        setLocalFilePath(QString());
-        KMessageBox::information(widget(), i18n("The blank page was inserted into a temporary document, but the document could not be reopened."));
-        return;
+    const QString editedFileName = editedFile->fileName();
+    auto command = std::make_unique<PageBackingFileCommand>(this, std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, currentPage - 1, currentPage);
+    m_document->clearHistory();
+    if (wasModified) {
+        m_document->setHistoryClean(false);
     }
-
-    delete m_tempfile;
-    m_tempfile = editedFile.release();
-    m_document->setHistoryClean(false);
-    setModified(true);
-    setWindowTitleFromDocument();
+    m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
         m_pageView->displayMessage(i18n("Inserted a blank page after page %1. Save the document to keep this change.", currentPage));
