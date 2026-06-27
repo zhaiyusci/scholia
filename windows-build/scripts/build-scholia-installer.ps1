@@ -9,7 +9,8 @@ param(
     [string] $Version = "",
     [string] $FileVersion = "",
     [int] $Jobs = 8,
-    [string] $ISCC = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    [string] $VcVars = "",
+    [string] $ISCC = "",
     [switch] $SkipBuild,
     [switch] $SkipDeploy,
     [switch] $SkipStage,
@@ -118,6 +119,15 @@ function Copy-RuntimeStage([string] $SourcePrefix, [string] $DestinationRoot) {
     New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
     Sync-DirectoryContents $sourceBin (Join-Path $DestinationRoot "bin") $DestinationRoot
 
+    $sourcePopplerData = Join-Path $SourcePrefix "share\poppler"
+    $destinationPopplerData = Join-Path $DestinationRoot "share\poppler"
+    if (Test-Path -LiteralPath $sourcePopplerData) {
+        Sync-DirectoryContents $sourcePopplerData $destinationPopplerData $DestinationRoot
+    } else {
+        Remove-DirectoryInside $destinationPopplerData $DestinationRoot
+        Write-Warning "Poppler CMap/CID data was not found under $sourcePopplerData. CJK PDFs may render incorrectly."
+    }
+
     $sourceStemTeX = Join-Path $SourcePrefix "StemTeX"
     $destinationStemTeX = Join-Path $DestinationRoot "StemTeX"
     if (Test-Path -LiteralPath $sourceStemTeX) {
@@ -141,6 +151,31 @@ function Invoke-ChildScript([string] $ScriptPath, [string[]] $Arguments) {
     if ($exitCode -ne 0) {
         exit $exitCode
     }
+}
+
+function Find-InnoSetupCompiler([string] $RequestedPath) {
+    $candidates = @()
+    if ($RequestedPath) {
+        $candidates += $RequestedPath
+    }
+    $candidates += @(
+        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
+        (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe")
+    )
+
+    foreach ($candidate in ($candidates | Where-Object { $_ } | Select-Object -Unique)) {
+        if (Test-Path -LiteralPath $candidate) {
+            return [System.IO.Path]::GetFullPath($candidate)
+        }
+    }
+
+    $command = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    throw "Cannot find Inno Setup compiler. Pass -ISCC with the path to ISCC.exe."
 }
 
 function Read-ScholiaVersion([string] $Root) {
@@ -173,6 +208,9 @@ if (!$SkipStage) {
         if ($QtPrefix) {
             $buildArgs += @("-QtPrefix", $QtPrefix)
         }
+        if ($VcVars) {
+            $buildArgs += @("-VcVars", $VcVars)
+        }
         $buildArgs += @("-SdkPrefix", $SdkPrefix)
         Invoke-ChildScript (Join-Path $PSScriptRoot "build-scholia-standalone.ps1") $buildArgs
     }
@@ -201,9 +239,7 @@ if ($SkipInstaller) {
     exit 0
 }
 
-if (!(Test-Path -LiteralPath $ISCC)) {
-    throw "Cannot find Inno Setup compiler: $ISCC"
-}
+$ISCC = Find-InnoSetupCompiler $ISCC
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -212,7 +248,7 @@ $env:SCHOLIA_OUTPUT = $OutputDir
 $env:SCHOLIA_VERSION = $Version
 $env:SCHOLIA_FILE_VERSION = $FileVersion
 
-$iss = Join-Path (Split-Path -Parent $PSScriptRoot) "installer\okular-pdf-only.iss"
+$iss = Join-Path (Split-Path -Parent $PSScriptRoot) "installer\scholia-installer.iss"
 Write-Host "Building installer with Inno Setup:"
 Write-Host "  Script: $iss"
 Write-Host "  Stage: $StageRoot"

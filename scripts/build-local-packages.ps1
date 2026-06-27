@@ -112,7 +112,7 @@ if (!$SkipWindows) {
             $args = @(
                 "-ExecutionPolicy", "Bypass",
                 "-NoProfile",
-                "-File", (Join-Path $repoRoot "windows-build\scripts\build-okular-pdf-only-installer.ps1"),
+                "-File", (Join-Path $repoRoot "windows-build\scripts\build-scholia-installer.ps1"),
                 "-WorkspaceRoot", $WindowsBuildRoot,
                 "-Jobs", $WindowsJobs,
                 "-SkipBuild"

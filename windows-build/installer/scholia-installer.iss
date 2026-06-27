@@ -6,29 +6,17 @@
 #expr FileClose(ScholiaVersionHandle)
 #define AppVersion GetEnv("SCHOLIA_VERSION")
 #if AppVersion == ""
-#define AppVersion GetEnv("OKULAR_PDF_VERSION")
-#endif
-#if AppVersion == ""
 #define AppVersion ScholiaVersionFromFile
 #endif
 #define FileVersion GetEnv("SCHOLIA_FILE_VERSION")
-#if FileVersion == ""
-#define FileVersion GetEnv("OKULAR_PDF_FILE_VERSION")
-#endif
 #if FileVersion == ""
 #define FileVersion ScholiaVersionFromFile + ".0"
 #endif
 #define SourceDir GetEnv("SCHOLIA_STAGE")
 #if SourceDir == ""
-#define SourceDir GetEnv("OKULAR_PDF_STAGE")
-#endif
-#if SourceDir == ""
 #define SourceDir "..\..\..\dist\scholia-pdf\app"
 #endif
 #define OutputDir GetEnv("SCHOLIA_OUTPUT")
-#if OutputDir == ""
-#define OutputDir GetEnv("OKULAR_PDF_OUTPUT")
-#endif
 #if OutputDir == ""
 #define OutputDir "..\..\..\dist"
 #endif
@@ -76,13 +64,13 @@ Name: "{app}\StemTeX\gui\profiles"; Permissions: users-modify
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Scholia"; Filename: "{app}\bin\scholia.exe"
-Name: "{autodesktop}\Scholia"; Filename: "{app}\bin\scholia.exe"; Tasks: desktopicon
+Name: "{group}\Scholia"; Filename: "{app}\bin\scholia.exe"; IconFilename: "{app}\bin\scholia.ico"
+Name: "{autodesktop}\Scholia"; Filename: "{app}\bin\scholia.exe"; IconFilename: "{app}\bin\scholia.ico"; Tasks: desktopicon
 
 [Registry]
 Root: HKCR; Subkey: ".pdf"; ValueType: string; ValueName: ""; ValueData: "Scholia.Document"; Flags: uninsdeletevalue; Tasks: associatepdf
 Root: HKCR; Subkey: "Scholia.Document"; ValueType: string; ValueName: ""; ValueData: "PDF Document"; Flags: uninsdeletekey; Tasks: associatepdf
-Root: HKCR; Subkey: "Scholia.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\scholia.exe,0"; Tasks: associatepdf
+Root: HKCR; Subkey: "Scholia.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\scholia.ico"; Tasks: associatepdf
 Root: HKCR; Subkey: "Scholia.Document\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\bin\scholia.exe"" ""%1"""; Tasks: associatepdf
 
 [Run]

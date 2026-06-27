@@ -151,6 +151,81 @@ function Remove-ExpandedBreezeIconTheme([string] $Prefix) {
     Remove-DirectoryInside (Join-Path $Prefix "bin\data\icons\breeze-dark") $Prefix
 }
 
+function Copy-FileToDirectory([string] $Source, [string] $DestinationDir) {
+    if (!(Test-Path -LiteralPath $Source)) {
+        throw "Missing Scholia runtime data file: $Source"
+    }
+    New-Item -ItemType Directory -Force -Path $DestinationDir | Out-Null
+    Copy-Item -LiteralPath $Source -Destination $DestinationDir -Force
+}
+
+function Copy-ScholiaRuntimeData([string] $Prefix) {
+    Write-Host "Copying Scholia runtime data..." -ForegroundColor Cyan
+    $iconsRoot = Join-Path $script:repoRoot "icons"
+    $dataIconsRoot = Join-Path $Prefix "bin\data\icons\hicolor"
+
+    foreach ($size in @("16", "22", "32", "48", "64", "128", "256")) {
+        $source = Join-Path $iconsRoot "$size-apps-scholia.png"
+        if (!(Test-Path -LiteralPath $source)) {
+            throw "Missing Scholia icon: $source"
+        }
+        $destinationDir = Join-Path $dataIconsRoot "$($size)x$size\apps"
+        New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
+        Copy-Item -LiteralPath $source -Destination (Join-Path $destinationDir "scholia.png") -Force
+    }
+
+    $icoSource = Join-Path $iconsRoot "scholia.ico"
+    if (!(Test-Path -LiteralPath $icoSource)) {
+        throw "Missing Scholia icon: $icoSource"
+    }
+    Copy-Item -LiteralPath $icoSource -Destination (Join-Path $Prefix "bin\scholia.ico") -Force
+
+    Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.scholia.desktop") (Join-Path $Prefix "bin\data\applications")
+    Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.scholia.appdata.xml") (Join-Path $Prefix "bin\data\metainfo")
+    Copy-FileToDirectory (Join-Path $script:repoRoot "scholia.categories") (Join-Path $Prefix "bin\data\qlogging-categories6")
+
+    $scholiaDataDir = Join-Path $Prefix "bin\data\scholia"
+    foreach ($fileName in @("tools.xml", "toolsQuick.xml", "drawingtools.xml")) {
+        Copy-FileToDirectory (Join-Path $script:repoRoot "part\data\$fileName") $scholiaDataDir
+    }
+
+    $scholiaPicsDir = Join-Path $scholiaDataDir "pics"
+    Copy-FileToDirectory (Join-Path $script:repoRoot "core\stamps.svg") $scholiaPicsDir
+    $partDataDir = Join-Path $script:repoRoot "part\data"
+    foreach ($file in Get-ChildItem -LiteralPath $partDataDir -File) {
+        if ($file.Extension -in @(".png", ".svg")) {
+            Copy-FileToDirectory $file.FullName $scholiaPicsDir
+        }
+    }
+}
+
+function Copy-ScholiaTranslations([string] $WorkspaceRoot, [string] $Prefix) {
+    Write-Host "Copying Scholia translations..." -ForegroundColor Cyan
+    $sourceRoot = Join-Path $WorkspaceRoot "build\scholia-standalone\locale"
+    if (!(Test-Path -LiteralPath $sourceRoot)) {
+        throw "Missing Scholia translation build directory: $sourceRoot"
+    }
+
+    $destinationRoot = Join-Path $Prefix "bin\data\locale"
+    $catalogs = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -Filter "*.mo" -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 28 })
+    if ($catalogs.Count -eq 0) {
+        throw "No non-empty Scholia translation catalogs were found under $sourceRoot"
+    }
+
+    $sourceRootWithSlash = $sourceRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    foreach ($catalog in $catalogs) {
+        $catalogPath = [System.IO.Path]::GetFullPath($catalog.FullName)
+        if (!$catalogPath.StartsWith($sourceRootWithSlash, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Translation catalog is outside $sourceRoot`: $catalogPath"
+        }
+        $relativePath = $catalogPath.Substring($sourceRootWithSlash.Length)
+        $destination = Join-Path $destinationRoot $relativePath
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+        Copy-Item -LiteralPath $catalog.FullName -Destination $destination -Force
+    }
+    Write-Host "Copied $($catalogs.Count) Scholia translation catalogs." -ForegroundColor Cyan
+}
+
 function Copy-QtChineseTranslations([string] $QtRoot, [string] $DestinationBinDir) {
     $sourceDir = Join-Path $QtRoot "translations"
     if (!(Test-Path -LiteralPath $sourceDir)) {
@@ -299,6 +374,14 @@ Write-Host "Copying SDK runtime data..."
 Sync-DirectoryContents (Join-Path $SdkPrefix "bin\data") (Join-Path $binDir "data") $InstallPrefix
 Remove-EmptyGettextCatalogs (Join-Path $binDir "data\locale")
 
+$sdkPopplerData = Join-Path $SdkPrefix "share\poppler"
+if (Test-Path -LiteralPath $sdkPopplerData) {
+    Write-Host "Copying Poppler CMap/CID data..."
+    Sync-DirectoryContents $sdkPopplerData (Join-Path $InstallPrefix "share\poppler") $InstallPrefix
+} else {
+    Write-Warning "Poppler CMap/CID data was not found under $sdkPopplerData. CJK PDFs may render incorrectly."
+}
+
 Write-Host "Preparing runtime plugins..."
 $runtimePluginsDir = Join-Path $binDir "plugins"
 $stagedPluginsDir = Join-Path $InstallPrefix ".runtime-plugins-staging"
@@ -373,6 +456,8 @@ Sync-DirectoryContents $StemTeXRuntimeSource (Join-Path $stemTeXDestination "run
 Sync-DirectoryContents $StemTeXProfilesSource (Join-Path $stemTeXDestination "gui\profiles") $InstallPrefix
 
 Remove-ExpandedBreezeIconTheme $InstallPrefix
+Copy-ScholiaRuntimeData $InstallPrefix
+Copy-ScholiaTranslations $WorkspaceRoot $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "plugins") $InstallPrefix
 Remove-DirectoryInside (Join-Path $InstallPrefix "lib\plugins") $InstallPrefix
 
