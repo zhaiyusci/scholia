@@ -36,42 +36,42 @@ Build output lives outside the source checkout under the sibling
 git submodule update --init --recursive external/poppler
 ```
 
-If using a non-default Visual Studio path, pass it to build scripts:
+If using a non-default Visual Studio path, pass it to CMake scripts:
 
 ```powershell
--VcVars "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
+-DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat"
 ```
 
-## Canonical Build
+## Canonical CMake Build
 
-Use this script for normal Windows work:
+Use the CMake driver for normal Windows builds:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\build-scholia-installer.ps1 `
-  -QtPrefix C:\Qt\6.11.1\msvc2022_64 `
-  -VcVars "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" `
-  -WorkspaceRoot C:\Users\jairy\Documents\okular\windows_build `
-  -SdkPrefix C:\Users\jairy\Documents\okular\windows_build\sdk
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/build-windows.cmake
 ```
 
-This is the single user-facing Windows entry point. It runs:
+It runs:
 
-1. `build-scholia-standalone.ps1`
-2. `deploy-scholia-standalone-runtime.ps1`
+1. CMake configure/build/install for Scholia
+2. CMake runtime deployment from the SDK, Qt, StemTeX, and Scholia data
 3. stage refresh under `..\windows_build\dist\scholia-pdf\app`
 4. Inno Setup installer build
+
+For a clean Scholia rebuild, add `-DCLEAN_BUILD=ON`.
 
 If Inno Setup is not installed, still build and stage the runtime with:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\build-scholia-installer.ps1 `
-  -QtPrefix C:\Qt\6.11.1\msvc2022_64 `
-  -VcVars "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" `
-  -WorkspaceRoot C:\Users\jairy\Documents\okular\windows_build `
-  -SdkPrefix C:\Users\jairy\Documents\okular\windows_build\sdk `
-  -SkipInstaller
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DSKIP_INSTALLER=ON `
+  -P windows-build/cmake/build-windows.cmake
 ```
 
 Expected installer output:
@@ -80,19 +80,75 @@ Expected installer output:
 ..\windows_build\dist\Scholia-<version>-Setup.exe
 ```
 
+## CMake Package Step
+
+After `..\windows_build\install\scholia` has been built and deployed, the
+package-only CMake script can recreate the stage and installer without
+rebuilding Scholia:
+
+```powershell
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DCLEAN_STAGE=ON `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/package-windows.cmake
+```
+
+This script mirrors the deployed install tree into
+`..\windows_build\dist\scholia-pdf\app`, validates Scholia icons, gettext
+catalogs, annotation resources, and Poppler CMap/CID data, then calls Inno
+Setup.
+
+To validate staging without building an installer:
+
+```powershell
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DSKIP_INSTALLER=ON `
+  -DCLEAN_STAGE=ON `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/package-windows.cmake
+```
+
+To write the installer into a temporary output directory:
+
+```powershell
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DCLEAN_STAGE=ON `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -DOUTPUT_DIR=C:/Users/jairy/Documents/okular/windows_build/tmp/cmake-package-test `
+  -P windows-build/cmake/package-windows.cmake
+```
+
 ## Internal Scripts
 
 These scripts are internal steps. Use them only when debugging a specific part
 of the Windows pipeline.
 
+- `cmake\build-windows.cmake`
+  - Canonical Windows driver for Scholia configure/build/install, runtime
+    deploy, stage refresh, and installer creation.
+- `cmake\deploy-runtime.cmake`
+  - CMake-based runtime deployment from an installed Scholia tree.
+- `cmake\package-windows.cmake`
+  - CMake-based stage and installer creation from an already deployed
+    `..\windows_build\install\scholia` tree.
+- `cmake\bootstrap-kf6-sdk.cmake`
+  - CMake-based ECM bootstrap for the local Windows SDK.
+- `cmake\build-kf6-module.cmake`
+  - CMake-based KF6 module checkout, configure, build, and install driver.
+- `cmake\build-zlib-sdk.cmake`, `cmake\build-freetype-sdk.cmake`,
+  `cmake\build-libintl-shim-sdk.cmake`, `cmake\build-poppler-sdk.cmake`
+  - CMake-based support library builders.
+- `cmake\install-gettext-native-sdk.cmake`,
+  `cmake\install-winflexbison-sdk.cmake`
+  - CMake-based pinned binary tool installers.
 - `build-scholia-standalone.ps1`
-  - Configures, builds, and installs Scholia into
+  - Legacy PowerShell build entry. Configures, builds, and installs Scholia into
     `..\windows_build\install\scholia`.
   - Produces CMake-installed files, including application translations and
     Scholia annotation resources.
 - `deploy-scholia-standalone-runtime.ps1`
-  - Copies Qt, KF6, Poppler, QScintilla, and StemTeX runtime files into the
-    install tree.
+  - Legacy PowerShell deploy entry. Copies Qt, KF6, Poppler, QScintilla, and
+    StemTeX runtime files into the install tree.
   - Normalizes plugin layout under `bin\plugins`.
   - Restores Scholia runtime data after SDK data sync.
 - `smoke-test-scholia-stage.ps1`
@@ -104,18 +160,15 @@ docs should point at the Scholia-named scripts above.
 
 ## Stage-Only Refresh
 
-If the install tree has already been built and deployed, refresh the stage
-without rebuilding the installer:
+If the install tree has already been built and deployed, use the CMake package
+script to refresh the stage without rebuilding the installer:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\build-scholia-installer.ps1 `
-  -QtPrefix C:\Qt\6.11.1\msvc2022_64 `
-  -WorkspaceRoot C:\Users\jairy\Documents\okular\windows_build `
-  -SdkPrefix C:\Users\jairy\Documents\okular\windows_build\sdk `
-  -SkipBuild `
-  -SkipDeploy `
-  -SkipInstaller
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DSKIP_INSTALLER=ON `
+  -DCLEAN_STAGE=ON `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/package-windows.cmake
 ```
 
 If a staged StemTeX process is still running, stop it before staging:
@@ -127,10 +180,10 @@ Get-Process | Where-Object { $_.ProcessName -match 'scholia|stemtex|xetex|xelate
 
 ## Runtime Data Contract
 
-`deploy-scholia-standalone-runtime.ps1` intentionally mirrors SDK runtime data
-from `..\windows_build\sdk\bin\data` into `bin\data`. That SDK sync can remove
-files installed earlier by CMake, so the deploy script must restore Scholia data
-after the sync.
+The CMake runtime deployment intentionally mirrors SDK runtime data from
+`..\windows_build\sdk\bin\data` into `bin\data`. That SDK sync can remove files
+installed earlier by CMake, so deployment must restore Scholia data after the
+sync.
 
 The deployed install tree and stage must contain:
 
@@ -149,9 +202,10 @@ The deployed install tree and stage must contain:
 - `StemTeX\runtime`
 - `StemTeX\gui\profiles`
 
-Do not rely on `build-scholia-standalone.ps1` alone for a runnable/packageable
-Windows tree. Always run deploy, or use the canonical
-`build-scholia-installer.ps1` entry point.
+Do not rely on the CMake install step alone for a runnable/packageable Windows
+tree. Always run runtime deployment, or use the canonical
+`windows-build\cmake\build-windows.cmake` entry point. For packaging an already
+deployed tree, use `windows-build\cmake\package-windows.cmake`.
 
 ## Validation
 
@@ -181,33 +235,69 @@ freetype, libintl shim, helper tools, and custom Poppler.
 Bootstrap ECM:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\bootstrap-kf6-sdk.ps1 `
-  -QtPrefix C:\Qt\6.11.1\msvc2022_64
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/bootstrap-kf6-sdk.cmake
 ```
 
 Build support libraries and tools:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-zlib-sdk.ps1
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-freetype-sdk.ps1
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\install-gettext-native-sdk.ps1
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\build-libintl-shim-sdk.ps1
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File .\windows-build\scripts\install-winflexbison-sdk.ps1
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/install-gettext-native-sdk.cmake
+
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/install-winflexbison-sdk.cmake
+
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/build-zlib-sdk.cmake
+
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/build-freetype-sdk.cmake
+
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/build-libintl-shim-sdk.cmake
 ```
 
-Build required KF6 modules into `..\windows_build\sdk`. Use
-`windows-build\KF6_SDK_BOOTSTRAP.md` for the module list and per-module notes.
+Build required KF6 modules into `..\windows_build\sdk` with the CMake module
+driver:
+
+```powershell
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DMODULE=kcoreaddons `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/build-kf6-module.cmake
+```
+
+Use `windows-build\KF6_SDK_BOOTSTRAP.md` for the module list and per-module
+notes.
 
 Build custom Poppler:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -NoProfile `
-  -File .\windows-build\scripts\build-poppler-sdk.ps1 `
-  -QtPrefix C:\Qt\6.11.1\msvc2022_64
+& "C:\Qt\Tools\CMake_64\bin\cmake.exe" `
+  -DQT_PREFIX=C:/Qt/6.11.1/msvc2022_64 `
+  -DVCVARS="C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvars64.bat" `
+  -DWORKSPACE_ROOT=C:/Users/jairy/Documents/okular/windows_build `
+  -P windows-build/cmake/build-poppler-sdk.cmake
 ```
 
-`install-gettext-native-sdk.ps1` installs pinned native Windows
+`install-gettext-native-sdk.cmake` installs pinned native Windows
 `gettext-iconv-windows` tools under
 `..\windows_build\sdk\tools\gettext-native`. Scholia uses that `msgfmt.exe` to
 compile real gettext catalogs; the libintl shim is only the runtime
