@@ -26,6 +26,7 @@
 #include <QList>
 #include <QPointer>
 #include <QProcess>
+#include <QSizeF>
 #include <QUrl>
 
 #include <KCompressionDevice>
@@ -327,7 +328,13 @@ private:
     bool pageLevelEditingEnabled() const;
     bool canUsePageLevelEditing() const;
     void updatePageEditActions();
+    void insertPageWithDialog(int pageNumber);
+    void insertPageFromTemplateWithDialog(int pageNumber);
+    void insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize);
+    void insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert);
     void insertBlankPageAfterPage(int pageNumber);
+    QString pageTemplateFileName() const;
+    void setPageTemplateFileName(const QString &fileName);
     void deletePage(int pageNumber);
     void movePageTo(int sourcePage, int destinationPage);
     void movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget);
@@ -457,6 +464,9 @@ private:
     QAction *m_reload;
     QAction *m_addCurrentPageToContents = nullptr;
     QAction *m_pageLevelEditingToggle = nullptr;
+    QAction *m_insertPage = nullptr;
+    QAction *m_setPageTemplate = nullptr;
+    QAction *m_insertPageFromTemplate = nullptr;
     QAction *m_insertBlankPageAfterCurrentPage = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
     QMenu *m_exportAsMenu;
@@ -501,6 +511,9 @@ private:
     QString m_latexStemtexTexmfRoot;
 
 private Q_SLOTS:
+    void slotInsertPage();
+    void slotSetPageTemplate();
+    void slotInsertPageFromTemplate();
     void slotInsertBlankPageAfterCurrentPage();
     void slotDeleteCurrentPage();
     void slotAccessibilityPreferences();

@@ -574,6 +574,10 @@ void Shell::setupActions()
     m_printAction->setEnabled(false);
     m_closeAction = KStandardAction::close(this, SLOT(closeUrl()), actionCollection());
     m_closeAction->setEnabled(false);
+    m_insertPageAction = actionCollection()->addAction(QStringLiteral("shell_insert_page"));
+    m_insertPageAction->setText(i18n("Insert Page..."));
+    m_insertPageAction->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
+    connect(m_insertPageAction, &QAction::triggered, this, &Shell::insertPage);
     m_insertBlankPageAfterCurrentPageAction = actionCollection()->addAction(QStringLiteral("shell_insert_blank_page_after_current"));
     m_insertBlankPageAfterCurrentPageAction->setText(i18n("Insert Blank Page After Current Page"));
     m_insertBlankPageAfterCurrentPageAction->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
@@ -1096,6 +1100,20 @@ void Shell::insertBlankPageAfterCurrentPage()
     const bool invoked = part && QMetaObject::invokeMethod(part, "slotInsertBlankPageAfterCurrentPage", Qt::DirectConnection);
     if (!invoked) {
         KMessageBox::information(this, i18n("Blank page insertion is not available in the current viewer."));
+        return;
+    }
+}
+
+void Shell::insertPage()
+{
+    if (m_tabs.isEmpty()) {
+        return;
+    }
+
+    KParts::ReadWritePart *const part = m_tabs[m_tabWidget->currentIndex()].part;
+    const bool invoked = part && QMetaObject::invokeMethod(part, "slotInsertPage", Qt::DirectConnection);
+    if (!invoked) {
+        KMessageBox::information(this, i18n("Page insertion is not available in the current viewer."));
         return;
     }
 }

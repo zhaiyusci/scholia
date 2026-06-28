@@ -2298,6 +2298,43 @@ bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName,
     return false;
 }
 
+bool PDFGenerator::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText)
+{
+    const ScholiaPdfPages::Result result = ScholiaPdfPages::insertBlankPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, width, height);
+    if (result.ok()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    if (errorText) {
+        *errorText = QString::fromStdString(result.message);
+    }
+    return false;
+}
+
+bool PDFGenerator::canInsertPageFromPdf() const
+{
+    return true;
+}
+
+bool PDFGenerator::saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, QString *errorText)
+{
+    const ScholiaPdfPages::Result result = ScholiaPdfPages::insertPdfPageAfter(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), pageNumber, pdfPagesFileName(insertedFileName), pageToInsert);
+    if (result.ok()) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    if (errorText) {
+        *errorText = QString::fromStdString(result.message);
+    }
+    return false;
+}
+
 bool PDFGenerator::canDeletePage() const
 {
     return true;

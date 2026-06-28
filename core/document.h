@@ -957,6 +957,27 @@ public:
     bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText);
 
     /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with one blank
+     * page inserted after @p pageNumber. @p pageNumber is 1-based; 0 means
+     * insert before the first page. @p width and @p height are PDF points.
+     */
+    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText);
+
+    /**
+     * Returns whether the current document backend can write a copy with a page
+     * imported from another PDF.
+     */
+    bool canInsertPageFromPdf() const;
+
+    /**
+     * Writes @p outputFileName as a copy of @p sourceFileName with page
+     * @p pageToInsert from @p insertedFileName inserted after @p pageNumber.
+     * Both page numbers are 1-based except @p pageNumber, where 0 means insert
+     * before the first page.
+     */
+    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, QString *errorText);
+
+    /**
      * Returns whether the current document backend can write a copy with a page
      * removed.
      */

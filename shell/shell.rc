@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui version="11" name="okular_shell" >
+<gui version="14" name="okular_shell" >
  <MenuBar>
   <Menu name="file" >
    <DefineGroup append="open_merge" name="file_open" />
@@ -12,6 +12,7 @@
    <Action name="fullscreen" />
   </Menu-->
   <Menu name="tools" >
+   <Action name="shell_insert_page" />
    <Action name="shell_insert_blank_page_after_current" />
    <Action name="shell_delete_current_page" />
   </Menu>

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!DOCTYPE gui SYSTEM "kpartgui.dtd">
-<gui name="okular_part" version="61">
+<gui name="okular_part" version="63">
 <MenuBar>
   <Menu name="file"><text>&amp;File</text>
     <Action name="get_new_stuff" group="file_open"/>
@@ -84,6 +84,11 @@
     <Separator/>
     <Action name="add_digital_signature"/>
     <Action name="tools_add_current_page_to_contents"/>
+    <Action name="tools_insert_page"/>
+    <Action name="tools_set_page_template"/>
+    <Action name="tools_insert_page_from_template"/>
+    <Action name="tools_insert_blank_page_after_current"/>
+    <Action name="tools_delete_current_page"/>
     <Separator/>
     <Action name="speak_document"/>
     <Action name="speak_from_current_page"/>

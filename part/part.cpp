@@ -29,6 +29,7 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QClipboard>
+#include <QComboBox>
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QDomDocument>
@@ -38,21 +39,27 @@
 #endif // HAVE_DBUS
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
+#include <QHBoxLayout>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QLabel>
 #include <QLayout>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QPainter>
+#include <QPushButton>
 #include <QPrintDialog>
 #include <QPrintPreviewDialog>
 #include <QPrinter>
+#include <QRadioButton>
 #include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QSlider>
@@ -61,6 +68,7 @@
 #include <QTemporaryFile>
 #include <QTimer>
 #include <QUndoCommand>
+#include <QVBoxLayout>
 #include <QWidgetAction>
 
 #include <memory>
@@ -72,6 +80,7 @@
 #include <KColorSchemeManager>
 #include <KColorSchemeMenu>
 #include <KCompressionDevice>
+#include <KConfigGroup>
 #include <KDirWatch>
 #include <KFilterBase>
 #include <KHamburgerMenu>
@@ -86,6 +95,7 @@
 #include <KPasswordDialog>
 #include <KPluginMetaData>
 #include <KSharedDataCache>
+#include <KSharedConfig>
 #include <KStandardShortcut>
 #include <KToggleAction>
 #include <KToggleFullScreenAction>
@@ -905,6 +915,23 @@ void Part::setupViewerActions()
     m_addCurrentPageToContents->setIcon(QIcon::fromTheme(QStringLiteral("list-add")));
     m_addCurrentPageToContents->setEnabled(false);
     connect(m_addCurrentPageToContents, &QAction::triggered, m_toc.data(), &TOC::addCurrentPageEntry);
+
+    m_insertPage = ac->addAction(QStringLiteral("tools_insert_page"));
+    m_insertPage->setText(i18n("Insert Page..."));
+    m_insertPage->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
+    m_insertPage->setEnabled(false);
+    connect(m_insertPage, &QAction::triggered, this, &Part::slotInsertPage);
+
+    m_setPageTemplate = ac->addAction(QStringLiteral("tools_set_page_template"));
+    m_setPageTemplate->setText(i18n("Set Page Template PDF..."));
+    m_setPageTemplate->setIcon(QIcon::fromTheme(QStringLiteral("document-open")));
+    connect(m_setPageTemplate, &QAction::triggered, this, &Part::slotSetPageTemplate);
+
+    m_insertPageFromTemplate = ac->addAction(QStringLiteral("tools_insert_page_from_template"));
+    m_insertPageFromTemplate->setText(i18n("Insert Page From Template..."));
+    m_insertPageFromTemplate->setIcon(QIcon::fromTheme(QStringLiteral("document-import")));
+    m_insertPageFromTemplate->setEnabled(false);
+    connect(m_insertPageFromTemplate, &QAction::triggered, this, &Part::slotInsertPageFromTemplate);
 
     m_insertBlankPageAfterCurrentPage = ac->addAction(QStringLiteral("tools_insert_blank_page_after_current"));
     m_insertBlankPageAfterCurrentPage->setText(i18n("Insert Blank Page After Current Page"));
@@ -2076,6 +2103,9 @@ bool Part::closeUrl(bool promptToSave)
     if (m_insertBlankPageAfterCurrentPage) {
         m_insertBlankPageAfterCurrentPage->setEnabled(false);
     }
+    if (m_insertPage) {
+        m_insertPage->setEnabled(false);
+    }
     if (m_deleteCurrentPage) {
         m_deleteCurrentPage->setEnabled(false);
     }
@@ -2822,6 +2852,16 @@ static QTemporaryFile *createClosedTemporaryPdfFile(const QString &prefix, bool 
     return temporaryFile.release();
 }
 
+static QString PageTemplateGroupKey()
+{
+    return QStringLiteral("Page Templates");
+}
+
+static QString PageTemplateFileKey()
+{
+    return QStringLiteral("TemplatePdfFile");
+}
+
 class PageBackingFileCommand : public QUndoCommand
 {
 public:
@@ -3241,6 +3281,12 @@ bool Part::canUsePageLevelEditing() const
 void Part::updatePageEditActions()
 {
     const bool canEditPages = canUsePageLevelEditing();
+    if (m_insertPage) {
+        m_insertPage->setEnabled(canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf()));
+    }
+    if (m_insertPageFromTemplate) {
+        m_insertPageFromTemplate->setEnabled(canEditPages && m_document->canInsertPageFromPdf());
+    }
     if (m_insertBlankPageAfterCurrentPage) {
         m_insertBlankPageAfterCurrentPage->setEnabled(canEditPages && m_document->canInsertBlankPage());
     }
@@ -3254,7 +3300,273 @@ void Part::slotInsertBlankPageAfterCurrentPage()
     insertBlankPageAfterPage(static_cast<int>(m_document->currentPage()));
 }
 
+void Part::slotInsertPage()
+{
+    insertPageWithDialog(static_cast<int>(m_document->currentPage()));
+}
+
+void Part::slotSetPageTemplate()
+{
+    const QString currentTemplate = pageTemplateFileName();
+    const QString startDirectory = currentTemplate.isEmpty() ? QString() : QFileInfo(currentTemplate).absolutePath();
+    const QString fileName = QFileDialog::getOpenFileName(widget(), i18n("Select Page Template PDF"), startDirectory, i18n("PDF Documents (*.pdf)"));
+    if (fileName.isEmpty()) {
+        return;
+    }
+
+    setPageTemplateFileName(fileName);
+    updatePageEditActions();
+    if (m_pageView) {
+        m_pageView->displayMessage(i18n("Page template PDF set to %1.", QFileInfo(fileName).fileName()));
+    }
+}
+
+void Part::slotInsertPageFromTemplate()
+{
+    insertPageFromTemplateWithDialog(static_cast<int>(m_document->currentPage()));
+}
+
+void Part::insertPageWithDialog(int pageNumber)
+{
+    if (!pageLevelEditingEnabled()) {
+        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
+        return;
+    }
+
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || (!m_document->canInsertBlankPage() && !m_document->canInsertPageFromPdf())) {
+        KMessageBox::information(widget(), i18n("Pages can only be inserted into local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageCount <= 0) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+
+    const int referencePage = qBound(0, pageNumber, pageCount - 1);
+    const Okular::Page *reference = m_document->page(referencePage);
+    const QSizeF defaultSize(reference ? reference->width() : 595.0, reference ? reference->height() : 842.0);
+
+    QDialog dialog(widget());
+    dialog.setWindowTitle(i18n("Insert Page"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+
+    auto *positionCombo = new QComboBox(&dialog);
+    positionCombo->addItem(i18n("Before First Page"), -1);
+    positionCombo->addItem(i18n("After Current Page"), static_cast<int>(m_document->currentPage()));
+    positionCombo->addItem(i18n("After Page:"), -2);
+    auto *afterPageSpin = new QSpinBox(&dialog);
+    afterPageSpin->setRange(1, pageCount);
+    afterPageSpin->setValue(referencePage + 1);
+    auto *positionRow = new QHBoxLayout;
+    positionRow->addWidget(positionCombo);
+    positionRow->addWidget(afterPageSpin);
+    form->addRow(i18n("Position:"), positionRow);
+
+    auto *blankRadio = new QRadioButton(i18n("Blank Page"), &dialog);
+    auto *pdfRadio = new QRadioButton(i18n("Page From PDF"), &dialog);
+    blankRadio->setChecked(m_document->canInsertBlankPage());
+    pdfRadio->setChecked(!m_document->canInsertBlankPage());
+    blankRadio->setEnabled(m_document->canInsertBlankPage());
+    pdfRadio->setEnabled(m_document->canInsertPageFromPdf());
+    auto *sourceRow = new QHBoxLayout;
+    sourceRow->addWidget(blankRadio);
+    sourceRow->addWidget(pdfRadio);
+    sourceRow->addStretch();
+    form->addRow(i18n("Source:"), sourceRow);
+
+    auto *widthSpin = new QDoubleSpinBox(&dialog);
+    widthSpin->setRange(1.0, 20000.0);
+    widthSpin->setDecimals(2);
+    widthSpin->setSuffix(i18n(" pt"));
+    widthSpin->setValue(defaultSize.width());
+    auto *heightSpin = new QDoubleSpinBox(&dialog);
+    heightSpin->setRange(1.0, 20000.0);
+    heightSpin->setDecimals(2);
+    heightSpin->setSuffix(i18n(" pt"));
+    heightSpin->setValue(defaultSize.height());
+    auto *blankSizeRow = new QHBoxLayout;
+    blankSizeRow->addWidget(widthSpin);
+    blankSizeRow->addWidget(heightSpin);
+    form->addRow(i18n("Blank size:"), blankSizeRow);
+
+    auto *pdfFileEdit = new QLineEdit(&dialog);
+    pdfFileEdit->setText(pageTemplateFileName());
+    auto *browseButton = new QPushButton(i18n("Browse..."), &dialog);
+    auto *pdfFileRow = new QHBoxLayout;
+    pdfFileRow->addWidget(pdfFileEdit);
+    pdfFileRow->addWidget(browseButton);
+    form->addRow(i18n("PDF file:"), pdfFileRow);
+
+    auto *pdfPageSpin = new QSpinBox(&dialog);
+    pdfPageSpin->setRange(1, 999999);
+    pdfPageSpin->setValue(1);
+    form->addRow(i18n("PDF page:"), pdfPageSpin);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+
+    auto updateDialogState = [=]() {
+        afterPageSpin->setEnabled(positionCombo->currentData().toInt() == -2);
+        const bool blank = blankRadio->isChecked();
+        widthSpin->setEnabled(blank);
+        heightSpin->setEnabled(blank);
+        pdfFileEdit->setEnabled(!blank);
+        browseButton->setEnabled(!blank);
+        pdfPageSpin->setEnabled(!blank);
+    };
+    connect(positionCombo, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, updateDialogState);
+    connect(blankRadio, &QRadioButton::toggled, &dialog, updateDialogState);
+    connect(browseButton, &QPushButton::clicked, &dialog, [=, &dialog]() {
+        const QString fileName = QFileDialog::getOpenFileName(&dialog, i18n("Select PDF Page Source"), QString(), i18n("PDF Documents (*.pdf)"));
+        if (!fileName.isEmpty()) {
+            pdfFileEdit->setText(fileName);
+        }
+    });
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    updateDialogState();
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    int insertAfterPage = positionCombo->currentData().toInt();
+    if (insertAfterPage == -2) {
+        insertAfterPage = afterPageSpin->value() - 1;
+    }
+
+    if (blankRadio->isChecked()) {
+        insertBlankPage(insertAfterPage, QSizeF(widthSpin->value(), heightSpin->value()));
+    } else {
+        const QString pdfFileName = pdfFileEdit->text();
+        if (pdfFileName.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Select a PDF file to import a page from."));
+            return;
+        }
+        setPageTemplateFileName(pdfFileName);
+        insertPdfPage(insertAfterPage, pdfFileName, pdfPageSpin->value());
+    }
+}
+
+void Part::insertPageFromTemplateWithDialog(int pageNumber)
+{
+    if (!pageLevelEditingEnabled()) {
+        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
+        return;
+    }
+
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertPageFromPdf()) {
+        KMessageBox::information(widget(), i18n("Pages can only be inserted into local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageCount <= 0) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+
+    QString templateFileName = pageTemplateFileName();
+    if (templateFileName.isEmpty() || !QFileInfo(templateFileName).exists()) {
+        templateFileName = QFileDialog::getOpenFileName(widget(), i18n("Select Page Template PDF"), QString(), i18n("PDF Documents (*.pdf)"));
+        if (templateFileName.isEmpty()) {
+            return;
+        }
+        setPageTemplateFileName(templateFileName);
+    }
+
+    const int referencePage = qBound(0, pageNumber, pageCount - 1);
+
+    QDialog dialog(widget());
+    dialog.setWindowTitle(i18n("Insert Page From Template"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *form = new QFormLayout;
+    layout->addLayout(form);
+
+    auto *templateLabel = new QLabel(QDir::toNativeSeparators(templateFileName), &dialog);
+    templateLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    templateLabel->setWordWrap(true);
+    form->addRow(i18n("Template PDF:"), templateLabel);
+
+    auto *positionCombo = new QComboBox(&dialog);
+    positionCombo->addItem(i18n("Before First Page"), -1);
+    positionCombo->addItem(i18n("After Current Page"), static_cast<int>(m_document->currentPage()));
+    positionCombo->addItem(i18n("After Page:"), -2);
+    auto *afterPageSpin = new QSpinBox(&dialog);
+    afterPageSpin->setRange(1, pageCount);
+    afterPageSpin->setValue(referencePage + 1);
+    auto *positionRow = new QHBoxLayout;
+    positionRow->addWidget(positionCombo);
+    positionRow->addWidget(afterPageSpin);
+    form->addRow(i18n("Position:"), positionRow);
+
+    auto *templatePageSpin = new QSpinBox(&dialog);
+    templatePageSpin->setRange(1, 999999);
+    templatePageSpin->setValue(1);
+    form->addRow(i18n("Template page:"), templatePageSpin);
+
+    auto *changeTemplateButton = new QPushButton(i18n("Choose Another Template..."), &dialog);
+    form->addRow(QString(), changeTemplateButton);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+
+    auto updateDialogState = [=]() {
+        afterPageSpin->setEnabled(positionCombo->currentData().toInt() == -2);
+    };
+    connect(positionCombo, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, updateDialogState);
+    connect(changeTemplateButton, &QPushButton::clicked, &dialog, [=, &dialog, &templateFileName]() {
+        const QString fileName = QFileDialog::getOpenFileName(&dialog, i18n("Select Page Template PDF"), QFileInfo(templateFileName).absolutePath(), i18n("PDF Documents (*.pdf)"));
+        if (!fileName.isEmpty()) {
+            templateFileName = fileName;
+            templateLabel->setText(QDir::toNativeSeparators(templateFileName));
+            setPageTemplateFileName(templateFileName);
+        }
+    });
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    updateDialogState();
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    int insertAfterPage = positionCombo->currentData().toInt();
+    if (insertAfterPage == -2) {
+        insertAfterPage = afterPageSpin->value() - 1;
+    }
+
+    insertPdfPage(insertAfterPage, templateFileName, templatePageSpin->value());
+}
+
 void Part::insertBlankPageAfterPage(int pageNumber)
+{
+    const int pageCount = static_cast<int>(m_document->pages());
+    const int referencePage = pageCount > 0 ? qBound(0, pageNumber, pageCount - 1) : 0;
+    const Okular::Page *reference = pageCount > 0 ? m_document->page(referencePage) : nullptr;
+    insertBlankPage(pageNumber, QSizeF(reference ? reference->width() : 595.0, reference ? reference->height() : 842.0));
+}
+
+QString Part::pageTemplateFileName() const
+{
+    KSharedConfigPtr config = KSharedConfig::openConfig();
+    const KConfigGroup group(config, PageTemplateGroupKey());
+    return group.readEntry(PageTemplateFileKey(), QString());
+}
+
+void Part::setPageTemplateFileName(const QString &fileName)
+{
+    KSharedConfigPtr config = KSharedConfig::openConfig();
+    KConfigGroup group(config, PageTemplateGroupKey());
+    group.writeEntry(PageTemplateFileKey(), fileName);
+    group.sync();
+}
+
+void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
 {
     if (!pageLevelEditingEnabled()) {
         KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
@@ -3267,7 +3579,7 @@ void Part::insertBlankPageAfterPage(int pageNumber)
     }
 
     const int pageCount = static_cast<int>(m_document->pages());
-    if (pageNumber < 0 || pageNumber >= pageCount) {
+    if (insertAfterPageNumber < -1 || insertAfterPageNumber >= pageCount) {
         KMessageBox::information(widget(), i18n("The target page could not be found."));
         return;
     }
@@ -3309,9 +3621,9 @@ void Part::insertBlankPageAfterPage(int pageNumber)
         return;
     }
 
-    const int pageNumberOneBased = pageNumber + 1;
+    const int pageNumberOneBased = insertAfterPageNumber + 1;
     QString errorText;
-    if (!m_document->saveWithBlankPageInsertedAfter(sourceFileName, editedFile->fileName(), pageNumberOneBased, &errorText)) {
+    if (!m_document->saveWithBlankPageInsertedAfter(sourceFileName, editedFile->fileName(), pageNumberOneBased, pageSize.width(), pageSize.height(), &errorText)) {
         if (errorText.isEmpty()) {
             KMessageBox::information(widget(), i18n("Could not insert a blank page."));
         } else {
@@ -3326,11 +3638,97 @@ void Part::insertBlankPageAfterPage(int pageNumber)
     setArguments(args);
 
     const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, pageNumber, pageNumber + 1);
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
     m_document->pushUndoCommand(command.release());
 
     if (m_pageView) {
-        m_pageView->displayMessage(i18n("Inserted a blank page after page %1. Save the document to keep this change.", pageNumberOneBased));
+        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a blank page before the first page. Save the document to keep this change.") : i18n("Inserted a blank page after page %1. Save the document to keep this change.", pageNumberOneBased));
+    }
+}
+
+void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert)
+{
+    if (!pageLevelEditingEnabled()) {
+        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
+        return;
+    }
+
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertPageFromPdf()) {
+        KMessageBox::information(widget(), i18n("Pages can only be inserted into local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (insertAfterPageNumber < -1 || insertAfterPageNumber >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+
+    const QFileInfo insertedInfo(insertedFileName);
+    if (!insertedInfo.exists()) {
+        KMessageBox::information(widget(), i18n("The PDF file to import from could not be found."));
+        return;
+    }
+
+    const QUrl documentUrl = url();
+    const QString backingFileName = localFilePath();
+    const QFileInfo backingInfo(backingFileName);
+    if (backingFileName.isEmpty() || !backingInfo.exists()) {
+        KMessageBox::information(widget(), i18n("The current PDF file could not be found on disk."));
+        return;
+    }
+
+    const bool wasModified = isModified();
+    std::unique_ptr<QTemporaryFile> savedSourceFile;
+    QString sourceFileName = backingFileName;
+    if (wasModified) {
+        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-source")));
+        if (!savedSourceFile) {
+            KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
+            return;
+        }
+
+        QString errorText;
+        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
+            if (errorText.isEmpty()) {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion."));
+            } else {
+                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion. %1", errorText));
+            }
+            return;
+        }
+
+        sourceFileName = savedSourceFile->fileName();
+    }
+
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-output")));
+    if (!editedFile) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
+        return;
+    }
+
+    const int pageNumberOneBased = insertAfterPageNumber + 1;
+    QString errorText;
+    if (!m_document->saveWithPdfPageInsertedAfter(sourceFileName, editedFile->fileName(), pageNumberOneBased, insertedFileName, pageToInsert, &errorText)) {
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not insert the PDF page."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not insert the PDF page. %1", errorText));
+        }
+        return;
+    }
+
+    setUrl(documentUrl);
+    KParts::OpenUrlArguments args = arguments();
+    args.setMimeType(QStringLiteral("application/pdf"));
+    setArguments(args);
+
+    const QString editedFileName = editedFile->fileName();
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert PDF Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
+    m_document->pushUndoCommand(command.release());
+
+    if (m_pageView) {
+        m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a PDF page before the first page. Save the document to keep this change.") : i18n("Inserted a PDF page after page %1. Save the document to keep this change.", pageNumberOneBased));
     }
 }
 
@@ -3732,6 +4130,8 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     const QAction *addBookmark = nullptr;
     const QAction *removeBookmark = nullptr;
     const QAction *fitPageWidth = nullptr;
+    const QAction *insertPageAction = nullptr;
+    const QAction *insertPageFromTemplateAction = nullptr;
     const QAction *insertBlankPageAfterPageAction = nullptr;
     const QAction *deletePageAction = nullptr;
     const QAction *pasteAnnotation = nullptr;
@@ -3755,6 +4155,14 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         }
         const bool canEditPages = canUsePageLevelEditing();
         bool addedPageEditAction = false;
+        if (canEditPages && (m_document->canInsertBlankPage() || m_document->canInsertPageFromPdf())) {
+            insertPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Page After This Page..."));
+            addedPageEditAction = true;
+        }
+        if (canEditPages && m_document->canInsertPageFromPdf() && QFileInfo(pageTemplateFileName()).exists()) {
+            insertPageFromTemplateAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-import")), i18n("Insert Page From Template After This Page..."));
+            addedPageEditAction = true;
+        }
         if (canEditPages && m_document->canInsertBlankPage()) {
             insertBlankPageAfterPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Blank Page After This Page"));
             addedPageEditAction = true;
@@ -3811,6 +4219,10 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
                 }
             } else if (res == fitPageWidth) {
                 m_pageView->fitPageWidth(page->number());
+            } else if (res == insertPageAction) {
+                insertPageWithDialog(pageEditTargetPage);
+            } else if (res == insertPageFromTemplateAction) {
+                insertPageFromTemplateWithDialog(pageEditTargetPage);
             } else if (res == insertBlankPageAfterPageAction) {
                 insertBlankPageAfterPage(pageEditTargetPage);
             } else if (res == deletePageAction) {
@@ -3949,6 +4361,7 @@ void Part::slotUpdateHamburgerMenu()
     menu->addAction(m_printPreview);
     menu->addSeparator();
     menu->addAction(ac->action(QStringLiteral("add_digital_signature")));
+    menu->addAction(ac->action(QStringLiteral("tools_insert_page")));
     menu->addAction(ac->action(QStringLiteral("tools_insert_blank_page_after_current")));
     menu->addAction(ac->action(QStringLiteral("tools_delete_current_page")));
     menu->addAction(m_showProperties);

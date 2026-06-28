@@ -112,6 +112,7 @@ private Q_SLOTS:
     void showOpenRecentMenu();
     void closeUrl();
     void print();
+    void insertPage();
     void insertBlankPageAfterCurrentPage();
     void deleteCurrentPage();
     void setPrintEnabled(bool enabled);
@@ -174,6 +175,7 @@ private:
     bool m_fileformatsscanned;
     QAction *m_printAction;
     QAction *m_closeAction;
+    QAction *m_insertPageAction = nullptr;
     QAction *m_insertBlankPageAfterCurrentPageAction = nullptr;
     QAction *m_deleteCurrentPageAction = nullptr;
     KToggleAction *m_fullScreenAction;

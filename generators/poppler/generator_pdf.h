@@ -104,6 +104,9 @@ public:
     Okular::AnnotationProxy *annotationProxy() const override;
     bool canInsertBlankPage() const override;
     bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
+    bool saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText) override;
+    bool canInsertPageFromPdf() const override;
+    bool saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, QString *errorText) override;
     bool canDeletePage() const override;
     bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
     bool canMovePage() const override;

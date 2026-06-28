@@ -5138,6 +5138,38 @@ bool Document::saveWithBlankPageInsertedAfter(const QString &sourceFileName, con
     return pageInsertion->saveWithBlankPageInsertedAfter(sourceFileName, outputFileName, pageNumber, errorText);
 }
 
+bool Document::saveWithBlankPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, double width, double height, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty()) {
+        if (errorText) {
+            *errorText = QString();
+        }
+        return false;
+    }
+
+    return pageInsertion->saveWithBlankPageInsertedAfter(sourceFileName, outputFileName, pageNumber, width, height, errorText);
+}
+
+bool Document::canInsertPageFromPdf() const
+{
+    const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    return pageInsertion && pageInsertion->canInsertPageFromPdf();
+}
+
+bool Document::saveWithPdfPageInsertedAfter(const QString &sourceFileName, const QString &outputFileName, int pageNumber, const QString &insertedFileName, int pageToInsert, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    if (!pageInsertion || sourceFileName.isEmpty() || outputFileName.isEmpty() || insertedFileName.isEmpty()) {
+        if (errorText) {
+            *errorText = QString();
+        }
+        return false;
+    }
+
+    return pageInsertion->saveWithPdfPageInsertedAfter(sourceFileName, outputFileName, pageNumber, insertedFileName, pageToInsert, errorText);
+}
+
 bool Document::canDeletePage() const
 {
     const auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
