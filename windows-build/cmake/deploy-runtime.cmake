@@ -187,9 +187,14 @@ function(scholia_copy_scholia_runtime_data prefix)
             "${SOURCE_ROOT}/icons/${_size}-apps-scholia.png"
             "${prefix}/bin/data/icons/hicolor/${_size}x${_size}/apps/scholia.png"
         )
+        scholia_copy_file(
+            "${SOURCE_ROOT}/icons/${_size}-mimetypes-application-pdf.png"
+            "${prefix}/bin/data/icons/hicolor/${_size}x${_size}/mimetypes/application-pdf.png"
+        )
     endforeach()
 
     scholia_copy_file("${SOURCE_ROOT}/icons/scholia.ico" "${prefix}/bin/scholia.ico")
+    scholia_copy_file("${SOURCE_ROOT}/icons/application-pdf.ico" "${prefix}/bin/application-pdf.ico")
     scholia_copy_file("${SOURCE_ROOT}/shell/org.jairy.scholia.desktop" "${prefix}/bin/data/applications/org.jairy.scholia.desktop")
     scholia_copy_file("${SOURCE_ROOT}/shell/org.jairy.scholia.appdata.xml" "${prefix}/bin/data/metainfo/org.jairy.scholia.appdata.xml")
     scholia_copy_file("${SOURCE_ROOT}/scholia.categories" "${prefix}/bin/data/qlogging-categories6/scholia.categories")

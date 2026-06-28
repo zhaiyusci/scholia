@@ -44,6 +44,7 @@ SetupIconFile={#AppIconFile}
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 UninstallDisplayIcon={app}\bin\scholia.exe
+ChangesAssociations=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -70,7 +71,7 @@ Name: "{autodesktop}\Scholia"; Filename: "{app}\bin\scholia.exe"; IconFilename: 
 [Registry]
 Root: HKCR; Subkey: ".pdf"; ValueType: string; ValueName: ""; ValueData: "Scholia.Document"; Flags: uninsdeletevalue; Tasks: associatepdf
 Root: HKCR; Subkey: "Scholia.Document"; ValueType: string; ValueName: ""; ValueData: "PDF Document"; Flags: uninsdeletekey; Tasks: associatepdf
-Root: HKCR; Subkey: "Scholia.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\scholia.ico"; Tasks: associatepdf
+Root: HKCR; Subkey: "Scholia.Document\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\bin\application-pdf.ico"; Tasks: associatepdf
 Root: HKCR; Subkey: "Scholia.Document\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\bin\scholia.exe"" ""%1"""; Tasks: associatepdf
 
 [Run]

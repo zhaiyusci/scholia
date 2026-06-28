@@ -172,6 +172,14 @@ function Copy-ScholiaRuntimeData([string] $Prefix) {
         $destinationDir = Join-Path $dataIconsRoot "$($size)x$size\apps"
         New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
         Copy-Item -LiteralPath $source -Destination (Join-Path $destinationDir "scholia.png") -Force
+
+        $pdfIconSource = Join-Path $iconsRoot "$size-mimetypes-application-pdf.png"
+        if (!(Test-Path -LiteralPath $pdfIconSource)) {
+            throw "Missing Scholia PDF icon: $pdfIconSource"
+        }
+        $pdfIconDestinationDir = Join-Path $dataIconsRoot "$($size)x$size\mimetypes"
+        New-Item -ItemType Directory -Force -Path $pdfIconDestinationDir | Out-Null
+        Copy-Item -LiteralPath $pdfIconSource -Destination (Join-Path $pdfIconDestinationDir "application-pdf.png") -Force
     }
 
     $icoSource = Join-Path $iconsRoot "scholia.ico"
@@ -179,6 +187,12 @@ function Copy-ScholiaRuntimeData([string] $Prefix) {
         throw "Missing Scholia icon: $icoSource"
     }
     Copy-Item -LiteralPath $icoSource -Destination (Join-Path $Prefix "bin\scholia.ico") -Force
+
+    $pdfIcoSource = Join-Path $iconsRoot "application-pdf.ico"
+    if (!(Test-Path -LiteralPath $pdfIcoSource)) {
+        throw "Missing Scholia PDF icon: $pdfIcoSource"
+    }
+    Copy-Item -LiteralPath $pdfIcoSource -Destination (Join-Path $Prefix "bin\application-pdf.ico") -Force
 
     Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.scholia.desktop") (Join-Path $Prefix "bin\data\applications")
     Copy-FileToDirectory (Join-Path $script:repoRoot "shell\org.jairy.scholia.appdata.xml") (Join-Path $Prefix "bin\data\metainfo")
