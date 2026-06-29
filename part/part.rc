@@ -84,11 +84,6 @@
     <Separator/>
     <Action name="add_digital_signature"/>
     <Action name="tools_add_current_page_to_contents"/>
-    <Action name="tools_insert_page"/>
-    <Action name="tools_set_page_template"/>
-    <Action name="tools_insert_page_from_template"/>
-    <Action name="tools_insert_blank_page_after_current"/>
-    <Action name="tools_delete_current_page"/>
     <Separator/>
     <Action name="speak_document"/>
     <Action name="speak_from_current_page"/>

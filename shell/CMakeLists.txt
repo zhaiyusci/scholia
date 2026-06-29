@@ -19,7 +19,13 @@ set(scholia_SRCS
 )
 
 if(WIN32)
-    list(APPEND scholia_SRCS ../icons/scholia.rc)
+    set(SCHOLIA_ICON_RC_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../icons/scholia.ico")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/../icons/scholia.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/scholia.rc"
+        @ONLY
+    )
+    list(APPEND scholia_SRCS "${CMAKE_CURRENT_BINARY_DIR}/scholia.rc")
 endif()
 
 ki18n_wrap_ui(scholia_SRCS

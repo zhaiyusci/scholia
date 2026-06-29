@@ -91,6 +91,7 @@ public:
     ThumbnailWidget *itemFor(const QPoint p) const;
     void delayedRequestVisiblePixmaps(int delayMs = 0);
     void resetPageMove();
+    bool pageMoveHandleContains(const ThumbnailWidget *item, const QPoint &pos) const;
 
     // SLOTS:
     // make requests for generating pixmaps for visible thumbnails
@@ -148,6 +149,7 @@ public:
     {
         return m_visibleRect.geometry(m_pixmapWidth, m_pixmapHeight);
     }
+    QRect pageMoveHandleRect() const;
 
     void paint(QPainter &p, const QRect clipRect);
 
@@ -245,6 +247,15 @@ void ThumbnailListPrivate::resetPageMove()
     m_pageMoveTarget = -1;
     m_pageMoveAfter = false;
     m_pageMoveDragging = false;
+}
+
+bool ThumbnailListPrivate::pageMoveHandleContains(const ThumbnailWidget *item, const QPoint &pos) const
+{
+    if (!item) {
+        return false;
+    }
+
+    return item->pageMoveHandleRect().contains(pos - item->pos());
 }
 
 void ThumbnailListPrivate::paintEvent(QPaintEvent *e)
@@ -789,6 +800,15 @@ void ThumbnailWidget::setVisibleRect(const Okular::NormalizedRect &rect)
     update();
 }
 
+QRect ThumbnailWidget::pageMoveHandleRect() const
+{
+    const QSize handleSize(18, 44);
+    const int pageTop = m_margin / 2;
+    const int pageLeft = m_margin / 2;
+    const int y = pageTop + qMax(0, (m_pixmapHeight - handleSize.height()) / 2);
+    return QRect(qMax(0, pageLeft - handleSize.width() / 2), y, handleSize.width(), handleSize.height());
+}
+
 void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
 {
     ThumbnailWidget *item = itemFor(e->pos());
@@ -797,7 +817,7 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
         return;
     }
 
-    if (m_pageEditingEnabled && e->button() == Qt::LeftButton) {
+    if (m_pageEditingEnabled && e->button() == Qt::LeftButton && pageMoveHandleContains(item, e->pos())) {
         m_pageMovePressPos = e->pos();
         m_pageMoveSource = item->pageNumber();
         m_pageMoveTarget = -1;
@@ -806,6 +826,13 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
         m_mouseGrabPos = QPoint();
         m_mouseGrabItem = nullptr;
         setCursor(Qt::ClosedHandCursor);
+        return;
+    }
+
+    if (m_pageEditingEnabled && e->button() == Qt::LeftButton) {
+        m_mouseGrabPos = QPoint();
+        m_mouseGrabItem = nullptr;
+        CursorWrapHelper::startDrag();
         return;
     }
 
@@ -878,7 +905,7 @@ void ThumbnailListPrivate::mouseReleaseEvent(QMouseEvent *e)
         vp.rePos.enabled = true;
         m_document->setViewport(vp, nullptr, true);
     }
-    setCursor(Qt::OpenHandCursor);
+    setCursor(m_pageEditingEnabled ? Qt::ArrowCursor : Qt::OpenHandCursor);
     m_mouseGrabPos.setX(0);
     m_mouseGrabPos.setY(0);
 }
@@ -921,6 +948,12 @@ void ThumbnailListPrivate::mouseMoveEvent(QMouseEvent *e)
     if (e->buttons() == Qt::NoButton) {
         const ThumbnailWidget *item = itemFor(e->pos());
         if (!item) { // mouse on the spacing between items
+            e->ignore();
+            return;
+        }
+
+        if (m_pageEditingEnabled) {
+            setCursor(pageMoveHandleContains(item, e->pos()) ? Qt::OpenHandCursor : Qt::ArrowCursor);
             e->ignore();
             return;
         }
@@ -1108,6 +1141,29 @@ void ThumbnailWidget::paint(QPainter &p, const QRect _clipRect)
             if (clipRect.isValid()) {
                 p.drawPixmap(m_pixmapWidth - pixW, -pixH / 8, bookmarkPixmap);
             }
+        }
+
+        if (m_parent->m_pageEditingEnabled) {
+            p.save();
+            const QRect handleRect = pageMoveHandleRect();
+            const QColor base = pal.color(QPalette::Active, QPalette::Button);
+            const QColor outline = pal.color(QPalette::Active, QPalette::Mid);
+            const QColor dot = pal.color(QPalette::Active, QPalette::Text);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(outline);
+            p.setBrush(base);
+            p.drawRoundedRect(handleRect.adjusted(1, 1, -1, -1), 4, 4);
+
+            p.setPen(Qt::NoPen);
+            p.setBrush(dot);
+            const int cx = handleRect.center().x();
+            const int spacing = 9;
+            const int cy = handleRect.center().y();
+            for (int i = -1; i <= 1; ++i) {
+                const int y = cy + i * spacing;
+                p.drawEllipse(QPointF(cx, y), 2.0, 2.0);
+            }
+            p.restore();
         }
     }
 }
