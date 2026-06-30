@@ -53,7 +53,6 @@ public:
 public Q_SLOTS:
     // these are connected to ThumbnailController buttons
     void slotFilterBookmarks(bool filterOn);
-    void setPageLevelEditingEnabled(bool enabled);
 
 protected:
     // scroll up/down the view

@@ -26,7 +26,6 @@
 #include "latexrenderer.h"
 
 // qt/kde includes
-#include <QAbstractButton>
 #include <QApplication>
 #include <QClipboard>
 #include <QComboBox>
@@ -322,66 +321,6 @@ static bool keepFileOpen()
 
 int Okular::Part::numberOfParts = 0;
 
-namespace
-{
-class PageEditingSwitch : public QAbstractButton
-{
-public:
-    explicit PageEditingSwitch(QWidget *parent = nullptr)
-        : QAbstractButton(parent)
-    {
-        setCheckable(true);
-        setCursor(Qt::PointingHandCursor);
-        setFocusPolicy(Qt::StrongFocus);
-    }
-
-    QSize sizeHint() const override
-    {
-        return QSize(48, 28);
-    }
-
-    QSize minimumSizeHint() const override
-    {
-        return sizeHint();
-    }
-
-protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-
-        const QRectF track = QRectF(rect()).adjusted(5, 5, -5, -5);
-        QColor trackColor = isChecked() ? palette().color(QPalette::Highlight) : palette().color(QPalette::Mid);
-        if (!isEnabled()) {
-            trackColor.setAlpha(90);
-        } else if (!isChecked()) {
-            trackColor.setAlpha(150);
-        }
-
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(trackColor);
-        painter.drawRoundedRect(track, track.height() / 2.0, track.height() / 2.0);
-
-        const qreal knobMargin = 3.0;
-        const qreal knobSize = track.height() - knobMargin * 2.0;
-        const qreal knobX = isChecked() ? track.right() - knobMargin - knobSize : track.left() + knobMargin;
-        const QRectF knob(knobX, track.top() + knobMargin, knobSize, knobSize);
-
-        painter.setBrush(palette().color(QPalette::Base));
-        painter.drawEllipse(knob);
-
-        if (hasFocus()) {
-            QPen focusPen(palette().color(QPalette::Highlight), 1);
-            focusPen.setStyle(Qt::DashLine);
-            painter.setPen(focusPen);
-            painter.setBrush(Qt::NoBrush);
-            painter.drawRoundedRect(track.adjusted(-3, -3, 3, 3), (track.height() + 6) / 2.0, (track.height() + 6) / 2.0);
-        }
-    }
-};
-}
-
 namespace Okular
 {
 Part::Part(QObject *parent, const QVariantList &args)
@@ -439,20 +378,6 @@ Part::Part(QObject *parent, const QVariantList &args)
     setWidget(m_sidebar);
     connect(m_sidebar, &Sidebar::urlsDropped, this, &Part::handleDroppedUrls);
 
-    m_pageLevelEditingToggle = new QAction(i18n("Enable Page Editing"), this);
-    m_pageLevelEditingToggle->setCheckable(true);
-    m_pageLevelEditingToggle->setToolTip(i18n("Enable page-level editing from the page preview"));
-    m_pageLevelEditingToggle->setWhatsThis(i18n("Enable page-level editing commands such as inserting, deleting, and reordering pages from the page preview."));
-    connect(m_pageLevelEditingToggle, &QAction::toggled, this, &Part::updatePageEditActions);
-
-    auto *pageEditingSwitch = new PageEditingSwitch(m_sidebar);
-    pageEditingSwitch->setAccessibleName(m_pageLevelEditingToggle->text());
-    pageEditingSwitch->setToolTip(m_pageLevelEditingToggle->toolTip());
-    pageEditingSwitch->setWhatsThis(m_pageLevelEditingToggle->whatsThis());
-    connect(pageEditingSwitch, &QAbstractButton::toggled, m_pageLevelEditingToggle, &QAction::setChecked);
-    connect(m_pageLevelEditingToggle, &QAction::toggled, pageEditingSwitch, &QAbstractButton::setChecked);
-    m_sidebar->setCornerWidget(pageEditingSwitch);
-
     // build the document
     m_document = new Okular::Document(widget());
     connect(m_document, &Document::linkFind, this, &Part::slotFind);
@@ -501,8 +426,6 @@ Part::Part(QObject *parent, const QVariantList &args)
     //	ThumbnailController * m_tc = new ThumbnailController( thumbsBox, m_thumbnailList );
     connect(m_thumbnailList.data(), &ThumbnailList::rightClick, this, &Part::slotShowMenu);
     connect(m_thumbnailList.data(), &ThumbnailList::pageMoveRequested, this, &Part::movePageFromThumbnail);
-    connect(m_pageLevelEditingToggle, &QAction::toggled, m_thumbnailList.data(), &ThumbnailList::setPageLevelEditingEnabled);
-    m_thumbnailList->setPageLevelEditingEnabled(pageLevelEditingEnabled());
     m_sidebar->addItem(thumbsBox, QIcon::fromTheme(QStringLiteral("view-preview")), i18n("Thumbnails"));
 
     m_sidebar->setCurrentItem(thumbsBox);
@@ -3268,14 +3191,9 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, boo
     return true;
 }
 
-bool Part::pageLevelEditingEnabled() const
-{
-    return m_pageLevelEditingToggle && m_pageLevelEditingToggle->isChecked();
-}
-
 bool Part::canUsePageLevelEditing() const
 {
-    return pageLevelEditingEnabled() && m_document->isOpened() && url().isLocalFile() && !isDocumentArchive && m_document->currentDocument().isLocalFile();
+    return m_document->isOpened() && url().isLocalFile() && !isDocumentArchive && m_document->currentDocument().isLocalFile();
 }
 
 void Part::updatePageEditActions()
@@ -3328,11 +3246,6 @@ void Part::slotInsertPageFromTemplate()
 
 void Part::insertPageWithDialog(int pageNumber)
 {
-    if (!pageLevelEditingEnabled()) {
-        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
-        return;
-    }
-
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || (!m_document->canInsertBlankPage() && !m_document->canInsertPageFromPdf())) {
         KMessageBox::information(widget(), i18n("Pages can only be inserted into local PDF files."));
         return;
@@ -3454,11 +3367,6 @@ void Part::insertPageWithDialog(int pageNumber)
 
 void Part::insertPageFromTemplateWithDialog(int pageNumber)
 {
-    if (!pageLevelEditingEnabled()) {
-        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
-        return;
-    }
-
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertPageFromPdf()) {
         KMessageBox::information(widget(), i18n("Pages can only be inserted into local PDF files."));
         return;
@@ -3568,11 +3476,6 @@ void Part::setPageTemplateFileName(const QString &fileName)
 
 void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
 {
-    if (!pageLevelEditingEnabled()) {
-        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
-        return;
-    }
-
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertBlankPage()) {
         KMessageBox::information(widget(), i18n("Blank pages can only be inserted into local PDF files."));
         return;
@@ -3648,11 +3551,6 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
 
 void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert)
 {
-    if (!pageLevelEditingEnabled()) {
-        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
-        return;
-    }
-
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertPageFromPdf()) {
         KMessageBox::information(widget(), i18n("Pages can only be inserted into local PDF files."));
         return;
@@ -3739,11 +3637,6 @@ void Part::slotDeleteCurrentPage()
 
 void Part::deletePage(int pageNumber)
 {
-    if (!pageLevelEditingEnabled()) {
-        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
-        return;
-    }
-
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canDeletePage()) {
         KMessageBox::information(widget(), i18n("Pages can only be deleted from local PDF files."));
         return;
@@ -3836,11 +3729,6 @@ void Part::movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfte
 
 void Part::movePageTo(int sourcePage, int destinationPage)
 {
-    if (!pageLevelEditingEnabled()) {
-        KMessageBox::information(widget(), i18n("Enable page editing in the page preview before changing pages."));
-        return;
-    }
-
     if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canMovePage()) {
         KMessageBox::information(widget(), i18n("Pages can only be reordered in local PDF files."));
         return;

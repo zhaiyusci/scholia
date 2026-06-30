@@ -325,7 +325,6 @@ private:
     void resetStartArguments();
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false);
-    bool pageLevelEditingEnabled() const;
     bool canUsePageLevelEditing() const;
     void updatePageEditActions();
     void insertPageWithDialog(int pageNumber);
@@ -463,7 +462,6 @@ private:
     QAction *m_aboutBackend;
     QAction *m_reload;
     QAction *m_addCurrentPageToContents = nullptr;
-    QAction *m_pageLevelEditingToggle = nullptr;
     QAction *m_insertPage = nullptr;
     QAction *m_setPageTemplate = nullptr;
     QAction *m_insertPageFromTemplate = nullptr;

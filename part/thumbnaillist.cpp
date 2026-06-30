@@ -15,6 +15,7 @@
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QStyle>
+#include <QStyleOption>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -76,10 +77,10 @@ public:
     QPoint m_mouseGrabPos;
     ThumbnailWidget *m_mouseGrabItem;
     int m_pageCurrentlyGrabbed;
-    bool m_pageEditingEnabled = false;
     QPoint m_pageMovePressPos;
     int m_pageMoveSource = -1;
     int m_pageMoveTarget = -1;
+    int m_pageMoveHandleHover = -1;
     bool m_pageMoveAfter = false;
     bool m_pageMoveDragging = false;
 
@@ -92,6 +93,7 @@ public:
     void delayedRequestVisiblePixmaps(int delayMs = 0);
     void resetPageMove();
     bool pageMoveHandleContains(const ThumbnailWidget *item, const QPoint &pos) const;
+    ThumbnailWidget *pageMoveTargetFor(const QPoint &pos, bool *insertAfterTarget) const;
 
     // SLOTS:
     // make requests for generating pixmaps for visible thumbnails
@@ -245,6 +247,7 @@ void ThumbnailListPrivate::resetPageMove()
     m_pageMovePressPos = QPoint();
     m_pageMoveSource = -1;
     m_pageMoveTarget = -1;
+    m_pageMoveHandleHover = -1;
     m_pageMoveAfter = false;
     m_pageMoveDragging = false;
 }
@@ -256,6 +259,34 @@ bool ThumbnailListPrivate::pageMoveHandleContains(const ThumbnailWidget *item, c
     }
 
     return item->pageMoveHandleRect().contains(pos - item->pos());
+}
+
+ThumbnailWidget *ThumbnailListPrivate::pageMoveTargetFor(const QPoint &pos, bool *insertAfterTarget) const
+{
+    if (m_thumbnails.isEmpty()) {
+        return nullptr;
+    }
+
+    ThumbnailWidget *target = itemFor(pos);
+    if (target) {
+        const QPoint targetPos = pos - target->pos();
+        *insertAfterTarget = targetPos.y() > target->rect().center().y();
+        return target;
+    }
+
+    ThumbnailWidget *first = m_thumbnails.constFirst();
+    if (pos.y() < first->rect().top()) {
+        *insertAfterTarget = false;
+        return first;
+    }
+
+    ThumbnailWidget *last = m_thumbnails.constLast();
+    if (pos.y() > last->rect().bottom()) {
+        *insertAfterTarget = true;
+        return last;
+    }
+
+    return nullptr;
 }
 
 void ThumbnailListPrivate::paintEvent(QPaintEvent *e)
@@ -273,16 +304,25 @@ void ThumbnailListPrivate::paintEvent(QPaintEvent *e)
         }
     }
 
-    if (m_pageEditingEnabled && m_pageMoveDragging && m_pageMoveTarget >= 0) {
+    if (m_pageMoveDragging && m_pageMoveTarget >= 0) {
         const ThumbnailWidget *target = getPageByNumber(m_pageMoveTarget);
         if (target) {
-            const int y = m_pageMoveAfter ? target->rect().bottom() + 1 : target->rect().top();
-            QRect markerRect(0, y - 5, width(), 10);
+            int y = m_pageMoveAfter ? target->rect().bottom() + 8 : target->rect().top() - 8;
+            y = qBound(8, y, height() - 8);
+            QRect markerRect(ThumbnailWidget::margin(), y - 7, width() - ThumbnailWidget::margin() * 2, 14);
             if (e->rect().intersects(markerRect)) {
-                QPen pen(palette().color(QPalette::Highlight), 3, Qt::SolidLine, Qt::RoundCap);
-                painter.setPen(pen);
-                const int margin = ThumbnailWidget::margin() / 2;
-                painter.drawLine(margin, y, width() - margin, y);
+                const QColor highlight = palette().color(QPalette::Highlight);
+                painter.save();
+                painter.setRenderHint(QPainter::Antialiasing);
+                painter.setPen(QPen(highlight, 1));
+                QColor fill = highlight;
+                fill.setAlpha(70);
+                painter.setBrush(fill);
+                painter.drawRoundedRect(markerRect, markerRect.height() / 2.0, markerRect.height() / 2.0);
+
+                painter.setPen(QPen(highlight, 3, Qt::SolidLine, Qt::RoundCap));
+                painter.drawLine(markerRect.left() + 8, markerRect.center().y(), markerRect.right() - 8, markerRect.center().y());
+                painter.restore();
             }
         }
     }
@@ -321,6 +361,9 @@ ThumbnailList::~ThumbnailList()
 // BEGIN DocumentObserver inherited methods
 void ThumbnailList::notifySetup(const QList<Okular::Page *> &pages, int setupFlags)
 {
+    d->resetPageMove();
+    d->unsetCursor();
+
     // if there was a widget selected, save its pagenumber to restore
     // its selection (if available in the new set of pages)
     int prevPage = -1;
@@ -500,18 +543,6 @@ void ThumbnailList::updateWidgets()
         ThumbnailWidget *t = *vIt;
         t->update();
     }
-}
-
-void ThumbnailList::setPageLevelEditingEnabled(bool enabled)
-{
-    if (d->m_pageEditingEnabled == enabled) {
-        return;
-    }
-
-    d->m_pageEditingEnabled = enabled;
-    d->resetPageMove();
-    d->unsetCursor();
-    d->update();
 }
 
 int ThumbnailListPrivate::getNewPageOffset(int n, ThumbnailListPrivate::ChangePageDirection dir) const
@@ -802,11 +833,12 @@ void ThumbnailWidget::setVisibleRect(const Okular::NormalizedRect &rect)
 
 QRect ThumbnailWidget::pageMoveHandleRect() const
 {
-    const QSize handleSize(18, 44);
+    const QSize handleSize(28, 54);
     const int pageTop = m_margin / 2;
     const int pageLeft = m_margin / 2;
     const int y = pageTop + qMax(0, (m_pixmapHeight - handleSize.height()) / 2);
-    return QRect(qMax(0, pageLeft - handleSize.width() / 2), y, handleSize.width(), handleSize.height());
+    const int x = qBound(0, pageLeft + m_pixmapWidth - handleSize.width() / 2, m_pixmapWidth + m_margin - handleSize.width());
+    return QRect(x, y, handleSize.width(), handleSize.height());
 }
 
 void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
@@ -817,22 +849,18 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
         return;
     }
 
-    if (m_pageEditingEnabled && e->button() == Qt::LeftButton && pageMoveHandleContains(item, e->pos())) {
+    if (e->button() == Qt::LeftButton && pageMoveHandleContains(item, e->pos())) {
         m_pageMovePressPos = e->pos();
         m_pageMoveSource = item->pageNumber();
         m_pageMoveTarget = -1;
+        m_pageMoveHandleHover = item->pageNumber();
         m_pageMoveAfter = false;
         m_pageMoveDragging = false;
         m_mouseGrabPos = QPoint();
         m_mouseGrabItem = nullptr;
         setCursor(Qt::ClosedHandCursor);
-        return;
-    }
-
-    if (m_pageEditingEnabled && e->button() == Qt::LeftButton) {
-        m_mouseGrabPos = QPoint();
-        m_mouseGrabItem = nullptr;
-        CursorWrapHelper::startDrag();
+        update(item->rect());
+        e->accept();
         return;
     }
 
@@ -857,7 +885,7 @@ void ThumbnailListPrivate::mousePressEvent(QMouseEvent *e)
 
 void ThumbnailListPrivate::mouseReleaseEvent(QMouseEvent *e)
 {
-    if (m_pageEditingEnabled && m_pageMoveSource >= 0) {
+    if (m_pageMoveSource >= 0) {
         const bool didDrag = m_pageMoveDragging;
         const int sourcePage = m_pageMoveSource;
         const int targetPage = m_pageMoveTarget;
@@ -869,21 +897,11 @@ void ThumbnailListPrivate::mouseReleaseEvent(QMouseEvent *e)
 
         if (didDrag && targetPage >= 0 && targetPage != sourcePage) {
             Q_EMIT q->pageMoveRequested(sourcePage, targetPage, insertAfterTarget);
+            e->accept();
             return;
         }
 
-        ThumbnailWidget *item = itemFor(e->pos());
-        if (item) {
-            const QPoint p = e->pos() - item->pos();
-            Okular::DocumentViewport vp = Okular::DocumentViewport(item->pageNumber());
-            vp.rePos.normalizedX = double(p.x()) / double(item->rect().width());
-            vp.rePos.normalizedY = double(p.y()) / double(item->rect().height());
-            vp.rePos.pos = Okular::DocumentViewport::Center;
-            vp.rePos.enabled = true;
-            m_document->setViewport(vp, nullptr, true);
-        } else {
-            e->ignore();
-        }
+        e->accept();
         return;
     }
 
@@ -905,14 +923,14 @@ void ThumbnailListPrivate::mouseReleaseEvent(QMouseEvent *e)
         vp.rePos.enabled = true;
         m_document->setViewport(vp, nullptr, true);
     }
-    setCursor(m_pageEditingEnabled ? Qt::ArrowCursor : Qt::OpenHandCursor);
+    setCursor(Qt::OpenHandCursor);
     m_mouseGrabPos.setX(0);
     m_mouseGrabPos.setY(0);
 }
 
 void ThumbnailListPrivate::mouseMoveEvent(QMouseEvent *e)
 {
-    if (m_pageEditingEnabled && m_pageMoveSource >= 0) {
+    if (m_pageMoveSource >= 0) {
         if (!(e->buttons() & Qt::LeftButton)) {
             resetPageMove();
             unsetCursor();
@@ -923,15 +941,17 @@ void ThumbnailListPrivate::mouseMoveEvent(QMouseEvent *e)
 
         if (!m_pageMoveDragging && (e->pos() - m_pageMovePressPos).manhattanLength() >= QApplication::startDragDistance()) {
             m_pageMoveDragging = true;
+            update();
         }
 
         if (m_pageMoveDragging) {
-            ThumbnailWidget *target = itemFor(e->pos());
             const int previousTarget = m_pageMoveTarget;
             const bool previousAfter = m_pageMoveAfter;
+            bool insertAfterTarget = false;
+            ThumbnailWidget *target = pageMoveTargetFor(e->pos(), &insertAfterTarget);
             if (target && target->pageNumber() != m_pageMoveSource) {
                 m_pageMoveTarget = target->pageNumber();
-                m_pageMoveAfter = e->pos().y() > target->rect().center().y();
+                m_pageMoveAfter = insertAfterTarget;
             } else {
                 m_pageMoveTarget = -1;
                 m_pageMoveAfter = false;
@@ -942,20 +962,34 @@ void ThumbnailListPrivate::mouseMoveEvent(QMouseEvent *e)
         }
 
         setCursor(Qt::ClosedHandCursor);
+        e->accept();
         return;
     }
 
     if (e->buttons() == Qt::NoButton) {
         const ThumbnailWidget *item = itemFor(e->pos());
         if (!item) { // mouse on the spacing between items
+            if (m_pageMoveHandleHover >= 0) {
+                m_pageMoveHandleHover = -1;
+                update();
+            }
             e->ignore();
             return;
         }
 
-        if (m_pageEditingEnabled) {
-            setCursor(pageMoveHandleContains(item, e->pos()) ? Qt::OpenHandCursor : Qt::ArrowCursor);
+        if (pageMoveHandleContains(item, e->pos())) {
+            if (m_pageMoveHandleHover != item->pageNumber()) {
+                m_pageMoveHandleHover = item->pageNumber();
+                update();
+            }
+            setCursor(Qt::OpenHandCursor);
             e->ignore();
             return;
+        }
+
+        if (m_pageMoveHandleHover >= 0) {
+            m_pageMoveHandleHover = -1;
+            update();
         }
 
         QRect r = item->visibleRect();
@@ -1117,12 +1151,14 @@ void ThumbnailWidget::paint(QPainter &p, const QRect _clipRect)
         }
 
         // draw the page using the shared PagePainter class
+        p.save();
         p.translate(m_margin / 2.0, m_margin / 2.0);
-        clipRect.translate(-m_margin / 2, -m_margin / 2);
-        clipRect = clipRect.intersected(QRect(0, 0, m_pixmapWidth, m_pixmapHeight));
-        if (clipRect.isValid()) {
+        QRect pageClipRect = clipRect;
+        pageClipRect.translate(-m_margin / 2, -m_margin / 2);
+        pageClipRect = pageClipRect.intersected(QRect(0, 0, m_pixmapWidth, m_pixmapHeight));
+        if (pageClipRect.isValid()) {
             int flags = PagePainter::Accessibility | PagePainter::Highlights | PagePainter::Annotations;
-            PagePainter::paintPageOnPainter(&p, m_page, m_parent->q, flags, m_pixmapWidth, m_pixmapHeight, clipRect);
+            PagePainter::paintPageOnPainter(&p, m_page, m_parent->q, flags, m_pixmapWidth, m_pixmapHeight, pageClipRect);
         }
 
         if (!m_visibleRect.isNull()) {
@@ -1137,34 +1173,50 @@ void ThumbnailWidget::paint(QPainter &p, const QRect _clipRect)
         const QPixmap bookmarkPixmap = m_parent->m_bookmarkOverlay;
         if (isBookmarked && !bookmarkPixmap.isNull()) {
             int pixW = bookmarkPixmap.width(), pixH = bookmarkPixmap.height();
-            clipRect = clipRect.intersected(QRect(m_pixmapWidth - pixW, 0, pixW, pixH));
-            if (clipRect.isValid()) {
+            QRect bookmarkClipRect = pageClipRect.intersected(QRect(m_pixmapWidth - pixW, 0, pixW, pixH));
+            if (bookmarkClipRect.isValid()) {
                 p.drawPixmap(m_pixmapWidth - pixW, -pixH / 8, bookmarkPixmap);
             }
         }
+        p.restore();
 
-        if (m_parent->m_pageEditingEnabled) {
-            p.save();
-            const QRect handleRect = pageMoveHandleRect();
-            const QColor base = pal.color(QPalette::Active, QPalette::Button);
-            const QColor outline = pal.color(QPalette::Active, QPalette::Mid);
-            const QColor dot = pal.color(QPalette::Active, QPalette::Text);
-            p.setRenderHint(QPainter::Antialiasing);
-            p.setPen(outline);
-            p.setBrush(base);
-            p.drawRoundedRect(handleRect.adjusted(1, 1, -1, -1), 4, 4);
-
-            p.setPen(Qt::NoPen);
-            p.setBrush(dot);
-            const int cx = handleRect.center().x();
-            const int spacing = 9;
-            const int cy = handleRect.center().y();
-            for (int i = -1; i <= 1; ++i) {
-                const int y = cy + i * spacing;
-                p.drawEllipse(QPointF(cx, y), 2.0, 2.0);
-            }
-            p.restore();
+        p.save();
+        const QRect handleRect = pageMoveHandleRect();
+        const bool handleHovered = m_parent->m_pageMoveHandleHover == pageNumber();
+        const bool handleActive = m_parent->m_pageMoveSource == pageNumber();
+        const QColor highlight = pal.color(QPalette::Active, QPalette::Highlight);
+        if (handleActive) {
+            QColor sourceFill = highlight;
+            sourceFill.setAlpha(m_parent->m_pageMoveDragging ? 45 : 30);
+            p.setPen(QPen(highlight, 2));
+            p.setBrush(sourceFill);
+            p.drawRoundedRect(QRect(m_margin / 2, m_margin / 2, m_pixmapWidth, m_pixmapHeight).adjusted(1, 1, -1, -1), 3, 3);
         }
+
+        QColor base = handleActive ? highlight : pal.color(QPalette::Active, QPalette::Button);
+        QColor outline = handleHovered || handleActive ? highlight : pal.color(QPalette::Active, QPalette::Mid);
+        if (!handleHovered && !handleActive) {
+            base.setAlpha(185);
+        } else if (handleActive) {
+            base.setAlpha(95);
+        }
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(outline);
+        p.setBrush(base);
+        p.drawRoundedRect(handleRect.adjusted(1, 1, -1, -1), 4, 4);
+
+        QStyleOption handleOption;
+        handleOption.initFrom(m_parent);
+        handleOption.rect = handleRect.adjusted(6, 7, -6, -7);
+        handleOption.state |= QStyle::State_Enabled;
+        if (handleHovered) {
+            handleOption.state |= QStyle::State_MouseOver;
+        }
+        if (handleActive) {
+            handleOption.state |= QStyle::State_Sunken;
+        }
+        m_parent->style()->drawPrimitive(QStyle::PE_IndicatorToolBarHandle, &handleOption, &p, m_parent);
+        p.restore();
     }
 }
 
