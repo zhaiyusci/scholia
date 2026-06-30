@@ -24,6 +24,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QLoggingCategory>
+#include <QPainter>
 #include <QStringList>
 #include <QTemporaryFile>
 #include <QVariant>
@@ -145,6 +146,7 @@ namespace
 {
 constexpr int LatexNoteDataVersion = 20260610;
 const QString LatexNoteDataKey = QStringLiteral("LatexNoteData");
+const QString TemplateNoteDataKey = QStringLiteral("TemplateNoteData");
 
 const QStringList &pdfBase14FontNames()
 {
@@ -475,6 +477,48 @@ Poppler::StampAnnotation::CustomPdfAppearanceOptions latexStampAppearanceOptions
     }
 
     return options;
+}
+
+QImage templateNoteAppearanceImage(const Okular::StampAnnotation *annotation, const Poppler::Page *page)
+{
+    if (!annotation || !page) {
+        return {};
+    }
+
+    const QRectF rectPoints = normRectToPageRectF(annotation->boundingRectangle(), page);
+    constexpr double targetDpi = 288.0;
+    constexpr double pdfDpi = 72.0;
+    const double scale = targetDpi / pdfDpi;
+    const int width = qBound(1, qRound(rectPoints.width() * scale), 4096);
+    const int height = qBound(1, qRound(rectPoints.height() * scale), 4096);
+    QImage image(QSize(width, height), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+
+    const QColor fillColor = annotation->templateNoteFillColor();
+    if (fillColor.isValid() && fillColor.alpha() > 0) {
+        painter.fillRect(image.rect(), fillColor);
+    }
+
+    const QColor borderColor = annotation->templateNoteBorderColor();
+    if (annotation->templateNoteBorderWidthPt() > 0.0 && borderColor.isValid() && borderColor.alpha() > 0) {
+        QPen pen(borderColor);
+        pen.setWidthF(annotation->templateNoteBorderWidthPt() * scale);
+        painter.setPen(pen);
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(image.rect().adjusted(0, 0, -1, -1));
+    }
+
+    QFont font(annotation->templateNoteFontFamily());
+    font.setPointSizeF(annotation->templateNoteFontSizePt() * scale);
+    painter.setFont(font);
+    painter.setPen(annotation->templateNoteTextColor().isValid() ? annotation->templateNoteTextColor() : QColor(Qt::black));
+    painter.drawText(image.rect().adjusted(qRound(3 * scale), qRound(1 * scale), -qRound(3 * scale), -qRound(1 * scale)), annotation->templateNoteAlignment() | Qt::TextSingleLine, annotation->contents());
+
+    return image;
 }
 
 }
@@ -869,6 +913,17 @@ static bool updatePopplerAnnotationFromOkularAnnotation(const Okular::StampAnnot
 {
     pStampAnnotation->setStampIconName(oStampAnnotation->stampIconName());
 #ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+    if (oStampAnnotation->isTemplateNote()) {
+        pStampAnnotation->setCustomStringProperty(TemplateNoteDataKey, oStampAnnotation->templateNoteData());
+        pStampAnnotation->removeCustomProperty(LatexNoteDataKey);
+        const QImage image = templateNoteAppearanceImage(oStampAnnotation, page);
+        if (!image.isNull()) {
+            pStampAnnotation->setStampAppearanceImage(image);
+            return true;
+        }
+        return false;
+    }
+    pStampAnnotation->removeCustomProperty(TemplateNoteDataKey);
     if (oStampAnnotation->isOkularLatex()) {
         pStampAnnotation->setCustomStringProperty(LatexNoteDataKey, latexNoteDataForStampAnnotation(oStampAnnotation, page));
 
@@ -1659,9 +1714,14 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(const Poppler::
 
     oStampAnn->setStampIconName(popplerAnnotation->stampIconName());
 #ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
+    const QString templateNoteData = popplerAnnotation->customStringProperty(TemplateNoteDataKey);
+    oStampAnn->setTemplateNoteData(templateNoteData);
+    if (oStampAnn->isTemplateNote()) {
+        oStampAnn->setStampIconName(QStringLiteral("scholia-template-note"));
+    }
     const ParsedLatexNoteData latexNoteData = parseLatexNoteData(popplerAnnotation->customStringProperty(LatexNoteDataKey));
-    oStampAnn->setOkularLatex(latexNoteData.valid);
-    if (latexNoteData.valid) {
+    oStampAnn->setOkularLatex(!oStampAnn->isTemplateNote() && latexNoteData.valid);
+    if (!oStampAnn->isTemplateNote() && latexNoteData.valid) {
         oStampAnn->setStampIconName(QStringLiteral("latex-notes"));
         oStampAnn->setLatexNoteType(latexNoteData.type == QLatin1String("callout") ? Okular::Annotation::LatexNoteCallout
                                  : (latexNoteData.type == QLatin1String("boxed") ? Okular::Annotation::LatexNoteBoxed : Okular::Annotation::LatexNotePlain));

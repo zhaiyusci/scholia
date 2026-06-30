@@ -142,6 +142,7 @@
 #include "side_reviews.h"
 #include "sidebar.h"
 #include "signaturepanel.h"
+#include "templatenoteutils.h"
 #include "thumbnaillist.h"
 #include "toc.h"
 
@@ -1701,6 +1702,9 @@ bool Part::openFile()
         m_addCurrentPageToContents->setEnabled(ok && !(isstdin || mime.inherits(QStringLiteral("inode/directory"))) && m_document->currentDocument().isLocalFile());
     }
     updatePageEditActions();
+    if (ok) {
+        refreshTemplateNotes();
+    }
     Q_EMIT enablePrintAction(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_printPreview->setEnabled(ok && m_document->printingSupport() != Okular::Document::NoPrinting);
     m_showProperties->setEnabled(ok);
@@ -2888,6 +2892,7 @@ bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
     }
 
     bool setModifiedAfterSave = false;
+    refreshTemplateNotes();
 
     QString tmpFileName;
     // don't turn the file_copy that use this to a file_move
@@ -3187,6 +3192,7 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, boo
 
     updateViewActions();
     updatePageEditActions();
+    refreshTemplateNotes();
     setWindowTitleFromDocument();
     return true;
 }
@@ -3194,6 +3200,39 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, boo
 bool Part::canUsePageLevelEditing() const
 {
     return m_document->isOpened() && url().isLocalFile() && !isDocumentArchive && m_document->currentDocument().isLocalFile();
+}
+
+void Part::refreshTemplateNotes()
+{
+    if (!m_document || !m_document->isOpened()) {
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
+        const Okular::Page *page = m_document->page(pageIndex);
+        if (!page) {
+            continue;
+        }
+
+        const QList<Okular::Annotation *> annotations = page->annotations();
+        for (Okular::Annotation *annotation : annotations) {
+            auto *templateStamp = TemplateNoteUtils::annotationAsTemplateStampAnnotation(annotation);
+            if (!templateStamp) {
+                continue;
+            }
+
+            QString errorMessage;
+            const QString expanded = TemplateNoteUtils::expandTemplate(m_document, pageIndex, templateStamp, &errorMessage);
+            if (!errorMessage.isEmpty() || expanded == templateStamp->contents()) {
+                continue;
+            }
+
+            m_document->prepareToModifyAnnotationProperties(templateStamp);
+            templateStamp->setContents(expanded);
+            m_document->modifyPageAnnotationProperties(pageIndex, templateStamp);
+        }
+    }
 }
 
 void Part::updatePageEditActions()
@@ -3543,6 +3582,7 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
     const QString editedFileName = editedFile->fileName();
     auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert Blank Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
     m_document->pushUndoCommand(command.release());
+    refreshTemplateNotes();
 
     if (m_pageView) {
         m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a blank page before the first page. Save the document to keep this change.") : i18n("Inserted a blank page after page %1. Save the document to keep this change.", pageNumberOneBased));
@@ -3624,6 +3664,7 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
     const QString editedFileName = editedFile->fileName();
     auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Insert PDF Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, qMax(0, insertAfterPageNumber), insertAfterPageNumber + 1);
     m_document->pushUndoCommand(command.release());
+    refreshTemplateNotes();
 
     if (m_pageView) {
         m_pageView->displayMessage(insertAfterPageNumber < 0 ? i18n("Inserted a PDF page before the first page. Save the document to keep this change.") : i18n("Inserted a PDF page after page %1. Save the document to keep this change.", pageNumberOneBased));
@@ -3711,6 +3752,7 @@ void Part::deletePage(int pageNumber)
     const int pageAfterDeletion = qMin(deletedPageIndex, static_cast<int>(m_document->pages()) - 2);
     auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Delete Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, deletedPageIndex, pageAfterDeletion);
     m_document->pushUndoCommand(command.release());
+    refreshTemplateNotes();
 
     if (m_pageView) {
         m_pageView->displayMessage(i18n("Deleted page %1. Save the document to keep this change.", pageNumberOneBased));
@@ -3801,6 +3843,7 @@ void Part::movePageTo(int sourcePage, int destinationPage)
     const QString editedFileName = editedFile->fileName();
     auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Move Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, sourcePage, destinationPage, true);
     m_document->pushUndoCommand(command.release());
+    refreshTemplateNotes();
 
     if (m_pageView) {
         m_pageView->displayMessage(i18n("Moved page %1 to position %2. Save the document to keep this change.", sourcePage + 1, destinationPage + 1));

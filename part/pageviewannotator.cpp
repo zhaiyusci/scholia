@@ -55,6 +55,7 @@
 #include "pageview.h"
 #include "settings.h"
 #include "signaturepartutils.h"
+#include "templatenoteutils.h"
 
 /** @short PickPointEngine */
 class PickPointEngine : public AnnotatorEngine
@@ -422,6 +423,10 @@ public:
             }
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
                 sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
+            }
+            if (m_annotElement.hasAttribute(QStringLiteral("templateNoteData"))) {
+                sa->setTemplateNoteData(m_annotElement.attribute(QStringLiteral("templateNoteData")));
+                sa->setStampIconName(QStringLiteral("scholia-template-note"));
             }
             if (latexStamp) {
                 sa->setOkularLatex(true);
@@ -1732,6 +1737,13 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
                 createdStampPageItem = m_lockedItem;
                 createdStampAnnotation = annotation;
             }
+            if (auto *templateStamp = TemplateNoteUtils::annotationAsTemplateStampAnnotation(annotation)) {
+                QString errorMessage;
+                const QString expanded = TemplateNoteUtils::expandTemplate(m_document, m_lockedItem->pageNumber(), templateStamp, &errorMessage);
+                if (errorMessage.isEmpty()) {
+                    templateStamp->setContents(expanded);
+                }
+            }
 
             annotation->setCreationDate(QDateTime::currentDateTime());
             annotation->setModificationDate(QDateTime::currentDateTime());
@@ -2074,6 +2086,7 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
     annotationElement.removeAttribute(QStringLiteral("latexScale"));
     annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
     annotationElement.removeAttribute(QStringLiteral("latexDefaultLayoutWidth"));
+    annotationElement.removeAttribute(QStringLiteral("templateNoteData"));
     saveBuiltinAnnotationTools();
     selectBuiltinTool(stampToolId, ShowTip::Yes);
     return stampToolId;
@@ -2132,6 +2145,41 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
         annotationElement.setAttribute(QStringLiteral("color"), QStringLiteral("#00ffffff"));
         annotationElement.setAttribute(QStringLiteral("borderColor"), QStringLiteral("#00000000"));
     }
+    selectTool(m_transientToolsDefinition, toolId, ShowTip::Yes);
+    return toolId;
+}
+
+int PageViewAnnotator::selectTemplateStampTool(const QString &templateData, const QString &contents)
+{
+    const QString toolType = QStringLiteral("stamp");
+    if (!m_transientToolsDefinition) {
+        m_transientToolsDefinition = new AnnotationTools();
+    }
+    m_transientToolsDefinition->setTools(m_builtinToolsDefinition->toStringList());
+
+    const int toolId = m_transientToolsDefinition->findToolId(toolType);
+    QDomElement toolElement = m_transientToolsDefinition->tool(toolId);
+    if (toolElement.isNull()) {
+        return -1;
+    }
+
+    QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
+    QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+    engineElement.removeAttribute(QStringLiteral("hoverIcon"));
+    annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("Stamp"));
+    annotationElement.setAttribute(QStringLiteral("icon"), QStringLiteral("scholia-template-note"));
+    annotationElement.removeAttribute(QStringLiteral("imagePath"));
+    annotationElement.setAttribute(QStringLiteral("contents"), contents);
+    annotationElement.setAttribute(QStringLiteral("templateNoteData"), templateData);
+    annotationElement.removeAttribute(QStringLiteral("okularLatex"));
+    annotationElement.removeAttribute(QStringLiteral("latexVariant"));
+    annotationElement.removeAttribute(QStringLiteral("latexBoxed"));
+    annotationElement.removeAttribute(QStringLiteral("latexCallout"));
+    annotationElement.removeAttribute(QStringLiteral("latexAppearancePdfFileName"));
+    annotationElement.removeAttribute(QStringLiteral("latexScale"));
+    annotationElement.removeAttribute(QStringLiteral("latexLayoutWidth"));
+    annotationElement.removeAttribute(QStringLiteral("latexDefaultLayoutWidth"));
+
     selectTool(m_transientToolsDefinition, toolId, ShowTip::Yes);
     return toolId;
 }

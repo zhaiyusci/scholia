@@ -76,6 +76,16 @@ public:
     QColor m_latexFillColor;
     QColor m_latexBorderColor;
     QString m_latexAppearancePdfFileName;
+    bool m_templateNote = false;
+    QString m_templateNoteData;
+    QString m_templateNoteTemplate;
+    QString m_templateNoteFontFamily = QStringLiteral("Helvetica");
+    double m_templateNoteFontSizePt = 10.0;
+    QColor m_templateNoteTextColor = Qt::black;
+    QColor m_templateNoteFillColor;
+    QColor m_templateNoteBorderColor;
+    double m_templateNoteBorderWidthPt = 0.0;
+    Qt::Alignment m_templateNoteAlignment = Qt::AlignCenter;
 
     int m_flags;
     NormalizedRect m_boundary;

@@ -50,6 +50,7 @@
 #include "pageview.h"
 #include "pageviewannotator.h"
 #include "settings.h"
+#include "templatenoteutils.h"
 #include "toggleactionmenu.h"
 
 static const QStringList &pdfBase14FontNames()
@@ -124,6 +125,7 @@ public:
         , aAddLatexNote(nullptr)
         , aAddLatexInlineNote(nullptr)
         , aAddLatexCallout(nullptr)
+        , aAddTemplateNote(nullptr)
         , aAddToQuickTools(nullptr)
         , aContinuousMode(nullptr)
         , aConstrainRatioAndAngle(nullptr)
@@ -183,6 +185,7 @@ public:
     void slotStampToolSelected(const QString &stamp);
     void slotSelectCustomStamp();
     void slotAddLatexNote(bool boxed = false, bool callout = false);
+    void slotAddTemplateNote();
     void slotQuickToolSelected(int favToolId);
     void slotSetColor(AnnotationColor colorType, const QColor &color = QColor());
     void slotSelectAnnotationFont();
@@ -209,6 +212,7 @@ public:
     QAction *aAddLatexNote;
     QAction *aAddLatexInlineNote;
     QAction *aAddLatexCallout;
+    QAction *aAddTemplateNote;
     QAction *aAddToQuickTools;
     KToggleAction *aContinuousMode;
     KToggleAction *aConstrainRatioAndAngle;
@@ -777,6 +781,14 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
     }
 }
 
+void AnnotationActionHandlerPrivate::slotAddTemplateNote()
+{
+    selectedBuiltinTool = annotator->selectTemplateStampTool(TemplateNoteUtils::defaultPageNumberTemplateData(), QStringLiteral("1 / 1"));
+    if (selectedBuiltinTool != -1) {
+        updateConfigActions(QStringLiteral("stamp"));
+    }
+}
+
 void AnnotationActionHandlerPrivate::slotQuickToolSelected(int favToolId)
 {
     annotator->selectQuickTool(favToolId);
@@ -968,6 +980,9 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     d->aAddLatexCallout->setIcon(d->scholiaIcon(QStringLiteral("annotation-latex-callout.svg")));
     d->aAddLatexCallout->setToolTip(i18nc("@info:tooltip", "Add a stamp-based LaTeX callout note"));
     connect(d->aAddLatexCallout, &QAction::triggered, this, [this]() { d->slotAddLatexNote(true, true); });
+    d->aAddTemplateNote = new QAction(QIcon::fromTheme(QStringLiteral("insert-text")), i18nc("@action:intoolbar Annotation tool", "Add Template Note"), this);
+    d->aAddTemplateNote->setToolTip(i18nc("@info:tooltip", "Add a template annotation such as an auto-updating page number"));
+    connect(d->aAddTemplateNote, &QAction::triggered, this, [this]() { d->slotAddTemplateNote(); });
     connect(d->aStamp->menu(), &QMenu::triggered, this, [this](QAction *action) {
         if (action->isCheckable()) {
             d->aStamp->setDefaultAction(action);
@@ -1084,6 +1099,7 @@ AnnotationActionHandler::AnnotationActionHandler(PageViewAnnotator *parent, KAct
     ac->addAction(QStringLiteral("annotation_add_latex_note"), d->aAddLatexNote);
     ac->addAction(QStringLiteral("annotation_add_latex_inline_note"), d->aAddLatexInlineNote);
     ac->addAction(QStringLiteral("annotation_add_latex_callout"), d->aAddLatexCallout);
+    ac->addAction(QStringLiteral("annotation_add_template_note"), d->aAddTemplateNote);
     ac->addAction(QStringLiteral("annotation_favorites"), d->aQuickTools);
     ac->addAction(QStringLiteral("annotation_bookmark"), d->aAddToQuickTools);
     ac->addAction(QStringLiteral("annotation_settings_pin"), d->aContinuousMode);
@@ -1173,6 +1189,7 @@ void AnnotationActionHandler::setToolsEnabled(bool on)
     d->aAddLatexNote->setEnabled(on);
     d->aAddLatexInlineNote->setEnabled(on);
     d->aAddLatexCallout->setEnabled(on);
+    d->aAddTemplateNote->setEnabled(on);
     d->aContinuousMode->setEnabled(on);
 }
 

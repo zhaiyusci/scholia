@@ -12,6 +12,8 @@
 #include <QFile>
 #include <QIcon>
 #include <QImageReader>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPainter>
 #include <QStandardPaths>
 #include <QSvgRenderer>
@@ -31,6 +33,87 @@
 #include <functional>
 
 using namespace Okular;
+
+namespace
+{
+constexpr int TemplateNoteDataVersion = 20260630;
+
+struct ParsedTemplateNoteData {
+    bool valid = false;
+    QString templateString;
+    QString fontFamily = QStringLiteral("Helvetica");
+    double fontSizePt = 10.0;
+    QColor textColor = Qt::black;
+    QColor fillColor;
+    QColor borderColor;
+    double borderWidthPt = 0.0;
+    Qt::Alignment alignment = Qt::AlignCenter;
+};
+
+QColor colorFromTemplateJson(const QJsonObject &object, const QString &key, const QColor &fallback = {})
+{
+    const QString value = object.value(key).toString();
+    if (value.isEmpty()) {
+        return fallback;
+    }
+
+    const QColor color(value);
+    return color.isValid() ? color : fallback;
+}
+
+ParsedTemplateNoteData parseTemplateNoteData(const QString &json)
+{
+    ParsedTemplateNoteData data;
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        return data;
+    }
+
+    const QJsonObject root = document.object();
+    if (root.value(QStringLiteral("version")).toInt() != TemplateNoteDataVersion || root.value(QStringLiteral("kind")).toString() != QLatin1String("scholia-template-note")) {
+        return data;
+    }
+
+    data.templateString = root.value(QStringLiteral("template")).toString();
+    if (data.templateString.isEmpty()) {
+        return data;
+    }
+
+    const QJsonObject style = root.value(QStringLiteral("style")).toObject();
+    const QString fontFamily = style.value(QStringLiteral("fontFamily")).toString();
+    if (!fontFamily.isEmpty()) {
+        data.fontFamily = fontFamily;
+    }
+
+    const double fontSize = style.value(QStringLiteral("fontSizePt")).toDouble(10.0);
+    if (std::isfinite(fontSize) && fontSize > 0.0) {
+        data.fontSizePt = fontSize;
+    }
+
+    data.textColor = colorFromTemplateJson(style, QStringLiteral("textColor"), Qt::black);
+    data.fillColor = colorFromTemplateJson(style, QStringLiteral("fillColor"));
+    data.borderColor = colorFromTemplateJson(style, QStringLiteral("borderColor"));
+
+    const double borderWidth = style.value(QStringLiteral("borderWidthPt")).toDouble(0.0);
+    if (std::isfinite(borderWidth) && borderWidth >= 0.0) {
+        data.borderWidthPt = borderWidth;
+    }
+
+    const QString align = style.value(QStringLiteral("align")).toString(QStringLiteral("center"));
+    if (align == QLatin1String("left")) {
+        data.alignment = Qt::AlignLeft | Qt::AlignVCenter;
+    } else if (align == QLatin1String("right")) {
+        data.alignment = Qt::AlignRight | Qt::AlignVCenter;
+    } else {
+        data.alignment = Qt::AlignCenter;
+    }
+
+    data.valid = true;
+    return data;
+}
+}
 
 /**
  * True, if point @p c lies to the left of the vector from @p a to @p b
@@ -976,6 +1059,82 @@ QString Annotation::latexAppearancePdfFileName() const
     return d->m_latexAppearancePdfFileName;
 }
 
+void Annotation::setTemplateNoteData(const QString &data)
+{
+    Q_D(Annotation);
+    const ParsedTemplateNoteData parsed = parseTemplateNoteData(data);
+    d->m_templateNote = parsed.valid;
+    d->m_templateNoteData = parsed.valid ? data : QString();
+    d->m_templateNoteTemplate = parsed.templateString;
+    d->m_templateNoteFontFamily = parsed.fontFamily;
+    d->m_templateNoteFontSizePt = parsed.fontSizePt;
+    d->m_templateNoteTextColor = parsed.textColor;
+    d->m_templateNoteFillColor = parsed.fillColor;
+    d->m_templateNoteBorderColor = parsed.borderColor;
+    d->m_templateNoteBorderWidthPt = parsed.borderWidthPt;
+    d->m_templateNoteAlignment = parsed.alignment;
+}
+
+QString Annotation::templateNoteData() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteData;
+}
+
+bool Annotation::isTemplateNote() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNote;
+}
+
+QString Annotation::templateNoteTemplate() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteTemplate;
+}
+
+QString Annotation::templateNoteFontFamily() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteFontFamily;
+}
+
+double Annotation::templateNoteFontSizePt() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteFontSizePt;
+}
+
+QColor Annotation::templateNoteTextColor() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteTextColor;
+}
+
+QColor Annotation::templateNoteFillColor() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteFillColor;
+}
+
+QColor Annotation::templateNoteBorderColor() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteBorderColor;
+}
+
+double Annotation::templateNoteBorderWidthPt() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteBorderWidthPt;
+}
+
+Qt::Alignment Annotation::templateNoteAlignment() const
+{
+    Q_D(const Annotation);
+    return d->m_templateNoteAlignment;
+}
+
 bool Annotation::canBeMoved() const
 {
     Q_D(const Annotation);
@@ -1063,6 +1222,9 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     }
     if (storeLatexMetadata && d->m_latexBorderColor.isValid()) {
         e.setAttribute(QStringLiteral("latexBorderColor"), d->m_latexBorderColor.name(QColor::HexArgb));
+    }
+    if (subType() == AStamp && d->m_templateNote && !d->m_templateNoteData.isEmpty()) {
+        e.setAttribute(QStringLiteral("templateNoteData"), d->m_templateNoteData);
     }
     // Sub-Node-1 - boundary
     QDomElement bE = document.createElement(QStringLiteral("boundary"));
@@ -1322,6 +1484,21 @@ void AnnotationPrivate::setAnnotationProperties(const QDomNode &node)
     }
     if (e.hasAttribute(QStringLiteral("latexAppearancePdfFileName"))) {
         m_latexAppearancePdfFileName = e.attribute(QStringLiteral("latexAppearancePdfFileName"));
+    }
+    if (e.hasAttribute(QStringLiteral("templateNoteData"))) {
+        const ParsedTemplateNoteData parsed = parseTemplateNoteData(e.attribute(QStringLiteral("templateNoteData")));
+        if (parsed.valid) {
+            m_templateNote = true;
+            m_templateNoteData = e.attribute(QStringLiteral("templateNoteData"));
+            m_templateNoteTemplate = parsed.templateString;
+            m_templateNoteFontFamily = parsed.fontFamily;
+            m_templateNoteFontSizePt = parsed.fontSizePt;
+            m_templateNoteTextColor = parsed.textColor;
+            m_templateNoteFillColor = parsed.fillColor;
+            m_templateNoteBorderColor = parsed.borderColor;
+            m_templateNoteBorderWidthPt = parsed.borderWidthPt;
+            m_templateNoteAlignment = parsed.alignment;
+        }
     }
 
     // parse -the-subnodes- (describing Style, Window, Revision(s) structures)

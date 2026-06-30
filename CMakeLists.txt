@@ -559,6 +559,7 @@ if(BUILD_DESKTOP)
     part/ktreeviewsearchline.cpp
     part/latexnoteutils.cpp
     part/latexrenderer.cpp
+    part/templatenoteutils.cpp
     part/minibar.cpp
     part/okmenutitle.cpp
     part/pageitemdelegate.cpp
@@ -625,6 +626,9 @@ if(HAVE_QSCINTILLA)
 endif()
 if (TARGET Qt6::DBus)
     target_link_libraries(okularpart Qt6::DBus)
+endif()
+if (TARGET Qt6::Qml)
+    target_link_libraries(okularpart Qt6::Qml)
 endif()
 if (Phonon4Qt6_FOUND)
    target_link_libraries(okularpart Phonon::phonon4qt6)
