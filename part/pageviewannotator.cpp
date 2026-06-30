@@ -7,8 +7,10 @@
 #include "pageviewannotator.h"
 
 // qt / kde includes
+#include <KConfigGroup>
 #include <KLocalizedString>
 #include <KMessageBox>
+#include <KSharedConfig>
 #include <QApplication>
 #include <QColor>
 #include <QEvent>
@@ -1407,6 +1409,50 @@ public:
         return -1;
     }
 
+    bool hasRequiredBuiltinTools()
+    {
+        const QStringList requiredTypes = {
+            QStringLiteral("highlight"),
+            QStringLiteral("underline"),
+            QStringLiteral("squiggly"),
+            QStringLiteral("strikeout"),
+            QStringLiteral("typewriter"),
+            QStringLiteral("note-inline"),
+            QStringLiteral("note-linked"),
+            QStringLiteral("note-callout"),
+            QStringLiteral("ink"),
+            QStringLiteral("straight-line"),
+            QStringLiteral("rectangle"),
+            QStringLiteral("ellipse"),
+            QStringLiteral("polygon"),
+            QStringLiteral("stamp"),
+        };
+
+        for (const QString &type : requiredTypes) {
+            if (findToolId(type) == -1) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool hasTransientSystemToolState() const
+    {
+        QDomElement toolElement = m_toolsDefinition.documentElement().firstChildElement();
+        while (!toolElement.isNull()) {
+            const QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
+            const QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
+            if (!annotationElement.isNull()) {
+                if (annotationElement.attribute(QStringLiteral("okularLatex")).toInt() != 0 || annotationElement.hasAttribute(QStringLiteral("latexVariant"))
+                    || annotationElement.hasAttribute(QStringLiteral("latexAppearancePdfFileName")) || annotationElement.hasAttribute(QStringLiteral("templateStampData"))) {
+                    return true;
+                }
+            }
+            toolElement = toolElement.nextSiblingElement();
+        }
+        return false;
+    }
+
 private:
     static bool isTextAnnotationTool(const QDomElement &annotationElement)
     {
@@ -1457,6 +1503,43 @@ static QString defaultCalloutToolXml()
                           "</tool>");
 }
 
+static QStringList defaultBuiltinAnnotationTools()
+{
+    QStringList tools;
+    QFile infoFile(QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("scholia/tools.xml")));
+    if (!infoFile.exists() || !infoFile.open(QIODevice::ReadOnly)) {
+        qCWarning(OkularUiDebug) << "Unable to open default annotation tools XML definition";
+        return tools;
+    }
+
+    QDomDocument doc;
+    if (!doc.setContent(&infoFile)) {
+        qCWarning(OkularUiDebug) << "Default annotation tools XML file seems to be damaged";
+        return tools;
+    }
+
+    const QDomElement toolsDefinition = doc.elementsByTagName(QStringLiteral("annotatingTools")).item(0).toElement();
+    QDomNode toolDescription = toolsDefinition.firstChild();
+    while (toolDescription.isElement()) {
+        const QDomElement toolElement = toolDescription.toElement();
+        if (toolElement.tagName() == QLatin1String("tool")) {
+            QDomDocument temp;
+            temp.appendChild(temp.importNode(toolElement, true));
+            tools << temp.toString(-1);
+        }
+        toolDescription = toolDescription.nextSibling();
+    }
+
+    return tools;
+}
+
+static void deleteBuiltinAnnotationToolsOverride()
+{
+    KConfigGroup reviewsGroup(KSharedConfig::openConfig(), QStringLiteral("Reviews"));
+    reviewsGroup.deleteEntry(QStringLiteral("BuiltinAnnotationTools"));
+    reviewsGroup.sync();
+}
+
 PageViewAnnotator::PageViewAnnotator(PageView *parent, Okular::Document *storage)
     : QObject(parent)
     , m_document(storage)
@@ -1465,6 +1548,7 @@ PageViewAnnotator::PageViewAnnotator(PageView *parent, Okular::Document *storage
     , m_engine(nullptr)
     , m_builtinToolsDefinition(nullptr)
     , m_quickToolsDefinition(nullptr)
+    , m_transientToolsDefinition(nullptr)
     , m_continuousMode(true)
     , m_constrainRatioAndAngle(false)
     , m_signatureMode(false)
@@ -1495,6 +1579,14 @@ void PageViewAnnotator::reparseBuiltinToolsConfig()
         m_builtinToolsDefinition = new AnnotationTools();
     }
     m_builtinToolsDefinition->setTools(Okular::Settings::builtinAnnotationTools());
+    if (!m_builtinToolsDefinition->hasRequiredBuiltinTools() || m_builtinToolsDefinition->hasTransientSystemToolState()) {
+        const QStringList defaultTools = defaultBuiltinAnnotationTools();
+        if (!defaultTools.isEmpty()) {
+            qCWarning(OkularUiDebug) << "Ignoring incomplete builtin annotation tools override and restoring default tools";
+            deleteBuiltinAnnotationToolsOverride();
+            m_builtinToolsDefinition->setTools(defaultTools);
+        }
+    }
     const bool addedCalloutTool = m_builtinToolsDefinition->ensureToolXml(QStringLiteral("note-callout"), QString(), defaultCalloutToolXml());
     const bool removedLegacyLatexCalloutTool = m_builtinToolsDefinition->removeTool(QStringLiteral("note-callout"), QStringLiteral("LaTeX Callout"));
     const bool normalizedCalloutTool = m_builtinToolsDefinition->normalizeCalloutTool();
@@ -1530,6 +1622,7 @@ PageViewAnnotator::~PageViewAnnotator()
     delete m_engine;
     delete m_builtinToolsDefinition;
     delete m_quickToolsDefinition;
+    delete m_transientToolsDefinition;
 }
 
 void PageViewAnnotator::setSignatureMode(bool enabled)
@@ -1989,8 +2082,13 @@ int PageViewAnnotator::selectStampTool(const QString &stampSymbol)
 int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, const QString &contents, bool boxed, const QColor &textColor, const QColor &fillColor, const QColor &borderColor, bool callout)
 {
     const QString toolType = QStringLiteral("stamp");
-    const int toolId = m_builtinToolsDefinition->findToolId(toolType);
-    QDomElement toolElement = builtinTool(toolId);
+    if (!m_transientToolsDefinition) {
+        m_transientToolsDefinition = new AnnotationTools();
+    }
+    m_transientToolsDefinition->setTools(m_builtinToolsDefinition->toStringList());
+
+    const int toolId = m_transientToolsDefinition->findToolId(toolType);
+    QDomElement toolElement = m_transientToolsDefinition->tool(toolId);
     if (toolElement.isNull()) {
         return -1;
     }
@@ -2034,7 +2132,7 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
         annotationElement.setAttribute(QStringLiteral("color"), QStringLiteral("#00ffffff"));
         annotationElement.setAttribute(QStringLiteral("borderColor"), QStringLiteral("#00000000"));
     }
-    selectBuiltinTool(toolId, ShowTip::Yes);
+    selectTool(m_transientToolsDefinition, toolId, ShowTip::Yes);
     return toolId;
 }
 
@@ -2332,6 +2430,14 @@ void PageViewAnnotator::setTextToolsEnabled(bool enabled)
 
 void PageViewAnnotator::saveBuiltinAnnotationTools()
 {
+    if (!m_builtinToolsDefinition || !m_builtinToolsDefinition->hasRequiredBuiltinTools()) {
+        qCWarning(OkularUiDebug) << "Refusing to save incomplete builtin annotation tools";
+        return;
+    }
+    if (m_builtinToolsDefinition->hasTransientSystemToolState()) {
+        qCWarning(OkularUiDebug) << "Refusing to save transient system annotation tool state";
+        return;
+    }
     Okular::Settings::setBuiltinAnnotationTools(m_builtinToolsDefinition->toStringList());
     Okular::Settings::self()->save();
 }
@@ -2348,7 +2454,8 @@ QDomElement PageViewAnnotator::quickTool(int toolId)
 
 QDomElement PageViewAnnotator::currentEngineElement()
 {
-    return m_builtinToolsDefinition->tool(m_lastToolId).firstChildElement(QStringLiteral("engine"));
+    AnnotationTools *toolsDefinition = m_lastToolsDefinition ? m_lastToolsDefinition : m_builtinToolsDefinition;
+    return toolsDefinition->tool(m_lastToolId).firstChildElement(QStringLiteral("engine"));
 }
 
 QDomElement PageViewAnnotator::currentAnnotationElement()

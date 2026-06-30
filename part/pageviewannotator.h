@@ -175,6 +175,7 @@ private:
     AnnotatorEngine *m_engine;
     AnnotationTools *m_builtinToolsDefinition;
     AnnotationTools *m_quickToolsDefinition;
+    AnnotationTools *m_transientToolsDefinition;
     bool m_continuousMode;
     bool m_constrainRatioAndAngle;
     bool m_signatureMode;
