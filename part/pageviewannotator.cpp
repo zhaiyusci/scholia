@@ -296,6 +296,9 @@ public:
         ta->setTextType(Okular::TextAnnotation::InPlace);
         ta->setInplaceIntent(inplaceIntent);
         ta->setTextFontName(QStringLiteral("Helvetica"));
+        if (m_annotElement.hasAttribute(QStringLiteral("templateNoteData"))) {
+            ta->setTemplateNoteData(m_annotElement.attribute(QStringLiteral("templateNoteData")));
+        }
         // set alignment
         if (m_annotElement.hasAttribute(QStringLiteral("align"))) {
             ta->setInplaceAlignment(m_annotElement.attribute(QStringLiteral("align")).toInt());
@@ -332,6 +335,9 @@ public:
         // set width
         if (m_annotElement.hasAttribute(QStringLiteral("width"))) {
             ta->style().setWidth(m_annotElement.attribute(QStringLiteral("width")).toDouble());
+        }
+        if (ta->isTemplateNote()) {
+            TemplateNoteUtils::applyTemplateStyle(ta);
         }
         // set boundary
         rect.left = qMin(startpoint.x, point.x);
@@ -423,10 +429,6 @@ public:
             }
             if (m_annotElement.hasAttribute(QStringLiteral("contents"))) {
                 sa->setContents(m_annotElement.attribute(QStringLiteral("contents")));
-            }
-            if (m_annotElement.hasAttribute(QStringLiteral("templateNoteData"))) {
-                sa->setTemplateNoteData(m_annotElement.attribute(QStringLiteral("templateNoteData")));
-                sa->setStampIconName(QStringLiteral("scholia-template-note"));
             }
             if (latexStamp) {
                 sa->setOkularLatex(true);
@@ -1449,7 +1451,7 @@ public:
             const QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
             if (!annotationElement.isNull()) {
                 if (annotationElement.attribute(QStringLiteral("okularLatex")).toInt() != 0 || annotationElement.hasAttribute(QStringLiteral("latexVariant"))
-                    || annotationElement.hasAttribute(QStringLiteral("latexAppearancePdfFileName")) || annotationElement.hasAttribute(QStringLiteral("templateStampData"))) {
+                    || annotationElement.hasAttribute(QStringLiteral("latexAppearancePdfFileName")) || annotationElement.hasAttribute(QStringLiteral("templateNoteData"))) {
                     return true;
                 }
             }
@@ -1737,11 +1739,11 @@ QRect PageViewAnnotator::performRouteMouseOrTabletEvent(const AnnotatorEngine::E
                 createdStampPageItem = m_lockedItem;
                 createdStampAnnotation = annotation;
             }
-            if (auto *templateStamp = TemplateNoteUtils::annotationAsTemplateStampAnnotation(annotation)) {
+            if (auto *templateText = TemplateNoteUtils::annotationAsTemplateTextAnnotation(annotation)) {
                 QString errorMessage;
-                const QString expanded = TemplateNoteUtils::expandTemplate(m_document, m_lockedItem->pageNumber(), templateStamp, &errorMessage);
+                const QString expanded = TemplateNoteUtils::expandTemplate(m_document, m_lockedItem->pageNumber(), templateText, &errorMessage);
                 if (errorMessage.isEmpty()) {
-                    templateStamp->setContents(expanded);
+                    templateText->setContents(expanded);
                 }
             }
 
@@ -2149,9 +2151,9 @@ int PageViewAnnotator::selectLatexStampTool(const QString &pdfAppearanceFile, co
     return toolId;
 }
 
-int PageViewAnnotator::selectTemplateStampTool(const QString &templateData, const QString &contents)
+int PageViewAnnotator::selectTemplateTextTool(const QString &templateData, const QString &contents)
 {
-    const QString toolType = QStringLiteral("stamp");
+    const QString toolType = QStringLiteral("note-inline");
     if (!m_transientToolsDefinition) {
         m_transientToolsDefinition = new AnnotationTools();
     }
@@ -2166,11 +2168,18 @@ int PageViewAnnotator::selectTemplateStampTool(const QString &templateData, cons
     QDomElement engineElement = toolElement.firstChildElement(QStringLiteral("engine"));
     QDomElement annotationElement = engineElement.firstChildElement(QStringLiteral("annotation"));
     engineElement.removeAttribute(QStringLiteral("hoverIcon"));
-    annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("Stamp"));
-    annotationElement.setAttribute(QStringLiteral("icon"), QStringLiteral("scholia-template-note"));
+    annotationElement.setAttribute(QStringLiteral("type"), QStringLiteral("FreeText"));
+    annotationElement.removeAttribute(QStringLiteral("icon"));
     annotationElement.removeAttribute(QStringLiteral("imagePath"));
     annotationElement.setAttribute(QStringLiteral("contents"), contents);
     annotationElement.setAttribute(QStringLiteral("templateNoteData"), templateData);
+    annotationElement.setAttribute(QStringLiteral("fontName"), QStringLiteral("Helvetica"));
+    annotationElement.setAttribute(QStringLiteral("fontSize"), QStringLiteral("9"));
+    annotationElement.setAttribute(QStringLiteral("textColor"), QStringLiteral("#ff404040"));
+    annotationElement.setAttribute(QStringLiteral("align"), QStringLiteral("1"));
+    annotationElement.setAttribute(QStringLiteral("color"), QStringLiteral("#00000000"));
+    annotationElement.setAttribute(QStringLiteral("borderColor"), QStringLiteral("#00000000"));
+    annotationElement.setAttribute(QStringLiteral("width"), QStringLiteral("0"));
     annotationElement.removeAttribute(QStringLiteral("okularLatex"));
     annotationElement.removeAttribute(QStringLiteral("latexVariant"));
     annotationElement.removeAttribute(QStringLiteral("latexBoxed"));

@@ -73,28 +73,58 @@ QString TemplateNoteUtils::defaultPageNumberTemplateData()
 
 bool TemplateNoteUtils::annotationIsTemplateNote(const Okular::Annotation *annotation)
 {
-    return annotation && annotation->subType() == Okular::Annotation::AStamp && annotation->isTemplateNote();
+    if (!annotation || annotation->subType() != Okular::Annotation::AText || !annotation->isTemplateNote()) {
+        return false;
+    }
+
+    const auto *textAnnotation = static_cast<const Okular::TextAnnotation *>(annotation);
+    return textAnnotation->textType() == Okular::TextAnnotation::InPlace;
 }
 
-const Okular::StampAnnotation *TemplateNoteUtils::annotationAsTemplateStampAnnotation(const Okular::Annotation *annotation)
+const Okular::TextAnnotation *TemplateNoteUtils::annotationAsTemplateTextAnnotation(const Okular::Annotation *annotation)
 {
     if (!annotationIsTemplateNote(annotation)) {
         return nullptr;
     }
-    return static_cast<const Okular::StampAnnotation *>(annotation);
+    return static_cast<const Okular::TextAnnotation *>(annotation);
 }
 
-Okular::StampAnnotation *TemplateNoteUtils::annotationAsTemplateStampAnnotation(Okular::Annotation *annotation)
+Okular::TextAnnotation *TemplateNoteUtils::annotationAsTemplateTextAnnotation(Okular::Annotation *annotation)
 {
-    return const_cast<Okular::StampAnnotation *>(annotationAsTemplateStampAnnotation(static_cast<const Okular::Annotation *>(annotation)));
+    return const_cast<Okular::TextAnnotation *>(annotationAsTemplateTextAnnotation(static_cast<const Okular::Annotation *>(annotation)));
 }
 
-QString TemplateNoteUtils::expandTemplate(const Okular::Document *document, int pageIndex, const Okular::StampAnnotation *annotation, QString *errorMessage)
+void TemplateNoteUtils::applyTemplateStyle(Okular::TextAnnotation *annotation)
+{
+    if (!annotation || !annotation->isTemplateNote()) {
+        return;
+    }
+
+    annotation->setTextType(Okular::TextAnnotation::InPlace);
+    annotation->setTextFontName(annotation->templateNoteFontFamily());
+    annotation->setTextFontPointSize(annotation->templateNoteFontSizePt());
+    annotation->setTextColor(annotation->templateNoteTextColor().isValid() ? annotation->templateNoteTextColor() : QColor(Qt::black));
+
+    Qt::Alignment alignment = annotation->templateNoteAlignment();
+    if (alignment.testFlag(Qt::AlignRight)) {
+        annotation->setInplaceAlignment(2);
+    } else if (alignment.testFlag(Qt::AlignHCenter)) {
+        annotation->setInplaceAlignment(1);
+    } else {
+        annotation->setInplaceAlignment(0);
+    }
+
+    annotation->style().setColor(annotation->templateNoteFillColor().isValid() ? annotation->templateNoteFillColor() : QColor(Qt::transparent));
+    annotation->setInplaceBorderColor(annotation->templateNoteBorderColor().isValid() ? annotation->templateNoteBorderColor() : QColor(Qt::transparent));
+    annotation->style().setWidth(annotation->templateNoteBorderWidthPt());
+}
+
+QString TemplateNoteUtils::expandTemplate(const Okular::Document *document, int pageIndex, const Okular::TextAnnotation *annotation, QString *errorMessage)
 {
     if (errorMessage) {
         errorMessage->clear();
     }
-    if (!document || !annotation || !annotation->isTemplateNote()) {
+    if (!document || !annotation || !annotationIsTemplateNote(annotation)) {
         return QString();
     }
 

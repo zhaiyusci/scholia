@@ -11,17 +11,17 @@ namespace Okular
 {
 class Annotation;
 class Document;
-class StampAnnotation;
+class TextAnnotation;
 }
 
 namespace TemplateNoteUtils
 {
 QString defaultPageNumberTemplateData();
 bool annotationIsTemplateNote(const Okular::Annotation *annotation);
-Okular::StampAnnotation *annotationAsTemplateStampAnnotation(Okular::Annotation *annotation);
-const Okular::StampAnnotation *annotationAsTemplateStampAnnotation(const Okular::Annotation *annotation);
-QString expandTemplate(const Okular::Document *document, int pageIndex, const Okular::StampAnnotation *annotation, QString *errorMessage = nullptr);
+Okular::TextAnnotation *annotationAsTemplateTextAnnotation(Okular::Annotation *annotation);
+const Okular::TextAnnotation *annotationAsTemplateTextAnnotation(const Okular::Annotation *annotation);
+void applyTemplateStyle(Okular::TextAnnotation *annotation);
+QString expandTemplate(const Okular::Document *document, int pageIndex, const Okular::TextAnnotation *annotation, QString *errorMessage = nullptr);
 }
 
 #endif
-

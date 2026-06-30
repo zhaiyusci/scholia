@@ -600,28 +600,6 @@ void PagePainter::paintCroppedPageOnPainter(QPainter *destPainter,
         // draw StampAnnotation
         else if (type == Okular::Annotation::AStamp) {
             Okular::StampAnnotation *stamp = static_cast<Okular::StampAnnotation *>(a);
-            if (stamp->isTemplateNote()) {
-                mixedPainter->save();
-                mixedPainter->setOpacity(mixedPainter->opacity() * opacity / 255.0);
-                if (stamp->templateNoteFillColor().isValid() && stamp->templateNoteFillColor().alpha() > 0) {
-                    mixedPainter->fillRect(annotBoundary, stamp->templateNoteFillColor());
-                }
-                if (stamp->templateNoteBorderWidthPt() > 0.0 && stamp->templateNoteBorderColor().isValid() && stamp->templateNoteBorderColor().alpha() > 0) {
-                    QPen borderPen(stamp->templateNoteBorderColor());
-                    borderPen.setWidthF(stamp->templateNoteBorderWidthPt());
-                    mixedPainter->setPen(borderPen);
-                    mixedPainter->setBrush(Qt::NoBrush);
-                    mixedPainter->drawRect(annotBoundary.adjusted(0, 0, -1, -1));
-                }
-                QFont font(stamp->templateNoteFontFamily());
-                font.setPointSizeF(stamp->templateNoteFontSizePt());
-                mixedPainter->setFont(font);
-                mixedPainter->setPen(stamp->templateNoteTextColor().isValid() ? stamp->templateNoteTextColor() : QColor(Qt::black));
-                mixedPainter->drawText(annotBoundary.adjusted(3, 1, -3, -1), stamp->templateNoteAlignment() | Qt::TextSingleLine, stamp->contents());
-                mixedPainter->restore();
-                continue;
-            }
-
             // get pixmap and alpha blend it if needed
             const QRect stampTargetRect = annotBoundary;
             const QPixmap stampPixmap = GuiUtils::stampPixmap(stamp->stampIconName(), stampTargetRect.size() * dpr);

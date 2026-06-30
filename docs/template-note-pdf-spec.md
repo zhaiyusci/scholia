@@ -11,7 +11,7 @@ Scholia-specific edit state is stored in one private JSON payload.
 
 ## Design Goals
 
-- A template note is a normal PDF stamp annotation.
+- A template note is a normal PDF FreeText annotation.
 - Other PDF readers must be able to display it through the normal appearance
   stream.
 - Scholia-specific state should be stored in one private JSON payload.
@@ -24,14 +24,16 @@ Scholia-specific edit state is stored in one private JSON payload.
 
 ## Annotation Shape
 
-All template notes are stored as `/Stamp` annotations:
+All template notes are stored as `/FreeText` annotations:
 
 ```pdf
 <<
   /Type /Annot
-  /Subtype /Stamp
+  /Subtype /FreeText
   /Rect [260 24 360 44]
   /Contents (3 / 24)
+  /DA (/Helv 10 Tf 0 0 0 rg)
+  /Q 1
   /TemplateNoteData (...JSON string...)
   /AP << /N 21 0 R >>
 >>
@@ -40,7 +42,7 @@ All template notes are stored as `/Stamp` annotations:
 Required fields:
 
 `/Subtype`
-: Must be `/Stamp`.
+: Must be `/FreeText`.
 
 `/Rect`
 : The annotation rectangle. This is the editable position and size of the
@@ -50,6 +52,14 @@ payload.
 `/Contents`
 : The last computed plain-text result. This gives ordinary PDF tools a useful
 text value and provides a fallback if Scholia-specific metadata is ignored.
+
+`/DA`
+: The default appearance string for the FreeText annotation. It should describe
+the font, font size, and text color used for the current appearance.
+
+`/Q`
+: Optional FreeText quadding value. If present, it should match
+`style.align`: `0` for left, `1` for center, and `2` for right.
 
 `/TemplateNoteData`
 : A PDF string containing UTF-8 JSON. This is the single Scholia private field
@@ -61,22 +71,26 @@ computed template result without requiring Scholia.
 
 Optional fields:
 
-`/Name`
-: May be present as a normal stamp name, but it is not part of the template
-note identity. New files should not require a special stamp name.
+`/C`, `/IC`
+: May be used for the annotation color and interior color according to normal
+FreeText writer behavior.
+
+`/BS`
+: May be used for the annotation border style according to normal FreeText
+writer behavior.
 
 ## Identity Rule
 
 A PDF annotation is a Scholia template note when:
 
-- `/Subtype` is `/Stamp`;
+- `/Subtype` is `/FreeText`;
 - `/TemplateNoteData` is present;
 - `/TemplateNoteData` parses as JSON;
 - the parsed JSON has `"version": 20260630`;
 - the parsed JSON has `"kind": "scholia-template-note"`.
 
-No stamp icon name, `/Name`, or appearance-stream content should be used as the
-source of identity.
+No icon name, visual appearance, `/Contents` text, or appearance-stream content
+should be used as the source of identity.
 
 ## JSON Payload
 
@@ -137,7 +151,7 @@ Unknown JSON fields must be preserved when possible. Readers may ignore fields
 they do not understand.
 
 The JSON payload must not contain the annotation's page position. Position and
-size belong to `/Rect`, just as they do for LaTeX notes and ordinary stamp
+size belong to `/Rect`, just as they do for LaTeX notes and ordinary
 annotations.
 
 ## Template Expression Language
@@ -411,10 +425,14 @@ The saved PDF must not depend on Scholia to display the template note. Scholia
 may recompute template text while editing, but every save must write a normal
 appearance stream for the current computed result.
 
-The normal appearance may be an outer Form XObject that draws the optional
-background, border, and text. The exact PDF drawing implementation is not part
-of the JSON schema. Other PDF readers should treat `/AP /N` as the visual
-source of truth.
+The normal appearance should be a standard FreeText appearance stream. Since
+template note output is plain text, the appearance should draw text with PDF
+text operators and vector drawing commands for optional background and border.
+It must not rasterize the template text into an image merely to produce the
+appearance.
+
+The exact PDF drawing implementation is not part of the JSON schema. Other PDF
+readers should treat `/AP /N` as the visual source of truth.
 
 `/Contents` and `/AP /N` must be updated together whenever Scholia refreshes a
 template note successfully.
@@ -477,7 +495,7 @@ Page label fallback:
 }
 ```
 
-Date stamp:
+Date note:
 
 ```json
 {

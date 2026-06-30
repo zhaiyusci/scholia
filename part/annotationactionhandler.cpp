@@ -783,9 +783,9 @@ void AnnotationActionHandlerPrivate::slotAddLatexNote(bool boxed, bool callout)
 
 void AnnotationActionHandlerPrivate::slotAddTemplateNote()
 {
-    selectedBuiltinTool = annotator->selectTemplateStampTool(TemplateNoteUtils::defaultPageNumberTemplateData(), QStringLiteral("1 / 1"));
+    selectedBuiltinTool = annotator->selectTemplateTextTool(TemplateNoteUtils::defaultPageNumberTemplateData(), QStringLiteral("1 / 1"));
     if (selectedBuiltinTool != -1) {
-        updateConfigActions(QStringLiteral("stamp"));
+        updateConfigActions(QStringLiteral("note-inline"));
     }
 }
 

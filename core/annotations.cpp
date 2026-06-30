@@ -1223,7 +1223,7 @@ void Annotation::store(QDomNode &annNode, QDomDocument &document) const
     if (storeLatexMetadata && d->m_latexBorderColor.isValid()) {
         e.setAttribute(QStringLiteral("latexBorderColor"), d->m_latexBorderColor.name(QColor::HexArgb));
     }
-    if (subType() == AStamp && d->m_templateNote && !d->m_templateNoteData.isEmpty()) {
+    if (subType() == AText && d->m_templateNote && !d->m_templateNoteData.isEmpty()) {
         e.setAttribute(QStringLiteral("templateNoteData"), d->m_templateNoteData);
     }
     // Sub-Node-1 - boundary

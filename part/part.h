@@ -337,6 +337,7 @@ private:
     void deletePage(int pageNumber);
     void movePageTo(int sourcePage, int destinationPage);
     void movePageFromThumbnail(int sourcePage, int targetPage, bool insertAfterTarget);
+    bool documentHasTemplateNotes() const;
     void refreshTemplateNotes();
 
     enum SaveAsFlag {

@@ -3202,6 +3202,29 @@ bool Part::canUsePageLevelEditing() const
     return m_document->isOpened() && url().isLocalFile() && !isDocumentArchive && m_document->currentDocument().isLocalFile();
 }
 
+bool Part::documentHasTemplateNotes() const
+{
+    if (!m_document || !m_document->isOpened()) {
+        return false;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
+        const Okular::Page *page = m_document->page(pageIndex);
+        if (!page) {
+            continue;
+        }
+
+        const QList<Okular::Annotation *> annotations = page->annotations();
+        for (const Okular::Annotation *annotation : annotations) {
+            if (TemplateNoteUtils::annotationIsTemplateNote(annotation)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void Part::refreshTemplateNotes()
 {
     if (!m_document || !m_document->isOpened()) {
@@ -3217,20 +3240,21 @@ void Part::refreshTemplateNotes()
 
         const QList<Okular::Annotation *> annotations = page->annotations();
         for (Okular::Annotation *annotation : annotations) {
-            auto *templateStamp = TemplateNoteUtils::annotationAsTemplateStampAnnotation(annotation);
-            if (!templateStamp) {
+            auto *templateText = TemplateNoteUtils::annotationAsTemplateTextAnnotation(annotation);
+            if (!templateText) {
                 continue;
             }
 
             QString errorMessage;
-            const QString expanded = TemplateNoteUtils::expandTemplate(m_document, pageIndex, templateStamp, &errorMessage);
-            if (!errorMessage.isEmpty() || expanded == templateStamp->contents()) {
+            const QString expanded = TemplateNoteUtils::expandTemplate(m_document, pageIndex, templateText, &errorMessage);
+            if (!errorMessage.isEmpty() || expanded == templateText->contents()) {
                 continue;
             }
 
-            m_document->prepareToModifyAnnotationProperties(templateStamp);
-            templateStamp->setContents(expanded);
-            m_document->modifyPageAnnotationProperties(pageIndex, templateStamp);
+            m_document->prepareToModifyAnnotationProperties(templateText);
+            templateText->setContents(expanded);
+            TemplateNoteUtils::applyTemplateStyle(templateText);
+            m_document->modifyPageAnnotationProperties(pageIndex, templateText);
         }
     }
 }
@@ -3534,7 +3558,11 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
         return;
     }
 
-    const bool wasModified = isModified();
+    const bool hasTemplateNotes = documentHasTemplateNotes();
+    if (hasTemplateNotes) {
+        refreshTemplateNotes();
+    }
+    const bool wasModified = isModified() || hasTemplateNotes;
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName = backingFileName;
     if (wasModified) {
@@ -3616,7 +3644,11 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
         return;
     }
 
-    const bool wasModified = isModified();
+    const bool hasTemplateNotes = documentHasTemplateNotes();
+    if (hasTemplateNotes) {
+        refreshTemplateNotes();
+    }
+    const bool wasModified = isModified() || hasTemplateNotes;
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName = backingFileName;
     if (wasModified) {
@@ -3702,7 +3734,11 @@ void Part::deletePage(int pageNumber)
         return;
     }
 
-    const bool wasModified = isModified();
+    const bool hasTemplateNotes = documentHasTemplateNotes();
+    if (hasTemplateNotes) {
+        refreshTemplateNotes();
+    }
+    const bool wasModified = isModified() || hasTemplateNotes;
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName = backingFileName;
     if (wasModified) {
@@ -3796,7 +3832,11 @@ void Part::movePageTo(int sourcePage, int destinationPage)
         return;
     }
 
-    const bool wasModified = isModified();
+    const bool hasTemplateNotes = documentHasTemplateNotes();
+    if (hasTemplateNotes) {
+        refreshTemplateNotes();
+    }
+    const bool wasModified = isModified() || hasTemplateNotes;
     std::unique_ptr<QTemporaryFile> savedSourceFile;
     QString sourceFileName = backingFileName;
     if (wasModified) {
