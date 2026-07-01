@@ -202,6 +202,15 @@ LaTeX notes separate the editable layout width from the visual scale:
 - StemTeX uses preloaded XeTeX workers and its bundled profile preambles for
   fast note rendering without depending on an external TeX installation.
 
+Rendering is content-driven. Scholia re-renders when a note is created, when its
+LaTeX source changes, when render-affecting style such as text/fill/border color
+changes, or when horizontal resizing changes the TeX layout width. Moving a
+note, changing ordinary metadata such as author, vertical-only resizing, page
+reordering, and opening a document with a valid appearance must reuse the
+existing appearance instead of calling StemTeX. Changing StemTeX settings
+restarts the renderer for future renders; it does not refresh every existing
+note.
+
 When debugging renderer selection, enable `org.jairy.scholia.ui.debug`. Every TeX
 or TeX-like render operation writes a line to
 `scholia-tex-debug.log` under the platform local application data directory. On

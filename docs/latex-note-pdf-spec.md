@@ -271,3 +271,31 @@ LaTeX notes separate layout from visual scale:
 
 All dimensions ending in `Pt` are PDF points. Values ending in `Norm` are
 normalized page coordinates.
+
+## Rendering Triggers
+
+Scholia should re-render a LaTeX note only when the rendered LaTeX appearance
+can change:
+
+- when creating a new LaTeX note with non-empty source;
+- after editing the LaTeX source;
+- after changing render-affecting style such as text color, fill color, border
+  color, boxed/plain state, or paragraph layout width;
+- after horizontal resize when the resize changes `layout.widthPt`;
+- when a resize operation needs the appearance but the runtime appearance PDF
+  path or page size is unavailable.
+
+Scholia should not invoke TeX or StemTeX for operations that only move or reuse
+the existing appearance:
+
+- moving the annotation on the page;
+- reordering, inserting, or deleting PDF pages;
+- changing ordinary metadata such as author or modification date;
+- changing annotation opacity or other PDF annotation state that does not alter
+  the rendered LaTeX page;
+- opening a document that already has a valid self-contained normal appearance;
+- vertical-only resize that only updates `layout.scale`.
+
+Changing StemTeX configuration, such as the selected profile or TeX tree, should
+restart the renderer for future work. It should not automatically re-render all
+existing notes in the document.

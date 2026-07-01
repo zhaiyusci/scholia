@@ -326,8 +326,8 @@ function Find-QScintillaRoot([string] $RequestedRoot, [string] $StemTeXRoot) {
 
 function Resolve-StemTeXRuntimeSource([string] $Root) {
     foreach ($candidate in @(
-        (Join-Path $Root "staging\runtime"),
         (Join-Path $Root "dist\stemtex-installer\StemTeX\runtime"),
+        (Join-Path $Root "staging\runtime"),
         (Join-Path $Root "dist\stemtex-texlive-daemon-static")
     )) {
         if ((Test-Path -LiteralPath (Join-Path $candidate "bin\sdk\stemtex-renderer.dll")) -and
@@ -340,8 +340,8 @@ function Resolve-StemTeXRuntimeSource([string] $Root) {
 
 function Resolve-StemTeXProfilesSource([string] $Root) {
     foreach ($candidate in @(
-        (Join-Path $Root "staging\gui\profiles"),
         (Join-Path $Root "dist\stemtex-installer\StemTeX\gui\profiles"),
+        (Join-Path $Root "staging\gui\profiles"),
         (Join-Path $Root "gui\profiles")
     )) {
         if ((Test-Path -LiteralPath $candidate) -and (Get-ChildItem -LiteralPath $candidate -Directory -ErrorAction SilentlyContinue | Where-Object {

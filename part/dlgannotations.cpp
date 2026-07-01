@@ -210,16 +210,12 @@ void DlgAnnotations::refreshStemTeXStatus()
     const GuiUtils::StemTeXStatus status = GuiUtils::LatexRenderer::stemTeXStatus();
     QString text;
     if (!status.supported) {
-        text = stemTeXLightHtml(false) + QStringLiteral("<span style=\"color:transparent;font-size:14px;\">&#9679;</span>") + status.note.toHtmlEscaped();
+        text = stemTeXLightHtml(false) + QStringLiteral("&nbsp;") + status.note.toHtmlEscaped();
         m_stemTeXStatusLabel->setText(text);
         return;
     }
 
-    text += stemTeXLightHtml(status.primaryReady);
-    const int spareTarget = qMax(2, status.spareTarget);
-    for (int i = 0; i < spareTarget; ++i) {
-        text += stemTeXLightHtml(i < status.spareReady);
-    }
+    text += stemTeXLightHtml(status.ready && status.primaryReady);
 
     QString note = status.note;
     if (note.isEmpty() && status.ready) {
@@ -231,20 +227,14 @@ void DlgAnnotations::refreshStemTeXStatus()
     if (status.asyncPending) {
         note += i18nc("@info Config dialog, annotations page, StemTeX engine status", ", pending job %1", QString::number(status.pendingJobId));
     }
-    if (status.spareRebuilding) {
-        if (note.isEmpty()) {
-            note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "rebuilding");
-        } else {
-            note += i18nc("@info Config dialog, annotations page, StemTeX engine status", ", rebuilding spare");
-        }
-    } else if (note.isEmpty() && status.initializing) {
+    if (note.isEmpty() && status.initializing) {
         note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "starting");
-    } else if (note.isEmpty() && status.ready && status.primaryReady && status.spareReady >= qMin(2, spareTarget)) {
+    } else if (note.isEmpty() && status.ready && status.primaryReady) {
         note = i18nc("@info Config dialog, annotations page, StemTeX engine status", "ready");
     }
 
     if (!note.isEmpty()) {
-        text += QStringLiteral("<span style=\"color:transparent;font-size:14px;\">&#9679;</span>");
+        text += QStringLiteral("&nbsp;");
         text += note.toHtmlEscaped();
     }
     m_stemTeXStatusLabel->setText(text);

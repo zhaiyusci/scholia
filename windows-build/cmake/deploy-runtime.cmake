@@ -82,8 +82,8 @@ endfunction()
 
 function(scholia_resolve_stemtex_runtime out_var root)
     foreach(_candidate IN ITEMS
-        "${root}/staging/runtime"
         "${root}/dist/stemtex-installer/StemTeX/runtime"
+        "${root}/staging/runtime"
         "${root}/dist/stemtex-texlive-daemon-static"
     )
         if(EXISTS "${_candidate}/bin/sdk/stemtex-renderer.dll"
@@ -98,8 +98,8 @@ endfunction()
 
 function(scholia_resolve_stemtex_profiles out_var root)
     foreach(_candidate IN ITEMS
-        "${root}/staging/gui/profiles"
         "${root}/dist/stemtex-installer/StemTeX/gui/profiles"
+        "${root}/staging/gui/profiles"
         "${root}/gui/profiles"
     )
         file(GLOB _profiles LIST_DIRECTORIES true "${_candidate}/*")

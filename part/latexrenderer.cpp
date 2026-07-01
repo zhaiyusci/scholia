@@ -717,7 +717,7 @@ private:
         config.profile_root_utf8 = profileRoot.constData();
         config.request_timeout_ms = 90000;
         config.xdvipdfmx_timeout_ms = 90000;
-        config.spare_worker_count = 2;
+        config.spare_worker_count = 0;
         config.delete_intermediates = 1;
 
         int errorCode = 0;

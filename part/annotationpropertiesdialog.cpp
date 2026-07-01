@@ -27,6 +27,15 @@
 
 namespace
 {
+struct LatexStampRenderState {
+    bool latex = false;
+    bool boxed = false;
+    QColor textColor;
+    QColor fillColor;
+    QColor borderColor;
+    double borderWidth = 0.0;
+};
+
 QColor validLatexStampTextColor(const Okular::StampAnnotation *annotation)
 {
     const QColor textColor = annotation ? annotation->latexTextColor() : QColor();
@@ -49,6 +58,28 @@ QColor validLatexStampBorderColor(const Okular::StampAnnotation *annotation, boo
     }
     const QColor borderColor = annotation ? annotation->latexBorderColor() : QColor();
     return borderColor.isValid() && borderColor.alpha() != 0 ? borderColor : validLatexStampTextColor(annotation);
+}
+
+LatexStampRenderState latexStampRenderState(const Okular::StampAnnotation *annotation)
+{
+    LatexStampRenderState state;
+    if (!annotation || !annotation->isOkularLatex()) {
+        return state;
+    }
+
+    state.latex = true;
+    state.boxed = annotation->style().width() > 0.0;
+    state.textColor = validLatexStampTextColor(annotation);
+    state.fillColor = validLatexStampFillColor(annotation, state.boxed);
+    state.borderColor = validLatexStampBorderColor(annotation, state.boxed);
+    state.borderWidth = state.boxed ? qMax(1.0, annotation->style().width()) : 0.0;
+    return state;
+}
+
+bool latexStampRenderStateChanged(const LatexStampRenderState &before, const LatexStampRenderState &after)
+{
+    return before.latex != after.latex || before.boxed != after.boxed || before.textColor != after.textColor || before.fillColor != after.fillColor || before.borderColor != after.borderColor
+        || qAbs(before.borderWidth - after.borderWidth) > 1e-6;
 }
 }
 
@@ -192,6 +223,9 @@ void AnnotsPropertiesDialog::slotapply()
         return;
     }
 
+    const auto *stampBefore = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot);
+    const LatexStampRenderState latexRenderStateBefore = latexStampRenderState(stampBefore);
+
     m_document->prepareToModifyAnnotationProperties(m_annot);
     m_annot->setAuthor(AuthorEdit->text());
     m_annot->setModificationDate(QDateTime::currentDateTime());
@@ -199,18 +233,21 @@ void AnnotsPropertiesDialog::slotapply()
     m_annotWidget->applyChanges();
 
     if (auto *stampAnnotation = LatexNoteUtils::annotationAsLatexStampAnnotation(m_annot)) {
-        const bool boxed = stampAnnotation->style().width() > 0.0;
-        const bool appearanceUpdated = LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
-                                                                                            m_document,
-                                                                                            m_page,
-                                                                                            stampAnnotation,
-                                                                                            validLatexStampTextColor(stampAnnotation),
-                                                                                            validLatexStampFillColor(stampAnnotation, boxed),
-                                                                                            validLatexStampBorderColor(stampAnnotation, boxed),
-                                                                                            stampAnnotation->latexLayoutWidth(),
-                                                                                            boxed,
-                                                                                            stampAnnotation->latexScale(),
-                                                                                            false);
+        const LatexStampRenderState latexRenderStateAfter = latexStampRenderState(stampAnnotation);
+        bool appearanceUpdated = false;
+        if (latexStampRenderStateChanged(latexRenderStateBefore, latexRenderStateAfter)) {
+            appearanceUpdated = LatexNoteUtils::updateLatexStampAnnotationAppearance(this,
+                                                                                    m_document,
+                                                                                    m_page,
+                                                                                    stampAnnotation,
+                                                                                    latexRenderStateAfter.textColor,
+                                                                                    latexRenderStateAfter.fillColor,
+                                                                                    latexRenderStateAfter.borderColor,
+                                                                                    stampAnnotation->latexLayoutWidth(),
+                                                                                    latexRenderStateAfter.boxed,
+                                                                                    stampAnnotation->latexScale(),
+                                                                                    false);
+        }
         if (!appearanceUpdated) {
             m_document->modifyPageAnnotationProperties(m_page, m_annot);
         }
