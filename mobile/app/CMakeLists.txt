@@ -5,6 +5,7 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}/../../
 )
 add_executable(okularkirigami main.cpp)
+target_compile_definitions(okularkirigami PRIVATE SCHOLIA_ABOUT_VERSION_STRING="${PROJECT_VERSION}")
 target_link_libraries(okularkirigami PRIVATE Qt6::Widgets Qt6::Qml KF6::I18n KF6::CoreAddons)
 
 ecm_add_qml_module(okularkirigami

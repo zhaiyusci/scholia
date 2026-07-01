@@ -13,12 +13,16 @@
 
 #include <KLocalizedString>
 
+#ifndef SCHOLIA_ABOUT_VERSION_STRING
+#define SCHOLIA_ABOUT_VERSION_STRING OKULAR_VERSION_STRING
+#endif
+
 inline KAboutData okularAboutData()
 {
     const QString brand = QStringLiteral("Scholia");
     KAboutData about(QStringLiteral("scholia"),
                      brand,
-                     QStringLiteral(OKULAR_VERSION_STRING),
+                     QStringLiteral(SCHOLIA_ABOUT_VERSION_STRING),
                      i18n("A PDF-centered document viewer and annotation tool based on Okular"),
                      KAboutLicense::GPL_V2,
                      i18n("(C) 2026 Yu Zhai and the %1 contributors\n"
