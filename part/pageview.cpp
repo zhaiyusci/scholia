@@ -78,6 +78,7 @@
 #include "formwidgets.h"
 #include "gui/debug_ui.h"
 #include "gui/guiutils.h"
+#include "templatenoteutils.h"
 #include "gui/pagepainter.h"
 #include "gui/priorities.h"
 #include "okmenutitle.h"
@@ -1572,7 +1573,7 @@ void PageView::fitPageWidth(int page)
 
 void PageView::openAnnotationWindow(Okular::Annotation *annotation, int pageNumber)
 {
-    if (!annotation) {
+    if (!annotation || TemplateNoteUtils::annotationIsTemplateNote(annotation)) {
         return;
     }
 

@@ -24,11 +24,6 @@
 
 namespace
 {
-QString jsonColor(const QColor &color)
-{
-    return color.name(QColor::HexArgb);
-}
-
 #if HAVE_JS
 void setString(QJSValue object, const QString &name, const QString &value)
 {
@@ -56,18 +51,30 @@ QString evaluateExpression(QJSEngine &engine, const QString &expression, QString
 
 QString TemplateNoteUtils::defaultPageNumberTemplateData()
 {
-    QJsonObject style;
-    style.insert(QStringLiteral("fontFamily"), QStringLiteral("Helvetica"));
-    style.insert(QStringLiteral("fontSizePt"), 9);
-    style.insert(QStringLiteral("textColor"), jsonColor(QColor(64, 64, 64)));
-    style.insert(QStringLiteral("align"), QStringLiteral("center"));
-
     QJsonObject root;
     root.insert(QStringLiteral("version"), 20260630);
     root.insert(QStringLiteral("kind"), QStringLiteral("scholia-template-note"));
     root.insert(QStringLiteral("template"), QStringLiteral("${frameNumber} / ${totalFrameNumber}"));
-    root.insert(QStringLiteral("style"), style);
 
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+}
+
+QString TemplateNoteUtils::templateDataWithTemplate(const QString &templateData, const QString &templateText)
+{
+    QJsonParseError parseError;
+    QJsonDocument document = QJsonDocument::fromJson(templateData.toUtf8(), &parseError);
+    QJsonObject root;
+    if (parseError.error == QJsonParseError::NoError && document.isObject()) {
+        root = document.object();
+    } else {
+        document = QJsonDocument::fromJson(defaultPageNumberTemplateData().toUtf8());
+        root = document.object();
+    }
+
+    root.insert(QStringLiteral("version"), 20260630);
+    root.insert(QStringLiteral("kind"), QStringLiteral("scholia-template-note"));
+    root.insert(QStringLiteral("template"), templateText);
+    root.remove(QStringLiteral("style"));
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
 }
 
@@ -92,31 +99,6 @@ const Okular::TextAnnotation *TemplateNoteUtils::annotationAsTemplateTextAnnotat
 Okular::TextAnnotation *TemplateNoteUtils::annotationAsTemplateTextAnnotation(Okular::Annotation *annotation)
 {
     return const_cast<Okular::TextAnnotation *>(annotationAsTemplateTextAnnotation(static_cast<const Okular::Annotation *>(annotation)));
-}
-
-void TemplateNoteUtils::applyTemplateStyle(Okular::TextAnnotation *annotation)
-{
-    if (!annotation || !annotation->isTemplateNote()) {
-        return;
-    }
-
-    annotation->setTextType(Okular::TextAnnotation::InPlace);
-    annotation->setTextFontName(annotation->templateNoteFontFamily());
-    annotation->setTextFontPointSize(annotation->templateNoteFontSizePt());
-    annotation->setTextColor(annotation->templateNoteTextColor().isValid() ? annotation->templateNoteTextColor() : QColor(Qt::black));
-
-    Qt::Alignment alignment = annotation->templateNoteAlignment();
-    if (alignment.testFlag(Qt::AlignRight)) {
-        annotation->setInplaceAlignment(2);
-    } else if (alignment.testFlag(Qt::AlignHCenter)) {
-        annotation->setInplaceAlignment(1);
-    } else {
-        annotation->setInplaceAlignment(0);
-    }
-
-    annotation->style().setColor(annotation->templateNoteFillColor().isValid() ? annotation->templateNoteFillColor() : QColor(Qt::transparent));
-    annotation->setInplaceBorderColor(annotation->templateNoteBorderColor().isValid() ? annotation->templateNoteBorderColor() : QColor(Qt::transparent));
-    annotation->style().setWidth(annotation->templateNoteBorderWidthPt());
 }
 
 QString TemplateNoteUtils::expandTemplate(const Okular::Document *document, int pageIndex, const Okular::TextAnnotation *annotation, QString *errorMessage)

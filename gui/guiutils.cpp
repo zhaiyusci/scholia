@@ -44,6 +44,9 @@ AnnotationInfo getAnnotationInfo(const Okular::Annotation *ann)
         if (textAnn->textType() == Okular::TextAnnotation::Linked) {
             info.caption = i18n("Pop-up Note");
             info.iconName = QStringLiteral("edit-comment");
+        } else if (textAnn->isTemplateNote()) {
+            info.caption = i18n("Template Note");
+            info.iconName = QStringLiteral("document-edit");
         } else if (textAnn->isOkularLatex()) {
             if (textAnn->inplaceIntent() == Okular::TextAnnotation::Callout) {
                 info.caption = i18n("LaTeX Callout");

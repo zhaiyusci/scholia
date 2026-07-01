@@ -85,6 +85,8 @@ private:
     void doCopyAnnotationText(AnnotPagePair pair);
     void doPasteAnnotation(AnnotPagePair pair);
     void addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair);
+    void addTemplateAnnotationActions(QMenu *menu, AnnotPagePair pair);
+    void doEditTemplateAnnotation(AnnotPagePair pair);
     void doSetLatexAnnotationWidth(AnnotPagePair pair);
     void doFitLatexAnnotationToContent(AnnotPagePair pair);
     void doResetLatexAnnotationScale(AnnotPagePair pair);

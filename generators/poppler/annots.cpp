@@ -1561,21 +1561,6 @@ static Okular::Annotation *createAnnotationFromPopplerAnnotation(Poppler::TextAn
 #ifdef POPPLER_QT6_HAS_ANNOTATION_CUSTOM_SCALAR_PROPERTIES
     if (oTextAnn->textType() == Okular::TextAnnotation::InPlace) {
         oTextAnn->setTemplateNoteData(popplerAnnotation->customStringProperty(TemplateNoteDataKey));
-        if (oTextAnn->isTemplateNote()) {
-            oTextAnn->setTextFontName(normalizedPdfBase14FontName(oTextAnn->templateNoteFontFamily()));
-            oTextAnn->setTextFontPointSize(oTextAnn->templateNoteFontSizePt());
-            oTextAnn->setTextColor(oTextAnn->templateNoteTextColor().isValid() ? oTextAnn->templateNoteTextColor() : QColor(Qt::black));
-            if (oTextAnn->templateNoteAlignment().testFlag(Qt::AlignRight)) {
-                oTextAnn->setInplaceAlignment(2);
-            } else if (oTextAnn->templateNoteAlignment().testFlag(Qt::AlignHCenter)) {
-                oTextAnn->setInplaceAlignment(1);
-            } else {
-                oTextAnn->setInplaceAlignment(0);
-            }
-            oTextAnn->style().setColor(oTextAnn->templateNoteFillColor().isValid() ? oTextAnn->templateNoteFillColor() : QColor(Qt::transparent));
-            oTextAnn->setInplaceBorderColor(oTextAnn->templateNoteBorderColor().isValid() ? oTextAnn->templateNoteBorderColor() : QColor(Qt::transparent));
-            oTextAnn->style().setWidth(oTextAnn->templateNoteBorderWidthPt());
-        }
     }
 #endif
 

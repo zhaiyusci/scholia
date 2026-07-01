@@ -3253,7 +3253,6 @@ void Part::refreshTemplateNotes()
 
             m_document->prepareToModifyAnnotationProperties(templateText);
             templateText->setContents(expanded);
-            TemplateNoteUtils::applyTemplateStyle(templateText);
             m_document->modifyPageAnnotationProperties(pageIndex, templateText);
         }
     }

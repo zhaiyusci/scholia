@@ -58,8 +58,8 @@ text value and provides a fallback if Scholia-specific metadata is ignored.
 the font, font size, and text color used for the current appearance.
 
 `/Q`
-: Optional FreeText quadding value. If present, it should match
-`style.align`: `0` for left, `1` for center, and `2` for right.
+: Optional FreeText quadding value: `0` for left, `1` for center, and `2`
+for right. This is normal FreeText appearance state, not template metadata.
 
 `/TemplateNoteData`
 : A PDF string containing UTF-8 JSON. This is the single Scholia private field
@@ -102,13 +102,7 @@ Minimal schema:
 {
   "version": 20260630,
   "kind": "scholia-template-note",
-  "template": "${frameNumber} / ${totalFrameNumber}",
-  "style": {
-    "fontFamily": "Helvetica",
-    "fontSizePt": 10,
-    "textColor": "#ff000000",
-    "align": "center"
-  }
+  "template": "${frameNumber} / ${totalFrameNumber}"
 }
 ```
 
@@ -125,34 +119,19 @@ Fields:
 template literal body. Text outside `${...}` placeholders is copied literally.
 Each placeholder contains a JavaScript expression evaluated by Scholia.
 
-`style.fontFamily`
-: Optional string. Defaults to a built-in PDF base font such as Helvetica.
-
-`style.fontSizePt`
-: Optional positive number in PDF points. Defaults to `10`.
-
-`style.textColor`
-: Optional CSS-style ARGB hex string, `#aarrggbb`. Defaults to opaque black.
-
-`style.align`
-: Optional string. One of `"left"`, `"center"`, or `"right"`. Defaults to
-`"center"`.
-
-`style.fillColor`
-: Optional ARGB hex string. Transparent means no fill.
-
-`style.borderColor`
-: Optional ARGB hex string. Transparent means no stroke.
-
-`style.borderWidthPt`
-: Optional non-negative number in PDF points. Defaults to `0`.
-
 Unknown JSON fields must be preserved when possible. Readers may ignore fields
 they do not understand.
 
 The JSON payload must not contain the annotation's page position. Position and
 size belong to `/Rect`, just as they do for LaTeX notes and ordinary
 annotations.
+
+The JSON payload must not contain visual style fields such as font family, font
+size, text color, fill color, border color, border width, or alignment. Those
+properties are normal FreeText annotation state (`/DA`, `/Q`, `/C`, `/IC`,
+`/BS`, and the generated appearance stream). Scholia may use product defaults
+when creating a new template note, but after creation the FreeText annotation
+itself is the source of truth for appearance.
 
 ## Template Expression Language
 
@@ -447,7 +426,8 @@ Template notes should refresh when document context relevant to their computed
 text may have changed:
 
 - after creating a template note;
-- after editing its template string or style;
+- after editing its template string;
+- after editing its normal FreeText appearance;
 - after moving or resizing it, so its appearance matches the new `/Rect`;
 - after inserting, deleting, or reordering pages;
 - after opening a document containing template notes;
@@ -470,13 +450,7 @@ Footer page number:
 {
   "version": 20260630,
   "kind": "scholia-template-note",
-  "template": "${frameNumber} / ${totalFrameNumber}",
-  "style": {
-    "fontFamily": "Helvetica",
-    "fontSizePt": 9,
-    "textColor": "#ff404040",
-    "align": "center"
-  }
+  "template": "${frameNumber} / ${totalFrameNumber}"
 }
 ```
 
@@ -486,12 +460,7 @@ Page label fallback:
 {
   "version": 20260630,
   "kind": "scholia-template-note",
-  "template": "${pageLabel || frameNumber}",
-  "style": {
-    "fontSizePt": 10,
-    "textColor": "#ff000000",
-    "align": "right"
-  }
+  "template": "${pageLabel || frameNumber}"
 }
 ```
 
@@ -501,12 +470,7 @@ Date note:
 {
   "version": 20260630,
   "kind": "scholia-template-note",
-  "template": "${formatDate(now, \"yyyy-MM-dd\")}",
-  "style": {
-    "fontSizePt": 9,
-    "textColor": "#ff000000",
-    "align": "left"
-  }
+  "template": "${formatDate(now, \"yyyy-MM-dd\")}"
 }
 ```
 

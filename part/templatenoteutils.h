@@ -17,10 +17,10 @@ class TextAnnotation;
 namespace TemplateNoteUtils
 {
 QString defaultPageNumberTemplateData();
+QString templateDataWithTemplate(const QString &templateData, const QString &templateText);
 bool annotationIsTemplateNote(const Okular::Annotation *annotation);
 Okular::TextAnnotation *annotationAsTemplateTextAnnotation(Okular::Annotation *annotation);
 const Okular::TextAnnotation *annotationAsTemplateTextAnnotation(const Okular::Annotation *annotation);
-void applyTemplateStyle(Okular::TextAnnotation *annotation);
 QString expandTemplate(const Okular::Document *document, int pageIndex, const Okular::TextAnnotation *annotation, QString *errorMessage = nullptr);
 }
 

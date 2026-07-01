@@ -336,9 +336,6 @@ public:
         if (m_annotElement.hasAttribute(QStringLiteral("width"))) {
             ta->style().setWidth(m_annotElement.attribute(QStringLiteral("width")).toDouble());
         }
-        if (ta->isTemplateNote()) {
-            TemplateNoteUtils::applyTemplateStyle(ta);
-        }
         // set boundary
         rect.left = qMin(startpoint.x, point.x);
         rect.top = qMin(startpoint.y, point.y);

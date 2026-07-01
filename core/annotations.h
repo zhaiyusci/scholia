@@ -848,13 +848,6 @@ public:
     QString templateNoteData() const;
     bool isTemplateNote() const;
     QString templateNoteTemplate() const;
-    QString templateNoteFontFamily() const;
-    double templateNoteFontSizePt() const;
-    QColor templateNoteTextColor() const;
-    QColor templateNoteFillColor() const;
-    QColor templateNoteBorderColor() const;
-    double templateNoteBorderWidthPt() const;
-    Qt::Alignment templateNoteAlignment() const;
 
 protected:
     /// @cond PRIVATE

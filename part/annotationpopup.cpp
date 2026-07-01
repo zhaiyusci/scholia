@@ -13,14 +13,19 @@
 #include <KMessageBox>
 #include <QApplication>
 #include <QClipboard>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDomDocument>
 #include <QFile>
 #include <QIcon>
 #include <QInputDialog>
+#include <QLabel>
 #include <QMenu>
 #include <QMimeData>
+#include <QPlainTextEdit>
 #include <QSizeF>
 #include <QTransform>
+#include <QVBoxLayout>
 
 #include "annotationpropertiesdialog.h"
 
@@ -31,6 +36,7 @@
 #include "gui/guiutils.h"
 #include "latexnoteutils.h"
 #include "okmenutitle.h"
+#include "templatenoteutils.h"
 
 #include <KIO/JobUiDelegateFactory>
 #include <KIO/OpenUrlJob>
@@ -102,6 +108,49 @@ Okular::TextAnnotation *latexTextAnnotation(Okular::Annotation *annotation)
 Okular::StampAnnotation *latexStampAnnotation(Okular::Annotation *annotation)
 {
     return LatexNoteUtils::annotationAsLatexStampAnnotation(annotation);
+}
+
+Okular::TextAnnotation *templateTextAnnotation(Okular::Annotation *annotation)
+{
+    return TemplateNoteUtils::annotationAsTemplateTextAnnotation(annotation);
+}
+
+QString popupCaptionForAnnotation(const Okular::Annotation *annotation)
+{
+    if (TemplateNoteUtils::annotationIsTemplateNote(annotation)) {
+        return i18n("Template Note");
+    }
+    return GuiUtils::captionForAnnotation(annotation);
+}
+
+bool annotationSupportsPopupWindow(const Okular::Annotation *annotation)
+{
+    return annotation && !TemplateNoteUtils::annotationIsTemplateNote(annotation);
+}
+
+QString templateReferenceText()
+{
+    return i18nc("@info Template note variable reference",
+                 "Variables:\n"
+                 "${pageNumber}        1-based page number\n"
+                 "${pageIndex}         0-based page index\n"
+                 "${pageCount}         total page count\n"
+                 "${pageLabel}         PDF page label\n"
+                 "${frameNumber}       same as pageNumber\n"
+                 "${frameIndex}        same as pageIndex\n"
+                 "${totalFrameNumber}  same as pageCount\n"
+                 "${title}             document title\n"
+                 "${documentTitle}     document title\n"
+                 "${author}            document author\n"
+                 "${fileName}          PDF file name\n"
+                 "${now}               current date/time\n"
+                 "\n"
+                 "Functions:\n"
+                 "${formatDate(now, \"yyyy-MM-dd\")}\n"
+                 "${formatNumber(pageNumber)}\n"
+                 "${pad(pageNumber, 2)}\n"
+                 "${roman(pageNumber)}\n"
+                 "${upperRoman(pageNumber)}");
 }
 
 QColor latexTextColorForTextAnnotation(const Okular::TextAnnotation *annotation)
@@ -347,11 +396,13 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
 
         const AnnotPagePair &pair = mAnnotations.at(0);
 
-        menu->addAction(new OKMenuTitle(menu, onlyOne ? GuiUtils::captionForAnnotation(pair.annotation) : i18ncp("Menu title", "Annotation", "%1 Annotations", mAnnotations.count())));
+        menu->addAction(new OKMenuTitle(menu, onlyOne ? popupCaptionForAnnotation(pair.annotation) : i18ncp("Menu title", "Annotation", "%1 Annotations", mAnnotations.count())));
 
-        action = menu->addAction(QIcon::fromTheme(QStringLiteral("comment")), i18n("&Open Pop-up Note"));
-        action->setEnabled(onlyOne);
-        connect(action, &QAction::triggered, menu, [this, pair] { doOpenAnnotationWindow(pair); });
+        if (annotationSupportsPopupWindow(pair.annotation)) {
+            action = menu->addAction(QIcon::fromTheme(QStringLiteral("comment")), i18n("&Open Pop-up Note"));
+            action->setEnabled(onlyOne);
+            connect(action, &QAction::triggered, menu, [this, pair] { doOpenAnnotationWindow(pair); });
+        }
 
         Okular::DocumentViewport vp = calculateAnnotationViewport(pair);
         bool isBookmarked = mDocument->bookmarkManager()->isBookmarked(vp);
@@ -386,6 +437,7 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
 
         if (onlyOne) {
             addLatexAnnotationActions(menu, pair);
+            addTemplateAnnotationActions(menu, pair);
         }
 
         action = menu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), i18n("&Delete"));
@@ -421,10 +473,12 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
         }
     } else {
         for (const AnnotPagePair &pair : std::as_const(mAnnotations)) {
-            menu->addAction(new OKMenuTitle(menu, GuiUtils::captionForAnnotation(pair.annotation)));
+            menu->addAction(new OKMenuTitle(menu, popupCaptionForAnnotation(pair.annotation)));
 
-            action = menu->addAction(QIcon::fromTheme(QStringLiteral("comment")), i18n("&Open Pop-up Note"));
-            connect(action, &QAction::triggered, menu, [this, pair] { doOpenAnnotationWindow(pair); });
+            if (annotationSupportsPopupWindow(pair.annotation)) {
+                action = menu->addAction(QIcon::fromTheme(QStringLiteral("comment")), i18n("&Open Pop-up Note"));
+                connect(action, &QAction::triggered, menu, [this, pair] { doOpenAnnotationWindow(pair); });
+            }
 
             Okular::DocumentViewport vp = calculateAnnotationViewport(pair);
             bool isBookmarked = mDocument->bookmarkManager()->isBookmarked(vp);
@@ -456,6 +510,7 @@ void AnnotationPopup::addActionsToMenu(QMenu *menu)
             }
 
             addLatexAnnotationActions(menu, pair);
+            addTemplateAnnotationActions(menu, pair);
 
             action = menu->addAction(QIcon::fromTheme(QStringLiteral("list-remove")), i18n("&Delete"));
             action->setEnabled(mDocument->isAllowed(Okular::AllowNotes) && mDocument->canRemovePageAnnotation(pair.annotation));
@@ -544,6 +599,88 @@ void AnnotationPopup::addLatexAnnotationActions(QMenu *menu, AnnotPagePair pair)
     action->setEnabled(canModify);
     connect(action, &QAction::triggered, menu, [this, pair] { doResetLatexAnnotationScale(pair); });
 
+}
+
+void AnnotationPopup::addTemplateAnnotationActions(QMenu *menu, AnnotPagePair pair)
+{
+    if (!menu || !TemplateNoteUtils::annotationIsTemplateNote(pair.annotation)) {
+        return;
+    }
+
+    const bool canModify = mDocument->isAllowed(Okular::AllowNotes) && mDocument->canModifyPageAnnotation(pair.annotation);
+    QAction *action = menu->addAction(QIcon::fromTheme(QStringLiteral("document-edit")), i18nc("@action:inmenu", "Edit Template..."));
+    action->setEnabled(canModify);
+    connect(action, &QAction::triggered, menu, [this, pair] { doEditTemplateAnnotation(pair); });
+}
+
+void AnnotationPopup::doEditTemplateAnnotation(AnnotPagePair pair)
+{
+    if (pair.pageNumber == -1 || !mDocument->isAllowed(Okular::AllowNotes) || !mDocument->canModifyPageAnnotation(pair.annotation)) {
+        return;
+    }
+
+    Okular::TextAnnotation *textAnnotation = templateTextAnnotation(pair.annotation);
+    if (!textAnnotation) {
+        return;
+    }
+
+    const QString currentTemplate = textAnnotation->templateNoteTemplate();
+
+    QDialog dialog(mParent);
+    dialog.setWindowTitle(i18nc("@title:window", "Edit Template Note"));
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *templateLabel = new QLabel(i18nc("@label:textbox", "Template:"), &dialog);
+    layout->addWidget(templateLabel);
+
+    auto *templateEdit = new QPlainTextEdit(&dialog);
+    templateEdit->setPlainText(currentTemplate);
+    templateEdit->setMinimumSize(420, 120);
+    layout->addWidget(templateEdit);
+
+    auto *referenceLabel = new QLabel(i18nc("@label:textbox", "Reference:"), &dialog);
+    layout->addWidget(referenceLabel);
+
+    auto *referenceEdit = new QPlainTextEdit(&dialog);
+    referenceEdit->setPlainText(templateReferenceText());
+    referenceEdit->setReadOnly(true);
+    referenceEdit->setMinimumSize(420, 260);
+    layout->addWidget(referenceEdit);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    const QString templateText = templateEdit->toPlainText();
+    if (templateText == currentTemplate) {
+        return;
+    }
+    if (templateText.trimmed().isEmpty()) {
+        KMessageBox::error(mParent, i18nc("@info", "The template cannot be empty."));
+        return;
+    }
+
+    const QString newTemplateData = TemplateNoteUtils::templateDataWithTemplate(textAnnotation->templateNoteData(), templateText);
+    Okular::TextAnnotation previewAnnotation;
+    previewAnnotation.setTextType(Okular::TextAnnotation::InPlace);
+    previewAnnotation.setTemplateNoteData(newTemplateData);
+
+    QString errorMessage;
+    const QString expandedText = TemplateNoteUtils::expandTemplate(mDocument, pair.pageNumber, &previewAnnotation, &errorMessage);
+    if (!errorMessage.isEmpty()) {
+        KMessageBox::error(mParent, i18nc("@info", "The template could not be evaluated: %1", errorMessage));
+        return;
+    }
+
+    mDocument->prepareToModifyAnnotationProperties(textAnnotation);
+    textAnnotation->setTemplateNoteData(newTemplateData);
+    textAnnotation->setContents(expandedText);
+    mDocument->modifyPageAnnotationProperties(pair.pageNumber, textAnnotation);
 }
 
 void AnnotationPopup::doSetLatexAnnotationWidth(AnnotPagePair pair)
@@ -777,6 +914,9 @@ void AnnotationPopup::doRemovePageAnnotation(AnnotPagePair pair)
 
 void AnnotationPopup::doOpenAnnotationWindow(AnnotPagePair pair)
 {
+    if (!annotationSupportsPopupWindow(pair.annotation)) {
+        return;
+    }
     Q_EMIT openAnnotationWindow(pair.annotation, pair.pageNumber);
 }
 
