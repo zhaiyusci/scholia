@@ -96,7 +96,10 @@ rebuilding Scholia:
 This script mirrors the deployed install tree into
 `..\windows_build\dist\scholia-pdf\app`, validates Scholia icons, gettext
 catalogs, annotation resources, and Poppler CMap/CID data, then calls Inno
-Setup.
+Setup. The main installer keeps the StemTeX renderer binaries and bundled
+profiles, but excludes the TeX package/font tree. That tree is staged separately
+under `..\windows_build\dist\scholia-stemtex-support\app` and built as
+`Scholia-<version>-StemTeX-Support.exe`.
 
 To validate staging without building an installer:
 
@@ -131,6 +134,8 @@ of the Windows pipeline.
 - `cmake\package-windows.cmake`
   - CMake-based stage and installer creation from an already deployed
     `..\windows_build\install\scholia` tree.
+  - Builds both the main Scholia installer and the optional StemTeX support
+    installer when the deployed StemTeX TeX tree is available.
 - `cmake\bootstrap-kf6-sdk.cmake`
   - CMake-based ECM bootstrap for the local Windows SDK.
 - `cmake\build-kf6-module.cmake`
@@ -199,8 +204,13 @@ The deployed install tree and stage must contain:
 - `bin\data\locale\<lang>\LC_MESSAGES\okular*.mo`
 - `share\poppler\cMap\...`
 - `share\poppler\cidToUnicode\...`
-- `StemTeX\runtime`
+- `StemTeX\runtime\bin`
 - `StemTeX\gui\profiles`
+
+The main stage must not contain `StemTeX\runtime\texmf-dist` or writable
+StemTeX cache/state directories such as `StemTeX\runtime\texmf-var\fonts`.
+The xelatex daemon format under `StemTeX\runtime\texmf-var\web2c` is a read-only
+runtime input and remains in the main package.
 
 Do not rely on the CMake install step alone for a runnable/packageable Windows
 tree. Always run runtime deployment, or use the canonical
@@ -306,13 +316,21 @@ compatibility layer needed by KI18n.
 ## LaTeX Notes
 
 Scholia supports the StemTeX renderer for LaTeX notes. The standalone Windows
-runtime bundles StemTeX under `StemTeX\runtime` with profiles under
-`StemTeX\gui\profiles`; Scholia starts that bundled renderer during application
-startup.
+runtime bundles the StemTeX renderer binaries under `StemTeX\runtime\bin` with
+profiles under `StemTeX\gui\profiles`; Scholia starts that renderer during
+application startup.
 
-The StemTeX profile and TeXLive package/font tree can be selected from
-`Settings -> Configure Scholia -> Annotations`. Leave the TeX tree empty to use
-the bundled tree under `StemTeX\runtime`.
+The TeXLive package/font tree is optional. Users can install
+`Scholia-<version>-StemTeX-Support.exe` to add the bundled `texmf-dist` and
+`texmf-var` tree under `StemTeX\runtime`, or they can select their own TeX tree
+from `Settings -> Configure Scholia -> Annotations`. An empty setting does not
+probe the system for TeX; it only uses the bundled support tree when that tree
+has been installed.
+
+StemTeX runtime state, fontconfig files, caches, traces, and rendered-note
+outputs are written below Scholia's per-user local data directory, not below the
+installation directory. This keeps `C:\Program Files\Scholia` read-only after
+installation.
 
 To inspect TeX rendering logs:
 

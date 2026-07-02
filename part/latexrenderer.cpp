@@ -537,6 +537,15 @@ private:
         return QDir::cleanPath(QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../StemTeX/gui/profiles")));
     }
 
+    static QString writableStemTeXTempRoot()
+    {
+        QString temp = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+        if (temp.isEmpty()) {
+            temp = QDir::tempPath();
+        }
+        return QDir::cleanPath(QDir(temp).filePath(QStringLiteral("scholia/StemTeX")));
+    }
+
     static bool readProfileInfo(const StemtexApi &api, const QString &profileRoot, StemTeXProfileInfo *profileInfo, QString *error)
     {
         if (profileRoot.isEmpty()) {
@@ -710,11 +719,16 @@ private:
         const QString texmfRootPath = texmfRoot(m_runtimeRoot);
         const QByteArray texmf = QDir::cleanPath(texmfRootPath).toUtf8();
         const QByteArray profileRoot = QDir::cleanPath(profile).toUtf8();
+        const QString tempRoot = writableStemTeXTempRoot();
+        const QByteArray stateRoot = QDir(tempRoot).filePath(QStringLiteral("state")).toUtf8();
+        const QByteArray rendersRoot = QDir(tempRoot).filePath(QStringLiteral("renders")).toUtf8();
         StemTeXConfig config{};
         config.repo_root_utf8 = runtime.constData();
         config.runtime_root_utf8 = runtime.constData();
         config.texmf_root_utf8 = texmf.constData();
         config.profile_root_utf8 = profileRoot.constData();
+        config.state_root_utf8 = stateRoot.constData();
+        config.renders_root_utf8 = rendersRoot.constData();
         config.request_timeout_ms = 90000;
         config.xdvipdfmx_timeout_ms = 90000;
         config.spare_worker_count = 0;

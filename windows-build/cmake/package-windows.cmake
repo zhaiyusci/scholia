@@ -81,6 +81,7 @@ scholia_default_path(SOURCE_ROOT "${_default_source_root}")
 scholia_default_path(WORKSPACE_ROOT "${_default_workspace_root}")
 scholia_default_path(INSTALL_PREFIX "${WORKSPACE_ROOT}/install/scholia")
 scholia_default_path(STAGE_ROOT "${WORKSPACE_ROOT}/dist/scholia-pdf/app")
+scholia_default_path(STEMTEX_SUPPORT_STAGE_ROOT "${WORKSPACE_ROOT}/dist/scholia-stemtex-support/app")
 scholia_default_path(OUTPUT_DIR "${WORKSPACE_ROOT}/dist")
 
 if(NOT DEFINED VERSION OR "${VERSION}" STREQUAL "")
@@ -103,11 +104,13 @@ message(STATUS "Scholia Windows package stage")
 message(STATUS "  Source root : ${SOURCE_ROOT}")
 message(STATUS "  Install     : ${INSTALL_PREFIX}")
 message(STATUS "  Stage       : ${STAGE_ROOT}")
+message(STATUS "  Support     : ${STEMTEX_SUPPORT_STAGE_ROOT}")
 message(STATUS "  Output      : ${OUTPUT_DIR}")
 message(STATUS "  Version     : ${VERSION}")
 
 scholia_validate_file("${INSTALL_PREFIX}" "bin/scholia.exe")
 scholia_sync_tree("${INSTALL_PREFIX}/bin" "${STAGE_ROOT}/bin" "${STAGE_ROOT}")
+file(REMOVE "${STAGE_ROOT}/bin/vc_redist.x64.exe")
 
 if(IS_DIRECTORY "${INSTALL_PREFIX}/share/poppler")
     scholia_sync_tree("${INSTALL_PREFIX}/share/poppler" "${STAGE_ROOT}/share/poppler" "${STAGE_ROOT}")
@@ -121,9 +124,32 @@ if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX")
     scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/xetexdaemon.exe")
     scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/gui/profiles")
     scholia_sync_tree("${INSTALL_PREFIX}/StemTeX" "${STAGE_ROOT}/StemTeX" "${STAGE_ROOT}")
+    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-dist" "${STAGE_ROOT}")
+    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts" "${STAGE_ROOT}")
+    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-renders" "${STAGE_ROOT}")
+    scholia_remove_inside("${STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-state" "${STAGE_ROOT}")
+    file(REMOVE "${STAGE_ROOT}/StemTeX/runtime/texmf-var/xdvipdfmx-init-trace.log")
 else()
     scholia_remove_inside("${STAGE_ROOT}/StemTeX" "${STAGE_ROOT}")
     message(WARNING "StemTeX runtime was not found under ${INSTALL_PREFIX}/StemTeX.")
+endif()
+
+set(_has_stemtex_support OFF)
+if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX/runtime/texmf-dist")
+    set(_has_stemtex_support ON)
+    scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}" "${WORKSPACE_ROOT}")
+    scholia_sync_tree("${INSTALL_PREFIX}/StemTeX/runtime/texmf-dist" "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-dist" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+    if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX/runtime/texmf-var")
+        scholia_sync_tree("${INSTALL_PREFIX}/StemTeX/runtime/texmf-var" "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts/conf" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/fonts/cache" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-renders" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/cache-warmup-state" "${STEMTEX_SUPPORT_STAGE_ROOT}")
+        file(REMOVE "${STEMTEX_SUPPORT_STAGE_ROOT}/StemTeX/runtime/texmf-var/xdvipdfmx-init-trace.log")
+    endif()
+else()
+    scholia_remove_inside("${STEMTEX_SUPPORT_STAGE_ROOT}" "${WORKSPACE_ROOT}")
+    message(WARNING "StemTeX TeX tree was not found under ${INSTALL_PREFIX}/StemTeX/runtime/texmf-dist.")
 endif()
 
 foreach(_required IN ITEMS
@@ -151,6 +177,7 @@ endif()
 file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 scholia_find_inno_setup(_iscc)
 set(_iss "${SOURCE_ROOT}/windows-build/installer/scholia-installer.iss")
+set(_support_iss "${SOURCE_ROOT}/windows-build/installer/scholia-stemtex-support.iss")
 
 message(STATUS "Building installer with Inno Setup")
 message(STATUS "  ISCC        : ${_iscc}")
@@ -167,4 +194,21 @@ execute_process(
 )
 if(NOT _iscc_result EQUAL 0)
     message(FATAL_ERROR "Inno Setup failed with exit code ${_iscc_result}")
+endif()
+
+if(_has_stemtex_support AND NOT (DEFINED SKIP_STEMTEX_SUPPORT_INSTALLER AND SKIP_STEMTEX_SUPPORT_INSTALLER))
+    message(STATUS "Building StemTeX support installer with Inno Setup")
+    message(STATUS "  Script      : ${_support_iss}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env
+            "SCHOLIA_SUPPORT_STAGE=${STEMTEX_SUPPORT_STAGE_ROOT}"
+            "SCHOLIA_OUTPUT=${OUTPUT_DIR}"
+            "SCHOLIA_VERSION=${VERSION}"
+            "SCHOLIA_FILE_VERSION=${FILE_VERSION}"
+            "${_iscc}" "${_support_iss}"
+        RESULT_VARIABLE _support_iscc_result
+    )
+    if(NOT _support_iscc_result EQUAL 0)
+        message(FATAL_ERROR "StemTeX support Inno Setup failed with exit code ${_support_iscc_result}")
+    endif()
 endif()
