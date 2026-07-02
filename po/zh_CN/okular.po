@@ -6306,6 +6306,12 @@ msgctxt "@action:button Go to the current link preview position"
 msgid "Go to Preview"
 msgstr "转到预览"
 
+#: part/pageview.cpp:4297
+#, kde-format
+msgctxt "@info:tooltip Shown when hovering an internal PDF link; describes mouse shortcuts."
+msgid "Middle-click or Ctrl+left-click to show a preview."
+msgstr "单击鼠标中键或按住 Ctrl 单击左键可显示预览。"
+
 #: part/pageview.cpp:5395
 #, kde-format
 msgid "Show Link Preview"

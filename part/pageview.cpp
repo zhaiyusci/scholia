@@ -159,6 +159,7 @@ public:
         , m_document(document)
     {
         setAutoFillBackground(false);
+        setCursor(Qt::ArrowCursor);
         setMouseTracking(true);
         hide();
         m_document->addObserver(this);
@@ -372,14 +373,7 @@ protected:
             return;
         }
 
-        const int resizeEdges = resizeEdgesAt(event->pos());
-        if (resizeEdges != ResizeNone) {
-            setCursor(cursorForResizeEdges(resizeEdges));
-        } else if (pageRect().contains(event->pos())) {
-            setCursor(Qt::OpenHandCursor);
-        } else {
-            unsetCursor();
-        }
+        updateCursorForPos(event->pos());
         event->accept();
     }
 
@@ -390,7 +384,7 @@ protected:
             m_resizing = false;
             m_panning = false;
             m_resizeEdges = ResizeNone;
-            unsetCursor();
+            updateCursorForPos(event->pos());
             event->accept();
             return;
         }
@@ -477,6 +471,11 @@ private:
         return QRect(zoomOutButtonRect().left() - 112, 4, 106, 24);
     }
 
+    bool buttonRectContains(const QPoint &pos) const
+    {
+        return closeButtonRect().contains(pos) || zoomOutButtonRect().contains(pos) || resetZoomButtonRect().contains(pos) || zoomInButtonRect().contains(pos) || goButtonRect().contains(pos);
+    }
+
     QRect resizeGripRect() const
     {
         return QRect(width() - 18, height() - 18, 18, 18);
@@ -513,6 +512,25 @@ private:
             return Qt::SizeVerCursor;
         }
         return Qt::ArrowCursor;
+    }
+
+    void updateCursorForPos(const QPoint &pos)
+    {
+        if (buttonRectContains(pos)) {
+            setCursor(Qt::ArrowCursor);
+            return;
+        }
+
+        const int resizeEdges = resizeEdgesAt(pos);
+        if (resizeEdges != ResizeNone) {
+            setCursor(cursorForResizeEdges(resizeEdges));
+        } else if (headerRect().contains(pos)) {
+            setCursor(Qt::SizeAllCursor);
+        } else if (pageRect().contains(pos)) {
+            setCursor(Qt::OpenHandCursor);
+        } else {
+            setCursor(Qt::ArrowCursor);
+        }
     }
 
     int renderedWidth() const
@@ -959,6 +977,7 @@ public:
     QPoint linkPreviewPos;
     QPoint linkPreviewPressPos;
     QPointF linkPreviewPressGlobalPos;
+    bool linkPreviewControlClickPending = false;
     bool linkPreviewMiddleClickPending = false;
 
     QScroller *scroller = nullptr;
@@ -3145,6 +3164,25 @@ void PageView::mousePressEvent(QMouseEvent *e)
         }
     }
 
+    d->linkPreviewControlClickPending = false;
+    if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ControlModifier) && !(d->annotator && d->annotator->active())) {
+        PageViewItem *pageItem = pickItemOnPoint(eventPos.x(), eventPos.y());
+        if (pageItem) {
+            const double nX = pageItem->absToPageX(eventPos.x());
+            const double nY = pageItem->absToPageY(eventPos.y());
+            const Okular::ObjectRect *linkobj = pageItem->page()->objectRect(Okular::ObjectRect::Action, nX, nY, pageItem->uncroppedWidth(), pageItem->uncroppedHeight());
+            Okular::DocumentViewport target;
+            if (viewportForInternalGotoLink(d->document, linkobj, &target)) {
+                d->linkPreviewControlClickPending = true;
+                d->linkPreviewPressObject = linkobj;
+                d->linkPreviewPressPos = eventPos;
+                d->linkPreviewPressGlobalPos = e->globalPosition();
+                e->accept();
+                return;
+            }
+        }
+    }
+
     // if the page is scrolling, stop it
     if (d->autoScrollTimer) {
         d->scrollIncrement = 0;
@@ -3392,6 +3430,19 @@ void PageView::mouseReleaseEvent(QMouseEvent *e)
     }
 
     const QPoint eventPos = contentAreaPoint(e->pos());
+
+    if (leftButton && d->linkPreviewControlClickPending) {
+        const bool isClick = (d->linkPreviewPressGlobalPos - e->globalPosition()).manhattanLength() < QApplication::startDragDistance();
+        if (isClick && d->linkPreviewPressObject) {
+            updateLinkPreview(d->linkPreviewPressObject, d->linkPreviewPressPos);
+            d->linkPreviewControlClickPending = false;
+            d->linkPreviewPressObject = nullptr;
+            e->accept();
+            return;
+        }
+        d->linkPreviewControlClickPending = false;
+        d->linkPreviewPressObject = nullptr;
+    }
 
     // handle mode independent mid bottom zoom
     if (e->button() == Qt::MiddleButton) {
@@ -4241,6 +4292,11 @@ bool PageView::viewportEvent(QEvent *e)
                 r.translate(pageItem->uncroppedGeometry().topLeft());
                 r.translate(-contentAreaPosition());
                 QString tip = link->actionTip();
+                Okular::DocumentViewport target;
+                if (viewportForInternalGotoLink(d->document, rect, &target)) {
+                    const QString previewTip = i18nc("@info:tooltip Shown when hovering an internal PDF link; describes mouse shortcuts.", "Middle-click or Ctrl+left-click to show a preview.");
+                    tip = tip.isEmpty() ? previewTip : tip + QLatin1Char('\n') + previewTip;
+                }
                 if (!tip.isEmpty()) {
                     QToolTip::showText(he->globalPos(), tip, viewport(), r);
                 }
@@ -5079,6 +5135,7 @@ void PageView::hideLinkPreview()
 {
     d->linkPreviewObject = nullptr;
     d->linkPreviewPressObject = nullptr;
+    d->linkPreviewControlClickPending = false;
     d->linkPreviewMiddleClickPending = false;
     if (d->linkPreview) {
         d->linkPreview->hide();
