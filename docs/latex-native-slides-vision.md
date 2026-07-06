@@ -64,7 +64,10 @@ document must not depend on temporary TeX files or user-local paths.
 1. PDF is the slide deck.
 
    Blank-page insertion and page reordering are not secondary utilities. They
-   are the beginning of a slide-deck editing model.
+   are the beginning of a slide-deck editing model. Page editing follows the
+   live document model described in `page-editing-annotation-model.md`: moving a
+   page means moving the page together with its annotations and edit state, not
+   performing an early PDF save/rewrite.
 
 2. LaTeX notes are visual objects, not comments.
 
