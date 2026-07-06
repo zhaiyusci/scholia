@@ -863,6 +863,12 @@ void Part::setupViewerActions()
     m_insertBlankPageAfterCurrentPage->setEnabled(false);
     connect(m_insertBlankPageAfterCurrentPage, &QAction::triggered, this, &Part::slotInsertBlankPageAfterCurrentPage);
 
+    m_duplicateCurrentPage = ac->addAction(QStringLiteral("tools_duplicate_current_page"));
+    m_duplicateCurrentPage->setText(i18n("Duplicate Current Page"));
+    m_duplicateCurrentPage->setIcon(QIcon::fromTheme(QStringLiteral("edit-copy")));
+    m_duplicateCurrentPage->setEnabled(false);
+    connect(m_duplicateCurrentPage, &QAction::triggered, this, &Part::slotDuplicateCurrentPage);
+
     m_deleteCurrentPage = ac->addAction(QStringLiteral("tools_delete_current_page"));
     m_deleteCurrentPage->setText(i18n("Delete Current Page"));
     m_deleteCurrentPage->setIcon(QIcon::fromTheme(QStringLiteral("edit-delete")));
@@ -2032,6 +2038,9 @@ bool Part::closeUrl(bool promptToSave)
     }
     if (m_insertPage) {
         m_insertPage->setEnabled(false);
+    }
+    if (m_duplicateCurrentPage) {
+        m_duplicateCurrentPage->setEnabled(false);
     }
     if (m_deleteCurrentPage) {
         m_deleteCurrentPage->setEnabled(false);
@@ -3359,6 +3368,9 @@ void Part::updatePageEditActions()
     if (m_insertBlankPageAfterCurrentPage) {
         m_insertBlankPageAfterCurrentPage->setEnabled(canEditPages && m_document->canInsertBlankPage());
     }
+    if (m_duplicateCurrentPage) {
+        m_duplicateCurrentPage->setEnabled(canEditPages && m_document->canInsertPageFromPdf());
+    }
     if (m_deleteCurrentPage) {
         m_deleteCurrentPage->setEnabled(canEditPages && m_document->canDeletePage() && m_document->pages() > 1);
     }
@@ -3367,6 +3379,11 @@ void Part::updatePageEditActions()
 void Part::slotInsertBlankPageAfterCurrentPage()
 {
     insertBlankPageAfterPage(static_cast<int>(m_document->currentPage()));
+}
+
+void Part::slotDuplicateCurrentPage()
+{
+    duplicatePage(static_cast<int>(m_document->currentPage()));
 }
 
 void Part::slotInsertPage()
@@ -3608,6 +3625,81 @@ void Part::insertBlankPageAfterPage(int pageNumber)
     const int referencePage = pageCount > 0 ? qBound(0, pageNumber, pageCount - 1) : 0;
     const Okular::Page *reference = pageCount > 0 ? m_document->page(referencePage) : nullptr;
     insertBlankPage(pageNumber, QSizeF(reference ? reference->width() : 595.0, reference ? reference->height() : 842.0));
+}
+
+void Part::duplicatePage(int pageNumber)
+{
+    if (!m_document->isOpened() || !url().isLocalFile() || isDocumentArchive || !m_document->canInsertPageFromPdf()) {
+        KMessageBox::information(widget(), i18n("Pages can only be duplicated in local PDF files."));
+        return;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageNumber < 0 || pageNumber >= pageCount) {
+        KMessageBox::information(widget(), i18n("The target page could not be found."));
+        return;
+    }
+
+    const QUrl documentUrl = url();
+    const QString backingFileName = localFilePath();
+    const QFileInfo backingInfo(backingFileName);
+    if (backingFileName.isEmpty() || !backingInfo.exists()) {
+        KMessageBox::information(widget(), i18n("The current PDF file could not be found on disk."));
+        return;
+    }
+
+    const bool hasTemplateNotes = documentHasTemplateNotes();
+    if (hasTemplateNotes) {
+        refreshTemplateNotes();
+    }
+
+    std::unique_ptr<QTemporaryFile> savedSourceFile;
+    QString sourceFileName;
+    QString snapshotErrorText;
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-duplicate-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page duplication."));
+        return;
+    }
+    if (snapshotResult == PageEditSourceSnapshotResult::SaveError) {
+        if (snapshotErrorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page duplication."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page duplication. %1", snapshotErrorText));
+        }
+        return;
+    }
+
+    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-duplicate-output")));
+    if (!editedFile) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page duplication."));
+        return;
+    }
+
+    const int pageNumberOneBased = pageNumber + 1;
+    QString errorText;
+    if (!m_document->saveWithPdfPageInsertedAfter(sourceFileName, editedFile->fileName(), pageNumberOneBased, sourceFileName, pageNumberOneBased, &errorText)) {
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not duplicate the page."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not duplicate the page. %1", errorText));
+        }
+        return;
+    }
+
+    setUrl(documentUrl);
+    KParts::OpenUrlArguments args = arguments();
+    args.setMimeType(QStringLiteral("application/pdf"));
+    setArguments(args);
+
+    const QString editedFileName = editedFile->fileName();
+    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Duplicate Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, pageNumber, pageNumber + 1);
+    m_document->pushUndoCommand(command.release());
+    refreshTemplateNotes();
+
+    if (m_pageView) {
+        m_pageView->displayMessage(i18n("Duplicated page %1. Save the document to keep this change.", pageNumberOneBased));
+    }
 }
 
 QString Part::pageTemplateFileName() const
@@ -4124,6 +4216,7 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
     const QAction *insertPageAction = nullptr;
     const QAction *insertPageFromTemplateAction = nullptr;
     const QAction *insertBlankPageAfterPageAction = nullptr;
+    const QAction *duplicatePageAction = nullptr;
     const QAction *deletePageAction = nullptr;
     const QAction *pasteAnnotation = nullptr;
     int pageEditTargetPage = -1;
@@ -4156,6 +4249,10 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
         }
         if (canEditPages && m_document->canInsertBlankPage()) {
             insertBlankPageAfterPageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("document-new")), i18n("Insert Blank Page After This Page"));
+            addedPageEditAction = true;
+        }
+        if (canEditPages && m_document->canInsertPageFromPdf()) {
+            duplicatePageAction = popup.addAction(QIcon::fromTheme(QStringLiteral("edit-copy")), i18n("Duplicate This Page"));
             addedPageEditAction = true;
         }
         if (canEditPages && m_document->canDeletePage() && m_document->pages() > 1) {
@@ -4216,6 +4313,8 @@ void Part::showMenu(const Okular::Page *page, const QPoint point, const QString 
                 insertPageFromTemplateWithDialog(pageEditTargetPage);
             } else if (res == insertBlankPageAfterPageAction) {
                 insertBlankPageAfterPage(pageEditTargetPage);
+            } else if (res == duplicatePageAction) {
+                duplicatePage(pageEditTargetPage);
             } else if (res == deletePageAction) {
                 deletePage(pageEditTargetPage);
             } else if (res == pasteAnnotation) {

@@ -334,6 +334,7 @@ private:
     void insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize);
     void insertPdfPage(int insertAfterPageNumber, const QString &insertedFileName, int pageToInsert);
     void insertBlankPageAfterPage(int pageNumber);
+    void duplicatePage(int pageNumber);
     QString pageTemplateFileName() const;
     void setPageTemplateFileName(const QString &fileName);
     void deletePage(int pageNumber);
@@ -470,6 +471,7 @@ private:
     QAction *m_setPageTemplate = nullptr;
     QAction *m_insertPageFromTemplate = nullptr;
     QAction *m_insertBlankPageAfterCurrentPage = nullptr;
+    QAction *m_duplicateCurrentPage = nullptr;
     QAction *m_deleteCurrentPage = nullptr;
     QMenu *m_exportAsMenu;
 #if HAVE_PURPOSE
@@ -517,6 +519,7 @@ private Q_SLOTS:
     void slotSetPageTemplate();
     void slotInsertPageFromTemplate();
     void slotInsertBlankPageAfterCurrentPage();
+    void slotDuplicateCurrentPage();
     void slotDeleteCurrentPage();
     void slotAccessibilityPreferences();
     void slotAnnotationPreferences();
