@@ -18,6 +18,7 @@
 
 #include <QBitArray>
 #include <QPointer>
+#include <QVector>
 
 #include <core/annotations.h>
 #include <core/document.h>
@@ -110,6 +111,8 @@ public:
     bool canDeletePage() const override;
     bool saveWithPageDeleted(const QString &sourceFileName, const QString &outputFileName, int pageNumber, QString *errorText) override;
     bool canMovePage() const override;
+    bool canMovePageInDocument() const override;
+    bool movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
     bool saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText) override;
 
     bool canSign() const override;
@@ -137,6 +140,9 @@ protected:
 
 private:
     Okular::Document::OpenResult init(QList<Okular::Page *> &pagesVector, const QString &password);
+    int nativePageForLogicalPage(int logicalPage) const;
+    bool pageOrderIsIdentity() const;
+    std::vector<int> oneBasedPageOrder() const;
 
     // create the document synopsis hierarchy
     void addSynopsisChildren(const QList<Poppler::OutlineItem> &outlineItems, QDomNode *parentDestination);
@@ -175,6 +181,7 @@ private:
     QHash<Okular::Annotation *, Poppler::Annotation *> annotationsOnOpenHash;
 
     QBitArray rectsGenerated;
+    QVector<int> m_pageOrder;
 
     QPointer<PDFOptionsPage> pdfOptionsPage;
 

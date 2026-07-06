@@ -5195,6 +5195,53 @@ bool Document::canMovePage() const
     return pageInsertion && pageInsertion->canMovePage();
 }
 
+bool Document::movePage(int sourcePageNumber, int destinationPageNumber, QString *errorText)
+{
+    auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);
+    const int pageCount = d->m_pagesVector.count();
+    if (!pageInsertion || !pageInsertion->canMovePageInDocument() || sourcePageNumber < 0 || sourcePageNumber >= pageCount || destinationPageNumber < 0 || destinationPageNumber >= pageCount) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+    if (sourcePageNumber == destinationPageNumber) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    d->clearAndWaitForRequests();
+
+    if (!pageInsertion->movePageInDocument(sourcePageNumber, destinationPageNumber, errorText)) {
+        return false;
+    }
+
+    Page *movedPage = d->m_pagesVector.takeAt(sourcePageNumber);
+    d->m_pagesVector.insert(destinationPageNumber, movedPage);
+
+    for (int pageIndex = 0; pageIndex < d->m_pagesVector.count(); ++pageIndex) {
+        d->m_pagesVector[pageIndex]->d->m_number = pageIndex;
+        d->m_pagesVector[pageIndex]->d->m_doc = d;
+    }
+
+    for (int i = 0; i < d->m_undoStack->count(); ++i) {
+        QUndoCommand *uc = const_cast<QUndoCommand *>(d->m_undoStack->command(i));
+        if (OkularUndoCommand *ouc = dynamic_cast<OkularUndoCommand *>(uc)) {
+            const bool success = ouc->refreshInternalPageReferences(d->m_pagesVector);
+            if (!success) {
+                qWarning() << "Document::movePage: refreshInternalPageReferences failed" << ouc;
+            }
+        }
+    }
+
+    d->m_documentInfo = DocumentInfo();
+    d->m_documentInfoAskedKeys.clear();
+    foreachObserver(notifySetup(d->m_pagesVector, DocumentObserver::DocumentChanged));
+    return true;
+}
+
 bool Document::saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText)
 {
     auto pageInsertion = dynamic_cast<PageInsertionInterface *>(d->m_generator);

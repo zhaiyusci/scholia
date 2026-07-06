@@ -996,6 +996,12 @@ public:
     bool canMovePage() const;
 
     /**
+     * Moves a page in the live document model. Page numbers are 0-based and
+     * @p destinationPageNumber is the final page index after the move.
+     */
+    bool movePage(int sourcePageNumber, int destinationPageNumber, QString *errorText);
+
+    /**
      * Writes @p outputFileName as a copy of @p sourceFileName with page
      * @p sourcePageNumber moved to final position @p destinationPageNumber.
      * Both page numbers are 1-based.

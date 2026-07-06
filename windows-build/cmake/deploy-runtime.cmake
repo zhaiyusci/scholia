@@ -360,7 +360,7 @@ scholia_remove_inside("${INSTALL_PREFIX}/lib/plugins" "${INSTALL_PREFIX}")
 
 scholia_remove_matching_files("${_bin_dir}" "Qt6*.dll")
 execute_process(
-    COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations --no-system-d3d-compiler --no-opengl-sw "${_exe}"
+    COMMAND "${WINDEPLOYQT_EXECUTABLE}" --no-translations --no-system-d3d-compiler --no-compiler-runtime --no-opengl-sw "${_exe}"
     RESULT_VARIABLE _windeployqt_result
 )
 if(NOT _windeployqt_result EQUAL 0)

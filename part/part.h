@@ -121,6 +121,7 @@ class OKULARPART_EXPORT Part : public KParts::ReadWritePart, public Okular::Docu
 
     friend class PartTest;
     friend class PageBackingFileCommand;
+    friend class LivePageMoveCommand;
 
 public:
     // Default constructor
@@ -325,6 +326,7 @@ private:
     void resetStartArguments();
     void checkNativeSaveDataLoss(bool *out_wontSaveForms, bool *out_wontSaveAnnotations) const;
     bool applyPageEditBackingFile(const QString &fileName, int pageNumber, bool forcePageTopologyChanged = false);
+    bool applyLivePageMove(int sourcePage, int destinationPage);
     bool canUsePageLevelEditing() const;
     void updatePageEditActions();
     void insertPageWithDialog(int pageNumber);

@@ -226,6 +226,26 @@ public:
     virtual bool canMovePage() const = 0;
 
     /**
+     * Returns whether this generator can move a page in the live document
+     * model without serializing and reloading the PDF.
+     */
+    virtual bool canMovePageInDocument() const { return false; }
+
+    /**
+     * Moves a page in the live document model. Page numbers are 0-based and
+     * @p destinationPageNumber is the final page index after the move.
+     */
+    virtual bool movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText)
+    {
+        Q_UNUSED(sourcePageNumber);
+        Q_UNUSED(destinationPageNumber);
+        if (errorText) {
+            errorText->clear();
+        }
+        return false;
+    }
+
+    /**
      * Writes @p outputFileName as a copy of @p sourceFileName with page
      * @p sourcePageNumber moved to final position @p destinationPageNumber.
      * Both page numbers are 1-based.

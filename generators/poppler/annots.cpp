@@ -489,10 +489,11 @@ static int maskExportedFlags(int flags)
 }
 
 // BEGIN PopplerAnnotationProxy implementation
-PopplerAnnotationProxy::PopplerAnnotationProxy(Poppler::Document *doc, QMutex *userMutex, QHash<Okular::Annotation *, Poppler::Annotation *> *annotsOnOpenHash)
+PopplerAnnotationProxy::PopplerAnnotationProxy(Poppler::Document *doc, QMutex *userMutex, QHash<Okular::Annotation *, Poppler::Annotation *> *annotsOnOpenHash, const QVector<int> *pageOrder)
     : ppl_doc(doc)
     , mutex(userMutex)
     , annotationsOnOpenHash(annotsOnOpenHash)
+    , m_pageOrder(pageOrder)
 {
 }
 
@@ -510,6 +511,14 @@ bool PopplerAnnotationProxy::supports(Capability cap) const
     default:
         return false;
     }
+}
+
+int PopplerAnnotationProxy::nativePageForLogicalPage(int logicalPage) const
+{
+    if (m_pageOrder && logicalPage >= 0 && logicalPage < m_pageOrder->size()) {
+        return m_pageOrder->at(logicalPage);
+    }
+    return logicalPage;
 }
 
 static Poppler::TextAnnotation::TextType okularToPoppler(Okular::TextAnnotation::TextType ott)
@@ -1060,7 +1069,7 @@ static void resizeImage(const SignatureImageHelper *helper, QSize size)
     }
 }
 
-static std::unique_ptr<Poppler::Annotation> createPopplerAnnotationFromOkularAnnotation(Okular::SignatureAnnotation *oSignatureAnnotation, Poppler::Document *pdfdoc)
+static std::unique_ptr<Poppler::Annotation> createPopplerAnnotationFromOkularAnnotation(Okular::SignatureAnnotation *oSignatureAnnotation, Poppler::Document *pdfdoc, int nativePage)
 {
     auto pSignatureAnnotation = std::make_unique<Poppler::SignatureAnnotation>();
 
@@ -1081,7 +1090,7 @@ static std::unique_ptr<Poppler::Annotation> createPopplerAnnotationFromOkularAnn
     pSignatureAnnotation->setLeftFontSize(oSignatureAnnotation->leftFontSize());
 
     if (!oSignatureAnnotation->imagePath().isEmpty()) {
-        QSize imageSize = calculateImagePixelSize(oSignatureAnnotation->page(), oSignatureAnnotation->boundingRectangle(), pdfdoc);
+        QSize imageSize = calculateImagePixelSize(nativePage, oSignatureAnnotation->boundingRectangle(), pdfdoc);
         if (isValidImageSize(imageSize)) {
             resizeImage(helper.get(), imageSize);
             pSignatureAnnotation->setImagePath(helper->imageFile->fileName());
@@ -1126,7 +1135,7 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
 {
     QMutexLocker ml(mutex);
 
-    std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(page);
+    std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(nativePageForLogicalPage(page));
 
     // Create poppler annotation
     Poppler::Annotation *ppl_ann = nullptr;
@@ -1170,7 +1179,7 @@ void PopplerAnnotationProxy::notifyAddition(Okular::Annotation *okl_ann, int pag
     case Okular::Annotation::AWidget: {
         if (auto signatureAnnt = dynamic_cast<Okular::SignatureAnnotation *>(okl_ann)) {
             signatureAnnt->setPage(page);
-            ppl_ann = createPopplerAnnotationFromOkularAnnotation(signatureAnnt, ppl_doc).release();
+            ppl_ann = createPopplerAnnotationFromOkularAnnotation(signatureAnnt, ppl_doc, nativePageForLogicalPage(page)).release();
         } else {
             qCWarning(OkularPdfDebug) << "Unsupported annotation type" << okl_ann->subType();
         }
@@ -1269,7 +1278,7 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
     case Poppler::Annotation::AStamp: {
         const Okular::StampAnnotation *okl_stampann = static_cast<const Okular::StampAnnotation *>(okl_ann);
         Poppler::StampAnnotation *ppl_stampann = static_cast<Poppler::StampAnnotation *>(ppl_ann);
-        std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(page);
+        std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(nativePageForLogicalPage(page));
         const bool appearanceUpdated = updatePopplerAnnotationFromOkularAnnotation(okl_stampann, ppl_stampann, ppl_page.get(), preservedAppearance.get());
         if (!appearanceUpdated && preservedAppearance) {
             if (okl_stampann->isOkularLatex() && okl_stampann->isLatexCallout() && preservedBoundary.isValid()) {
@@ -1293,7 +1302,7 @@ void PopplerAnnotationProxy::notifyModification(const Okular::Annotation *okl_an
 
             if (helper) {
                 auto popplerSigAnnot = static_cast<Poppler::SignatureAnnotation *>(ppl_ann);
-                QSize imageSize = calculateImagePixelSize(signature->page(), signature->boundingRectangle(), ppl_doc);
+                QSize imageSize = calculateImagePixelSize(nativePageForLogicalPage(signature->page()), signature->boundingRectangle(), ppl_doc);
                 if (isValidImageSize(imageSize)) {
                     resizeImage(helper, imageSize);
                     popplerSigAnnot->setImagePath(helper->imageFile->fileName());
@@ -1325,7 +1334,7 @@ void PopplerAnnotationProxy::notifyRemoval(Okular::Annotation *okl_ann, int page
 
     QMutexLocker ml(mutex);
 
-    std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(page);
+    std::unique_ptr<Poppler::Page> ppl_page = ppl_doc->page(nativePageForLogicalPage(page));
     annotationsOnOpenHash->remove(okl_ann);
     if (okl_ann->subType() == Okular::Annotation::AStamp) {
         deletedStampsAnnotationAppearance[static_cast<Okular::StampAnnotation *>(okl_ann)] = ppl_ann->annotationAppearance();

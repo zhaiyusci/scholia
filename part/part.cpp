@@ -2407,6 +2407,10 @@ void Part::enableTOC(bool enable)
         return;
     }
 
+    if (m_tocEnabled) {
+        return;
+    }
+
     m_sidebar->addItem(m_toc, QIcon::fromTheme(QApplication::isLeftToRight() ? QStringLiteral("format-justify-left") : QStringLiteral("format-justify-right")), i18n("Contents"));
     m_tocEnabled = true;
 
@@ -2779,6 +2783,31 @@ static QTemporaryFile *createClosedTemporaryPdfFile(const QString &prefix, bool 
     return temporaryFile.release();
 }
 
+enum class PageEditSourceSnapshotResult {
+    Success,
+    TemporaryFileError,
+    SaveError,
+};
+
+static PageEditSourceSnapshotResult createPageEditSourceSnapshot(Document *document, const QString &prefix, std::unique_ptr<QTemporaryFile> &snapshotFile, QString &sourceFileName, QString &errorText)
+{
+    sourceFileName.clear();
+    errorText.clear();
+
+    snapshotFile.reset(createClosedTemporaryPdfFile(prefix));
+    if (!snapshotFile) {
+        return PageEditSourceSnapshotResult::TemporaryFileError;
+    }
+
+    if (!document->saveChanges(snapshotFile->fileName(), &errorText)) {
+        snapshotFile.reset();
+        return PageEditSourceSnapshotResult::SaveError;
+    }
+
+    sourceFileName = snapshotFile->fileName();
+    return PageEditSourceSnapshotResult::Success;
+}
+
 static QString PageTemplateGroupKey()
 {
     return QStringLiteral("Page Templates");
@@ -2836,6 +2865,37 @@ private:
     int m_beforePage = 0;
     int m_afterPage = 0;
     bool m_forcePageTopologyChanged = false;
+};
+
+class LivePageMoveCommand : public QUndoCommand
+{
+public:
+    LivePageMoveCommand(Part *part, int sourcePage, int destinationPage)
+        : QUndoCommand(i18nc("Undo action", "Move Page"))
+        , m_part(part)
+        , m_sourcePage(sourcePage)
+        , m_destinationPage(destinationPage)
+    {
+    }
+
+    void undo() override
+    {
+        if (m_part) {
+            m_part->applyLivePageMove(m_destinationPage, m_sourcePage);
+        }
+    }
+
+    void redo() override
+    {
+        if (m_part) {
+            m_part->applyLivePageMove(m_sourcePage, m_destinationPage);
+        }
+    }
+
+private:
+    QPointer<Part> m_part;
+    int m_sourcePage = 0;
+    int m_destinationPage = 0;
 };
 
 bool Part::saveAs(const QUrl &saveUrl, SaveAsFlags flags)
@@ -3183,6 +3243,35 @@ bool Part::applyPageEditBackingFile(const QString &fileName, int pageNumber, boo
     const int pageCount = static_cast<int>(m_document->pages());
     if (pageCount > 0) {
         Okular::DocumentViewport targetViewport(qBound(0, pageNumber, pageCount - 1));
+        targetViewport.rePos.enabled = true;
+        targetViewport.rePos.normalizedX = 0;
+        targetViewport.rePos.normalizedY = 0;
+        targetViewport.rePos.pos = Okular::DocumentViewport::TopLeft;
+        m_document->setViewport(targetViewport, nullptr, true);
+    }
+
+    updateViewActions();
+    updatePageEditActions();
+    refreshTemplateNotes();
+    setWindowTitleFromDocument();
+    return true;
+}
+
+bool Part::applyLivePageMove(int sourcePage, int destinationPage)
+{
+    QString errorText;
+    if (!m_document->movePage(sourcePage, destinationPage, &errorText)) {
+        if (errorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not reorder pages."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not reorder pages. %1", errorText));
+        }
+        return false;
+    }
+
+    const int pageCount = static_cast<int>(m_document->pages());
+    if (pageCount > 0) {
+        Okular::DocumentViewport targetViewport(qBound(0, destinationPage, pageCount - 1));
         targetViewport.rePos.enabled = true;
         targetViewport.rePos.normalizedX = 0;
         targetViewport.rePos.normalizedY = 0;
@@ -3561,27 +3650,22 @@ void Part::insertBlankPage(int insertAfterPageNumber, const QSizeF &pageSize)
     if (hasTemplateNotes) {
         refreshTemplateNotes();
     }
-    const bool wasModified = isModified() || hasTemplateNotes;
+
     std::unique_ptr<QTemporaryFile> savedSourceFile;
-    QString sourceFileName = backingFileName;
-    if (wasModified) {
-        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-source")));
-        if (!savedSourceFile) {
-            KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
-            return;
+    QString sourceFileName;
+    QString snapshotErrorText;
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-insert-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
+        return;
+    }
+    if (snapshotResult == PageEditSourceSnapshotResult::SaveError) {
+        if (snapshotErrorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page insertion."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page insertion. %1", snapshotErrorText));
         }
-
-        QString errorText;
-        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
-            if (errorText.isEmpty()) {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion."));
-            } else {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion. %1", errorText));
-            }
-            return;
-        }
-
-        sourceFileName = savedSourceFile->fileName();
+        return;
     }
 
     std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-output")));
@@ -3647,27 +3731,22 @@ void Part::insertPdfPage(int insertAfterPageNumber, const QString &insertedFileN
     if (hasTemplateNotes) {
         refreshTemplateNotes();
     }
-    const bool wasModified = isModified() || hasTemplateNotes;
+
     std::unique_ptr<QTemporaryFile> savedSourceFile;
-    QString sourceFileName = backingFileName;
-    if (wasModified) {
-        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-source")));
-        if (!savedSourceFile) {
-            KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
-            return;
+    QString sourceFileName;
+    QString snapshotErrorText;
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-insert-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page insertion."));
+        return;
+    }
+    if (snapshotResult == PageEditSourceSnapshotResult::SaveError) {
+        if (snapshotErrorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page insertion."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page insertion. %1", snapshotErrorText));
         }
-
-        QString errorText;
-        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
-            if (errorText.isEmpty()) {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion."));
-            } else {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page insertion. %1", errorText));
-            }
-            return;
-        }
-
-        sourceFileName = savedSourceFile->fileName();
+        return;
     }
 
     std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-insert-output")));
@@ -3737,27 +3816,22 @@ void Part::deletePage(int pageNumber)
     if (hasTemplateNotes) {
         refreshTemplateNotes();
     }
-    const bool wasModified = isModified() || hasTemplateNotes;
+
     std::unique_ptr<QTemporaryFile> savedSourceFile;
-    QString sourceFileName = backingFileName;
-    if (wasModified) {
-        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-delete-source")));
-        if (!savedSourceFile) {
-            KMessageBox::information(widget(), i18n("Could not create a temporary file for page deletion."));
-            return;
+    QString sourceFileName;
+    QString snapshotErrorText;
+    const PageEditSourceSnapshotResult snapshotResult = createPageEditSourceSnapshot(m_document, QStringLiteral("scholia-page-delete-source"), savedSourceFile, sourceFileName, snapshotErrorText);
+    if (snapshotResult == PageEditSourceSnapshotResult::TemporaryFileError) {
+        KMessageBox::information(widget(), i18n("Could not create a temporary file for page deletion."));
+        return;
+    }
+    if (snapshotResult == PageEditSourceSnapshotResult::SaveError) {
+        if (snapshotErrorText.isEmpty()) {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page deletion."));
+        } else {
+            KMessageBox::information(widget(), i18n("Could not prepare the current document state for page deletion. %1", snapshotErrorText));
         }
-
-        QString errorText;
-        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
-            if (errorText.isEmpty()) {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page deletion."));
-            } else {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page deletion. %1", errorText));
-            }
-            return;
-        }
-
-        sourceFileName = savedSourceFile->fileName();
+        return;
     }
 
     std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-delete-output")));
@@ -3823,66 +3897,13 @@ void Part::movePageTo(int sourcePage, int destinationPage)
         return;
     }
 
-    const QUrl documentUrl = url();
-    const QString backingFileName = localFilePath();
-    const QFileInfo backingInfo(backingFileName);
-    if (backingFileName.isEmpty() || !backingInfo.exists()) {
-        KMessageBox::information(widget(), i18n("The current PDF file could not be found on disk."));
-        return;
-    }
-
     const bool hasTemplateNotes = documentHasTemplateNotes();
     if (hasTemplateNotes) {
         refreshTemplateNotes();
     }
-    const bool wasModified = isModified() || hasTemplateNotes;
-    std::unique_ptr<QTemporaryFile> savedSourceFile;
-    QString sourceFileName = backingFileName;
-    if (wasModified) {
-        savedSourceFile.reset(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-move-source")));
-        if (!savedSourceFile) {
-            KMessageBox::information(widget(), i18n("Could not create a temporary file for page reordering."));
-            return;
-        }
 
-        QString errorText;
-        if (!m_document->saveChanges(savedSourceFile->fileName(), &errorText)) {
-            if (errorText.isEmpty()) {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page reordering."));
-            } else {
-                KMessageBox::information(widget(), i18n("Could not prepare the current document changes for page reordering. %1", errorText));
-            }
-            return;
-        }
-
-        sourceFileName = savedSourceFile->fileName();
-    }
-
-    std::unique_ptr<QTemporaryFile> editedFile(createClosedTemporaryPdfFile(QStringLiteral("scholia-page-move-output")));
-    if (!editedFile) {
-        KMessageBox::information(widget(), i18n("Could not create a temporary file for page reordering."));
-        return;
-    }
-
-    QString errorText;
-    if (!m_document->saveWithPageMoved(sourceFileName, editedFile->fileName(), sourcePage + 1, destinationPage + 1, &errorText)) {
-        if (errorText.isEmpty()) {
-            KMessageBox::information(widget(), i18n("Could not reorder pages."));
-        } else {
-            KMessageBox::information(widget(), i18n("Could not reorder pages. %1", errorText));
-        }
-        return;
-    }
-
-    setUrl(documentUrl);
-    KParts::OpenUrlArguments args = arguments();
-    args.setMimeType(QStringLiteral("application/pdf"));
-    setArguments(args);
-
-    const QString editedFileName = editedFile->fileName();
-    auto command = std::make_unique<PageBackingFileCommand>(this, i18nc("Undo action", "Move Page"), std::move(savedSourceFile), sourceFileName, std::move(editedFile), editedFileName, sourcePage, destinationPage, true);
+    auto command = std::make_unique<LivePageMoveCommand>(this, sourcePage, destinationPage);
     m_document->pushUndoCommand(command.release());
-    refreshTemplateNotes();
 
     if (m_pageView) {
         m_pageView->displayMessage(i18n("Moved page %1 to position %2. Save the document to keep this change.", sourcePage + 1, destinationPage + 1));

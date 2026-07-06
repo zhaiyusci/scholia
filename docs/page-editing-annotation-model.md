@@ -29,19 +29,32 @@ their conceptual model.
 When the user creates an annotation, Scholia does not merely record a sidecar
 entry for later saving.
 
-The normal flow is:
+The current code path is:
 
-1. The UI creates an `Okular::Annotation`.
-2. `Document::addPageAnnotation(page, annotation)` pushes an undo command.
-3. `DocumentPrivate::performAddPageAnnotation()` attaches the annotation to
-   the target `Page`.
-4. `Page::addAnnotation()` stores it in the page's annotation list and assigns
-   a stable `scholia-{UUID}` unique name if needed.
-5. The generator's `AnnotationProxy` is notified.
-6. The Poppler backend creates or updates the corresponding
-   `Poppler::Annotation` and attaches it to the Poppler page.
-7. The Okular annotation stores a native id that points back to the Poppler
-   annotation.
+1. The UI creates an `Okular::Annotation` subtype, such as highlight, stamp,
+   free text, or LaTeX note.
+2. The UI calls `Document::addPageAnnotation(page, annotation)`.
+3. `Document::addPageAnnotation()` transforms the annotation geometry into the
+   page's unrotated coordinates and pushes an `AddAnnotationCommand` onto the
+   undo stack.
+4. `AddAnnotationCommand::redo()` calls
+   `DocumentPrivate::performAddPageAnnotation(page, annotation)`.
+5. `DocumentPrivate::performAddPageAnnotation()` attaches the annotation to the
+   target Okular `Page` first, through `Page::addAnnotation()`.
+6. `Page::addAnnotation()` assigns a stable `scholia-{UUID}` unique name if the
+   annotation does not already have one.
+7. `PagePrivate::addAnnotation()` records the Okular ownership:
+   `annotation->d_ptr->m_page` is set to the page private object, the annotation
+   is appended to `Page::m_annotations`, and an `AnnotationObjectRect` is added
+   for hit testing and painting.
+8. `DocumentPrivate::performAddPageAnnotation()` then asks the generator for its
+   `AnnotationProxy`.
+9. The Poppler backend's `PopplerAnnotationProxy::notifyAddition()` creates the
+   matching `Poppler::Annotation`, copies shared properties such as contents,
+   unique name, flags, boundary, style, popup, and timestamps, and calls
+   `Poppler::Page::addAnnotation()` on the native Poppler page.
+10. The Okular annotation stores the native Poppler annotation pointer in
+    `Annotation::nativeId()`.
 
 Modification and removal follow the same two-layer pattern: Okular's page model
 is updated, and the Poppler native annotation is updated through the annotation
@@ -54,6 +67,22 @@ Therefore, the live annotation state exists in both:
 
 The disk PDF is updated only when Scholia explicitly serializes changes, such
 as through `Document::saveChanges()` or the user's save operation.
+
+This means an annotation that the user can see in an open document is already a
+live document object. It is not merely pending data waiting to become a PDF
+annotation later.
+
+When a PDF is opened, the direction is reversed: the Poppler backend reads
+native Poppler annotations from each `Poppler::Page`, converts them into
+Okular annotations, and calls `Page::addAnnotation()` to attach them to the
+Okular page model. Existing native annotations are tracked so later
+modifications can be written back through Poppler.
+
+Therefore, any operation that replaces the current `Page` objects by reloading
+a rewritten PDF also replaces the annotation model. If the rewritten PDF omits
+annotations, has invalid annotation references, or cannot be reloaded into
+Okular annotations, the new `Page::m_annotations` lists will be empty even
+though the annotations existed correctly before the operation.
 
 ## Page Editing Semantics
 
@@ -85,9 +114,13 @@ their pages.
 
 ## Persistence Boundary
 
-An implementation may use a temporary PDF as an internal mechanism, but that is
-only valid if the temporary PDF is a complete serialization of the live document
-state at that moment.
+Page editing must not rely on a temporary PDF rewrite as its primary semantic
+model. Saving or exporting a PDF is a persistence boundary, not the way Scholia
+should represent ordinary page movement in an open document.
+
+A temporary PDF may be used as an internal persistence mechanism only when the
+operation is explicitly crossing that persistence boundary, or as a transitional
+implementation detail that is proven to be equivalent to the live model.
 
 The temporary file must not be treated as the semantic source of truth. If page
 editing uses a PDF serialization internally, it must preserve:
@@ -101,6 +134,11 @@ editing uses a PDF serialization internally, it must preserve:
 
 If this cannot be guaranteed, the operation should stay in the document model
 and defer PDF serialization until save time.
+
+For page reordering, the preferred implementation is to reorder the live page
+sequence and the corresponding backend page mapping without serializing and
+reloading the document. A file-level rewrite may be useful for final PDF
+output, but it is too fragile to define the in-memory editing operation.
 
 ## Page Reordering Requirements
 

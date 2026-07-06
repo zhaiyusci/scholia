@@ -798,6 +798,11 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
     }
     pagesVector.resize(pageCount);
     rectsGenerated.fill(false, pageCount);
+    m_pageOrder.clear();
+    m_pageOrder.reserve(pageCount);
+    for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
+        m_pageOrder.append(pageIndex);
+    }
 
     annotationsOnOpenHash.clear();
 
@@ -807,7 +812,7 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
     reparseConfig();
 
     // create annotation proxy
-    annotProxy = new PopplerAnnotationProxy(pdfdoc.get(), userMutex(), &annotationsOnOpenHash);
+    annotProxy = new PopplerAnnotationProxy(pdfdoc.get(), userMutex(), &annotationsOnOpenHash, &m_pageOrder);
 
     setAdditionalDocumentAction(Okular::Document::CloseDocument, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::CloseDocument)));
     setAdditionalDocumentAction(Okular::Document::SaveDocumentStart, createLinkFromPopplerLink(pdfdoc->additionalAction(Poppler::Document::SaveDocumentStart)));
@@ -817,6 +822,34 @@ Okular::Document::OpenResult PDFGenerator::init(QList<Okular::Page *> &pagesVect
 
     // the file has been loaded correctly
     return Okular::Document::OpenSuccess;
+}
+
+int PDFGenerator::nativePageForLogicalPage(int logicalPage) const
+{
+    if (logicalPage >= 0 && logicalPage < m_pageOrder.size()) {
+        return m_pageOrder.at(logicalPage);
+    }
+    return logicalPage;
+}
+
+bool PDFGenerator::pageOrderIsIdentity() const
+{
+    for (int pageIndex = 0; pageIndex < m_pageOrder.size(); ++pageIndex) {
+        if (m_pageOrder.at(pageIndex) != pageIndex) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<int> PDFGenerator::oneBasedPageOrder() const
+{
+    std::vector<int> pageOrder;
+    pageOrder.reserve(m_pageOrder.size());
+    for (int nativePage : m_pageOrder) {
+        pageOrder.push_back(nativePage + 1);
+    }
+    return pageOrder;
 }
 
 void PDFGenerator::setAdditionalDocumentAction(Okular::Document::DocumentAdditionalActionType type, Okular::Action *action)
@@ -879,6 +912,7 @@ bool PDFGenerator::doCloseDocument()
     docEmbeddedFiles.clear();
     nextFontPage = 0;
     rectsGenerated.clear();
+    m_pageOrder.clear();
 
     return true;
 }
@@ -1259,7 +1293,7 @@ Okular::FontInfo::List PDFGenerator::fontsForPage(int page)
     userMutex()->lock();
 
     {
-        std::unique_ptr<Poppler::FontIterator> it = pdfdoc->newFontIterator(page);
+        std::unique_ptr<Poppler::FontIterator> it = pdfdoc->newFontIterator(nativePageForLogicalPage(page));
         if (it->hasNext()) {
             fonts = it->next();
         }
@@ -1439,7 +1473,8 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
     qreal fakeDpiY = request->height() / pageHeight * dpi().height();
 
     // generate links rects only the first time
-    bool genObjectRects = !rectsGenerated.at(page->number());
+    const int nativePage = nativePageForLogicalPage(page->number());
+    bool genObjectRects = !rectsGenerated.at(nativePage);
 
     // 0. LOCK [waits for the thread end]
     userMutex()->lock();
@@ -1451,7 +1486,7 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
 
     // 1. Set OutputDev parameters and Generate contents
     // note: thread safety is set on 'false' for the GUI (this) thread
-    std::unique_ptr<Poppler::Page> p = pdfdoc->page(page->number());
+    std::unique_ptr<Poppler::Page> p = pdfdoc->page(nativePage);
 
     // 2. Take data from outputdev and attach it to the Page
     QImage img;
@@ -1485,7 +1520,7 @@ QImage PDFGenerator::image(Okular::PixmapRequest *request)
         // and as we are not doing anything with Image type rects i did not port it, have a look at
         // dead gp_outputdev.cpp on image extraction
         page->setObjectRects(generateLinks(p->links()));
-        rectsGenerated[request->page()->number()] = true;
+        rectsGenerated[nativePage] = true;
 
         resolveMediaLinkReferences(page);
     }
@@ -1589,7 +1624,7 @@ Okular::TextPage *PDFGenerator::textPage(Okular::TextRequest *request)
         userMutex()->unlock();
         return nullptr;
     }
-    std::unique_ptr<Poppler::Page> pp = pdfdoc->page(page->number());
+    std::unique_ptr<Poppler::Page> pp = pdfdoc->page(nativePageForLogicalPage(page->number()));
     if (pp) {
         TextExtractionPayload payload(request);
         textList = pp->textList(Poppler::Page::Rotate0, shouldAbortTextExtractionCallback, QVariant::fromValue(&payload));
@@ -1679,7 +1714,7 @@ Okular::Document::PrintError PDFGenerator::print(QPrinter &printer)
 
             const int page = pageList.at(i) - 1;
             userMutex()->lock();
-            std::unique_ptr<Poppler::Page> pp(pdfdoc->page(page));
+            std::unique_ptr<Poppler::Page> pp(pdfdoc->page(nativePageForLogicalPage(page)));
             if (pp) {
                 QSizeF pageSize = pp->pageSizeF();      // Unit is 'points' (i.e., 1/72th of an inch)
                 QRect painterWindow = painter.window(); // Unit is 'QPrinter::DevicePixel'
@@ -1946,7 +1981,7 @@ bool PDFGenerator::exportTo(const QString &fileName, const Okular::ExportFormat 
         for (int i = 0; i < num; ++i) {
             QString text;
             userMutex()->lock();
-            std::unique_ptr<Poppler::Page> pp = pdfdoc->page(i);
+            std::unique_ptr<Poppler::Page> pp = pdfdoc->page(nativePageForLogicalPage(i));
             if (pp) {
                 text = pp->text(QRect()).normalized(QString::NormalizationForm_C);
             }
@@ -2231,12 +2266,27 @@ bool PDFGenerator::supportsOption(SaveOption option) const
     return false;
 }
 
+static std::string pdfPagesFileName(const QString &fileName);
+
 bool PDFGenerator::save(const QString &fileName, SaveOptions options, QString *errorText)
 {
-    Q_UNUSED(errorText);
     std::unique_ptr<Poppler::PDFConverter> pdfConv = pdfdoc->pdfConverter();
+    std::unique_ptr<QTemporaryFile> pageOrderSourceFile;
+    QString converterOutputFileName = fileName;
 
-    pdfConv->setOutputFileName(fileName);
+    if ((options & SaveChanges) && !pageOrderIsIdentity()) {
+        pageOrderSourceFile = std::make_unique<QTemporaryFile>(QDir::tempPath() + QLatin1String("/scholia-save-page-order-source-XXXXXX.pdf"));
+        if (!pageOrderSourceFile->open()) {
+            if (errorText) {
+                *errorText = QStringLiteral("Could not create a temporary file for saving the reordered page sequence.");
+            }
+            return false;
+        }
+        converterOutputFileName = pageOrderSourceFile->fileName();
+        pageOrderSourceFile->close();
+    }
+
+    pdfConv->setOutputFileName(converterOutputFileName);
     if (options & SaveChanges) {
         pdfConv->setPDFOptions(pdfConv->pdfOptions() | Poppler::PDFConverter::WithChanges);
     }
@@ -2267,6 +2317,16 @@ bool PDFGenerator::save(const QString &fileName, SaveOptions options, QString *e
         case Poppler::BaseConverter::OpenOutputError:
             // the default text message is good for this case
             break;
+        }
+    }
+
+    if (success && pageOrderSourceFile) {
+        const ScholiaPdfPages::Result result = ScholiaPdfPages::reorderPages(pdfPagesFileName(converterOutputFileName), pdfPagesFileName(fileName), oneBasedPageOrder());
+        if (!result.ok()) {
+            if (errorText) {
+                *errorText = QString::fromStdString(result.message);
+            }
+            return false;
         }
     }
     return success;
@@ -2361,6 +2421,34 @@ bool PDFGenerator::canMovePage() const
     return true;
 }
 
+bool PDFGenerator::canMovePageInDocument() const
+{
+    return true;
+}
+
+bool PDFGenerator::movePageInDocument(int sourcePageNumber, int destinationPageNumber, QString *errorText)
+{
+    if (sourcePageNumber < 0 || sourcePageNumber >= m_pageOrder.size() || destinationPageNumber < 0 || destinationPageNumber >= m_pageOrder.size()) {
+        if (errorText) {
+            *errorText = QStringLiteral("The page move source or destination is outside the document page range.");
+        }
+        return false;
+    }
+    if (sourcePageNumber == destinationPageNumber) {
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    const int nativePage = m_pageOrder.takeAt(sourcePageNumber);
+    m_pageOrder.insert(destinationPageNumber, nativePage);
+    if (errorText) {
+        errorText->clear();
+    }
+    return true;
+}
+
 bool PDFGenerator::saveWithPageMoved(const QString &sourceFileName, const QString &outputFileName, int sourcePageNumber, int destinationPageNumber, QString *errorText)
 {
     const ScholiaPdfPages::Result result = ScholiaPdfPages::movePage(pdfPagesFileName(sourceFileName), pdfPagesFileName(outputFileName), sourcePageNumber, destinationPageNumber);
@@ -2430,13 +2518,15 @@ std::pair<Okular::SigningResult, QString> PDFGenerator::sign(const Okular::NewSi
 
     Poppler::PDFConverter::NewSignatureData pData;
     okularToPoppler(oData, &pData);
+    pData.setPage(nativePageForLogicalPage(oData.page()));
     if (!oData.backgroundImagePath().isEmpty() && QFile::exists(oData.backgroundImagePath())) {
         // width and height for target image
         const Okular::NormalizedRect bRect = oData.boundingRectangle();
         // 2 is an experimental decided upon fudge factor to compensate for the fact that pageSize is in points
         // but most of this ends up working in pixels anyway
-        double width = pdfdoc->page(oData.page())->pageSizeF().width() * bRect.width() * 2;
-        double height = pdfdoc->page(oData.page())->pageSizeF().height() * bRect.height() * 2;
+        const int nativePage = nativePageForLogicalPage(oData.page());
+        double width = pdfdoc->page(nativePage)->pageSizeF().width() * bRect.width() * 2;
+        double height = pdfdoc->page(nativePage)->pageSizeF().height() * bRect.height() * 2;
 
         QImageReader reader(oData.backgroundImagePath());
         QSize imageSize = reader.size();
