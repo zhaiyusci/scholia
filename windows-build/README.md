@@ -328,9 +328,9 @@ probe the system for TeX; it only uses the bundled support tree when that tree
 has been installed.
 
 StemTeX runtime state, fontconfig files, caches, traces, and rendered-note
-outputs are written below Scholia's per-user local data directory, not below the
-installation directory. This keeps `C:\Program Files\Scholia` read-only after
-installation.
+outputs are written below Scholia's per-user temporary StemTeX directory, not
+below the installation directory. This keeps `C:\Program Files\Scholia`
+read-only after installation.
 
 To inspect TeX rendering logs:
 

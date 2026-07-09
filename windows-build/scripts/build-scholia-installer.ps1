@@ -99,6 +99,7 @@ function Sync-DirectoryContents([string] $Source, [string] $Destination, [string
 function Assert-StemTeXBundleLayout([string] $Root) {
     $requiredPaths = @(
         "runtime\bin\sdk\stemtex-renderer.dll",
+        "runtime\bin\windows\stemtex-worker-host.exe",
         "runtime\bin\windows\xetexdaemon.exe",
         "gui\profiles"
     )

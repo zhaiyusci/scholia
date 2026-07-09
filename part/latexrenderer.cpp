@@ -138,6 +138,7 @@ struct StemtexApi {
     using RenderAsync = int (*)(void *, const char *, int, uint64_t *, RenderCallback, void *, int *, char **);
     using EngineSnapshot = int (*)(void *, StemTeXEngineSnapshot *);
     using ProfileInfo = char *(*)(const char *, int *, char **);
+    using ValidateConfig = int (*)(const StemTeXConfig *, int *, char **);
     using FreeResult = void (*)(StemTeXRenderResult *);
     using FreeString = void (*)(char *);
     using Destroy = void (*)(void *);
@@ -148,6 +149,7 @@ struct StemtexApi {
     RenderAsync renderAsync = nullptr;
     EngineSnapshot engineSnapshot = nullptr;
     ProfileInfo profileInfo = nullptr;
+    ValidateConfig validateConfig = nullptr;
     FreeResult freeResult = nullptr;
     FreeString freeString = nullptr;
     Destroy destroy = nullptr;
@@ -171,10 +173,11 @@ struct StemtexApi {
         renderAsync = reinterpret_cast<RenderAsync>(library.resolve("stemtex_renderer_render_async"));
         engineSnapshot = reinterpret_cast<EngineSnapshot>(library.resolve("stemtex_renderer_engine_snapshot"));
         profileInfo = reinterpret_cast<ProfileInfo>(library.resolve("stemtex_renderer_profile_info_json"));
+        validateConfig = reinterpret_cast<ValidateConfig>(library.resolve("stemtex_renderer_validate_config"));
         freeResult = reinterpret_cast<FreeResult>(library.resolve("stemtex_renderer_free_result"));
         freeString = reinterpret_cast<FreeString>(library.resolve("stemtex_renderer_free_string"));
         destroy = reinterpret_cast<Destroy>(library.resolve("stemtex_renderer_destroy"));
-        const bool ok = create && render && renderAsync && engineSnapshot && profileInfo && freeResult && freeString && destroy;
+        const bool ok = create && render && renderAsync && engineSnapshot && profileInfo && validateConfig && freeResult && freeString && destroy;
         if (!ok && error) {
             *error = QStringLiteral("stemtex-renderer.dll does not export the expected renderer ABI.");
         }
@@ -518,6 +521,24 @@ private:
         return normalizeRuntimeRoot(QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("../StemTeX/runtime")));
     }
 
+    static QString missingRuntimeComponent(const QString &runtimeRoot)
+    {
+        const QDir runtimeDir(runtimeRoot);
+        for (const QString &relativePath : {
+                 QStringLiteral("run-xelatexdaemon.bat"),
+                 QStringLiteral("bin/windows/stemtex-worker-host.exe"),
+                 QStringLiteral("bin/windows/xetexdaemon.exe"),
+                 QStringLiteral("bin/windows/xdvipdfmxdaemon.exe"),
+                 QStringLiteral("bin/windows/dvipdfmxdaemon.dll"),
+                 QStringLiteral("texmf-var/web2c/xetex/xelatexdaemon.fmt"),
+             }) {
+            if (!QFileInfo::exists(runtimeDir.filePath(relativePath))) {
+                return relativePath;
+            }
+        }
+        return {};
+    }
+
     static QString texmfRoot(const QString &runtimeRoot)
     {
         const QString envTexmf = environmentPath("SCHOLIA_STEMTEX_TEXMF_ROOT");
@@ -695,9 +716,10 @@ private:
             }
             return false;
         }
-        if (!QFileInfo::exists(QDir(m_runtimeRoot).filePath(QStringLiteral("bin/windows/xetexdaemon.exe")))) {
+        const QString missingComponent = missingRuntimeComponent(m_runtimeRoot);
+        if (!missingComponent.isEmpty()) {
             if (error) {
-                *error = i18n("StemTeX runtime was not found: %1", QDir::toNativeSeparators(m_runtimeRoot));
+                *error = i18n("StemTeX runtime is incomplete: missing %1 under %2", QDir::toNativeSeparators(missingComponent), QDir::toNativeSeparators(m_runtimeRoot));
             }
             return false;
         }
@@ -736,6 +758,21 @@ private:
 
         int errorCode = 0;
         char *errorUtf8 = nullptr;
+        char *diagnosticsUtf8 = nullptr;
+        if (!m_api.validateConfig(&config, &errorCode, &diagnosticsUtf8)) {
+            const QString diagnostics = diagnosticsUtf8 ? QString::fromUtf8(diagnosticsUtf8).trimmed() : QString();
+            if (diagnosticsUtf8) {
+                m_api.freeString(diagnosticsUtf8);
+            }
+            if (error) {
+                *error = i18n("StemTeX renderer configuration is invalid: %1", diagnostics.isEmpty() ? QString::number(errorCode) : diagnostics);
+            }
+            return false;
+        }
+        if (diagnosticsUtf8) {
+            m_api.freeString(diagnosticsUtf8);
+        }
+
         m_renderer = m_api.create(&config, &errorCode, &errorUtf8);
         const QString errorText = errorUtf8 ? QString::fromUtf8(errorUtf8) : QString();
         if (errorUtf8) {

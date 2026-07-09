@@ -121,6 +121,7 @@ endif()
 
 if(IS_DIRECTORY "${INSTALL_PREFIX}/StemTeX")
     scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/sdk/stemtex-renderer.dll")
+    scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/stemtex-worker-host.exe")
     scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/runtime/bin/windows/xetexdaemon.exe")
     scholia_validate_file("${INSTALL_PREFIX}" "StemTeX/gui/profiles")
     scholia_sync_tree("${INSTALL_PREFIX}/StemTeX" "${STAGE_ROOT}/StemTeX" "${STAGE_ROOT}")

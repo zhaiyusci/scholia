@@ -331,6 +331,7 @@ function Resolve-StemTeXRuntimeSource([string] $Root) {
         (Join-Path $Root "dist\stemtex-texlive-daemon-static")
     )) {
         if ((Test-Path -LiteralPath (Join-Path $candidate "bin\sdk\stemtex-renderer.dll")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\stemtex-worker-host.exe")) -and
             (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\xetexdaemon.exe"))) {
             return [System.IO.Path]::GetFullPath($candidate)
         }

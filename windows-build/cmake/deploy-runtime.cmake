@@ -87,6 +87,7 @@ function(scholia_resolve_stemtex_runtime out_var root)
         "${root}/dist/stemtex-texlive-daemon-static"
     )
         if(EXISTS "${_candidate}/bin/sdk/stemtex-renderer.dll"
+            AND EXISTS "${_candidate}/bin/windows/stemtex-worker-host.exe"
             AND EXISTS "${_candidate}/bin/windows/xetexdaemon.exe")
             get_filename_component(_runtime "${_candidate}" ABSOLUTE)
             set(${out_var} "${_runtime}" PARENT_SCOPE)
