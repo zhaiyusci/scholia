@@ -61,6 +61,7 @@ function(scholia_find_qscintilla_root out_var)
     if(DEFINED ENV{SCHOLIA_STEMTEX_SOURCE_ROOT})
         list(APPEND _candidates "$ENV{SCHOLIA_STEMTEX_SOURCE_ROOT}/third_party")
     endif()
+    list(APPEND _candidates "${SOURCE_ROOT}/external/stemtex/third_party")
     get_filename_component(_documents_root "${SOURCE_ROOT}/../.." ABSOLUTE)
     list(APPEND _candidates "${_documents_root}/xetex/stemtex/third_party")
 

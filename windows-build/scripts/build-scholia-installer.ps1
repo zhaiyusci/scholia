@@ -101,6 +101,10 @@ function Assert-StemTeXBundleLayout([string] $Root) {
         "runtime\bin\sdk\stemtex-renderer.dll",
         "runtime\bin\windows\stemtex-worker-host.exe",
         "runtime\bin\windows\xetexdaemon.exe",
+        "runtime\bin\windows\xdvipdfmxdaemon.exe",
+        "runtime\bin\windows\dvipdfmxdaemon.dll",
+        "runtime\bin\windows\dvisvgmdaemon.exe",
+        "runtime\bin\windows\dvisvgmdaemon.dll",
         "gui\profiles"
     )
     foreach ($relativePath in $requiredPaths) {

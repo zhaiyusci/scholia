@@ -92,9 +92,9 @@ struct StemTeXConfig {
     const char *renders_root_utf8;
     int request_timeout_ms;
     int xdvipdfmx_timeout_ms;
-    int min_width_pt;
-    int max_width_pt;
-    int default_width_pt;
+    double min_width_pt;
+    double max_width_pt;
+    double default_width_pt;
     int spare_worker_count;
     int auto_restart;
     int delete_intermediates;
@@ -134,8 +134,8 @@ struct StemTeXProfileInfo {
 struct StemtexApi {
     using RenderCallback = void (*)(uint64_t, int, const StemTeXRenderResult *, int, const char *, void *);
     using Create = void *(*)(const StemTeXConfig *, int *, char **);
-    using Render = int (*)(void *, const char *, int, StemTeXRenderResult *, int *, char **);
-    using RenderAsync = int (*)(void *, const char *, int, uint64_t *, RenderCallback, void *, int *, char **);
+    using Render = int (*)(void *, const char *, double, StemTeXRenderResult *, int *, char **);
+    using RenderAsync = int (*)(void *, const char *, double, uint64_t *, RenderCallback, void *, int *, char **);
     using EngineSnapshot = int (*)(void *, StemTeXEngineSnapshot *);
     using ProfileInfo = char *(*)(const char *, int *, char **);
     using ValidateConfig = int (*)(const StemTeXConfig *, int *, char **);
@@ -284,7 +284,7 @@ public:
             return LatexRenderer::LatexFailed;
         }
 
-        const int widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? qRound(maxWidth) : 360;
+        const double widthPt = std::isfinite(maxWidth) && maxWidth > 0.0 ? maxWidth : 360.0;
         const QColor effectiveColor = textColor.isValid() ? textColor : QColor(Qt::black);
         const QString coloredSource = QStringLiteral("{\\color[rgb]{%1,%2,%3}\n%4\n\\par}")
                                           .arg(effectiveColor.redF(), 0, 'f', 6)
@@ -530,6 +530,8 @@ private:
                  QStringLiteral("bin/windows/xetexdaemon.exe"),
                  QStringLiteral("bin/windows/xdvipdfmxdaemon.exe"),
                  QStringLiteral("bin/windows/dvipdfmxdaemon.dll"),
+                 QStringLiteral("bin/windows/dvisvgmdaemon.exe"),
+                 QStringLiteral("bin/windows/dvisvgmdaemon.dll"),
                  QStringLiteral("texmf-var/web2c/xetex/xelatexdaemon.fmt"),
              }) {
             if (!QFileInfo::exists(runtimeDir.filePath(relativePath))) {

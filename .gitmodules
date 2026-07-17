@@ -2,3 +2,7 @@
 	path = external/poppler
 	url = ../poppler.git
 	branch = local-okular-vector-stamp
+[submodule "external/stemtex"]
+	path = external/stemtex
+	url = https://github.com/zhaiyusci/stemtex.git
+	branch = master

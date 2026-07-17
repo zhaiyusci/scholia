@@ -106,21 +106,45 @@ ecm_setup_version(${PROJECT_VERSION}
 
 find_package(Qt6 ${QT_REQUIRED_VERSION} CONFIG REQUIRED COMPONENTS Core Test Widgets PrintSupport Svg Xml)
 
-set(SCHOLIA_QSCINTILLA_ROOT "" CACHE PATH "Root of the bundled QScintilla build used by StemTeX")
+set(SCHOLIA_STEMTEX_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/stemtex"
+    CACHE PATH "Root of the StemTeX source/staging tree")
+set(SCHOLIA_QSCINTILLA_ROOT
+    ""
+    CACHE PATH "Root of the bundled QScintilla build used by StemTeX; empty uses SCHOLIA_STEMTEX_ROOT/third_party when available")
+set(_scholia_stemtex_root "")
+set(_scholia_qscintilla_root "")
+set(_scholia_qscintilla_root_explicit FALSE)
+if(SCHOLIA_STEMTEX_ROOT)
+    get_filename_component(_scholia_stemtex_root "${SCHOLIA_STEMTEX_ROOT}" ABSOLUTE)
+endif()
 if(SCHOLIA_QSCINTILLA_ROOT)
-    set(SCHOLIA_QSCINTILLA_INCLUDE_DIR "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-src/src")
-    set(SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-src/scintilla/include")
-    set(SCHOLIA_QSCINTILLA_LIBRARY "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-build/release/qscintilla2_qt6.lib")
-    set(SCHOLIA_QSCINTILLA_RUNTIME "${SCHOLIA_QSCINTILLA_ROOT}/qscintilla-build/release/qscintilla2_qt6.dll")
+    set(_scholia_qscintilla_root "${SCHOLIA_QSCINTILLA_ROOT}")
+    set(_scholia_qscintilla_root_explicit TRUE)
+elseif(_scholia_stemtex_root AND IS_DIRECTORY "${_scholia_stemtex_root}/third_party")
+    set(_scholia_qscintilla_root "${_scholia_stemtex_root}/third_party")
+endif()
+if(_scholia_qscintilla_root)
+    get_filename_component(_scholia_qscintilla_root "${_scholia_qscintilla_root}" ABSOLUTE)
+    set(SCHOLIA_QSCINTILLA_INCLUDE_DIR "${_scholia_qscintilla_root}/qscintilla-src/src")
+    set(SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR "${_scholia_qscintilla_root}/qscintilla-src/scintilla/include")
+    set(SCHOLIA_QSCINTILLA_LIBRARY "${_scholia_qscintilla_root}/qscintilla-build/release/qscintilla2_qt6.lib")
+    set(SCHOLIA_QSCINTILLA_RUNTIME "${_scholia_qscintilla_root}/qscintilla-build/release/qscintilla2_qt6.dll")
     if(EXISTS "${SCHOLIA_QSCINTILLA_INCLUDE_DIR}/Qsci/qsciscintilla.h" AND EXISTS "${SCHOLIA_QSCINTILLA_SCINTILLA_INCLUDE_DIR}/Scintilla.h" AND EXISTS "${SCHOLIA_QSCINTILLA_LIBRARY}" AND EXISTS "${SCHOLIA_QSCINTILLA_RUNTIME}")
         set(HAVE_QSCINTILLA 1)
-        message(STATUS "Using QScintilla from ${SCHOLIA_QSCINTILLA_ROOT}")
+        message(STATUS "Using QScintilla from ${_scholia_qscintilla_root}")
+    elseif(_scholia_qscintilla_root_explicit)
+        message(FATAL_ERROR "SCHOLIA_QSCINTILLA_ROOT is set but QScintilla headers/library/runtime were not found under ${_scholia_qscintilla_root}")
     else()
-        message(FATAL_ERROR "SCHOLIA_QSCINTILLA_ROOT is set but QScintilla headers/library/runtime were not found under ${SCHOLIA_QSCINTILLA_ROOT}")
+        set(HAVE_QSCINTILLA 0)
+        message(STATUS "StemTeX QScintilla build was not found under ${_scholia_qscintilla_root}; QScintilla support is disabled")
     endif()
 else()
     set(HAVE_QSCINTILLA 0)
 endif()
+unset(_scholia_stemtex_root)
+unset(_scholia_qscintilla_root)
+unset(_scholia_qscintilla_root_explicit)
 
 find_package(KF6 ${KF_REQUIRED_VERSION} REQUIRED COMPONENTS
     Archive

@@ -42,6 +42,7 @@ function(scholia_find_stemtex_root out_var)
     if(DEFINED ENV{SCHOLIA_STEMTEX_SOURCE_ROOT})
         list(APPEND _candidates "$ENV{SCHOLIA_STEMTEX_SOURCE_ROOT}")
     endif()
+    list(APPEND _candidates "${SOURCE_ROOT}/external/stemtex")
     get_filename_component(_documents_root "${SOURCE_ROOT}/../.." ABSOLUTE)
     list(APPEND _candidates "${_documents_root}/xetex/stemtex")
 
@@ -88,7 +89,11 @@ function(scholia_resolve_stemtex_runtime out_var root)
     )
         if(EXISTS "${_candidate}/bin/sdk/stemtex-renderer.dll"
             AND EXISTS "${_candidate}/bin/windows/stemtex-worker-host.exe"
-            AND EXISTS "${_candidate}/bin/windows/xetexdaemon.exe")
+            AND EXISTS "${_candidate}/bin/windows/xetexdaemon.exe"
+            AND EXISTS "${_candidate}/bin/windows/xdvipdfmxdaemon.exe"
+            AND EXISTS "${_candidate}/bin/windows/dvipdfmxdaemon.dll"
+            AND EXISTS "${_candidate}/bin/windows/dvisvgmdaemon.exe"
+            AND EXISTS "${_candidate}/bin/windows/dvisvgmdaemon.dll")
             get_filename_component(_runtime "${_candidate}" ABSOLUTE)
             set(${out_var} "${_runtime}" PARENT_SCOPE)
             return()

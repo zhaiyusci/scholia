@@ -287,6 +287,7 @@ function Find-StemTeXRoot([string] $RequestedRoot) {
     if ($env:SCHOLIA_STEMTEX_SOURCE_ROOT) {
         $candidates += $env:SCHOLIA_STEMTEX_SOURCE_ROOT
     }
+    $candidates += Join-Path $repoRoot "external\stemtex"
     $documentsRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
     $candidates += Join-Path $documentsRoot "xetex\stemtex"
 
@@ -332,7 +333,11 @@ function Resolve-StemTeXRuntimeSource([string] $Root) {
     )) {
         if ((Test-Path -LiteralPath (Join-Path $candidate "bin\sdk\stemtex-renderer.dll")) -and
             (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\stemtex-worker-host.exe")) -and
-            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\xetexdaemon.exe"))) {
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\xetexdaemon.exe")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\xdvipdfmxdaemon.exe")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\dvipdfmxdaemon.dll")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\dvisvgmdaemon.exe")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "bin\windows\dvisvgmdaemon.dll"))) {
             return [System.IO.Path]::GetFullPath($candidate)
         }
     }

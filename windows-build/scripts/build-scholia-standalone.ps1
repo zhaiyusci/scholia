@@ -88,6 +88,7 @@ function Find-QScintillaRoot([string] $RequestedRoot) {
     if ($env:SCHOLIA_STEMTEX_SOURCE_ROOT) {
         $candidates += Join-Path $env:SCHOLIA_STEMTEX_SOURCE_ROOT "third_party"
     }
+    $candidates += Join-Path $repoRoot "external\stemtex\third_party"
     $documentsRoot = Split-Path -Parent (Split-Path -Parent $repoRoot)
     $candidates += Join-Path $documentsRoot "xetex\stemtex\third_party"
 

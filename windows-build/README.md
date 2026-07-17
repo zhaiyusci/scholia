@@ -33,8 +33,16 @@ Build output lives outside the source checkout under the sibling
 - Initialized third-party sources:
 
 ```powershell
-git submodule update --init --recursive external/poppler
+git submodule update --init --recursive external/poppler external/stemtex
 ```
+
+StemTeX is looked up in this order: an explicit `STEMTEX_ROOT`, the
+`SCHOLIA_STEMTEX_SOURCE_ROOT` environment variable, `external/stemtex`, and
+then the legacy local development path outside the checkout.
+
+The submodule supplies the StemTeX source tree. Packaging still expects StemTeX
+runtime outputs to have been staged under that tree, or under the explicit
+StemTeX root passed to the build.
 
 If using a non-default Visual Studio path, pass it to CMake scripts:
 
